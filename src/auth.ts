@@ -2,9 +2,24 @@ import {
   KoolbaseConfig,
   KoolbaseSession,
   KoolbaseUser,
+  LinkPhoneParams,
   LoginParams,
+  OtpSendResult,
+  PhoneVerifyResult,
   RegisterParams,
+  SendOtpParams,
+  VerifyOtpParams,
 } from './types';
+import {
+  InvalidPhoneNumberError,
+  KoolbaseAuthError,
+  OtpExpiredError,
+  OtpInvalidError,
+  OtpMaxAttemptsError,
+  OtpRateLimitError,
+  PhoneAlreadyLinkedError,
+  SmsConfigMissingError,
+} from './auth-errors';
 
 export class KoolbaseAuth {
   private config: KoolbaseConfig;
@@ -121,5 +136,114 @@ export class KoolbaseAuth {
     } catch {
       return null;
     }
+  }
+
+  async sendOtp(params: SendOtpParams): Promise<OtpSendResult> {
+    this.validatePhone(params.phoneNumber);
+    const res = await fetch(
+      `${this.config.baseUrl}/v1/sdk/auth/phone/send-otp`,
+      {
+        method: 'POST',
+        headers: this.headers,
+        body: JSON.stringify({ phone_number: params.phoneNumber }),
+      }
+    );
+    const data = await this.parsePhoneResponse(res);
+    return { expiresAt: data.expires_at };
+  }
+
+  async verifyOtp(params: VerifyOtpParams): Promise<PhoneVerifyResult> {
+    this.validatePhone(params.phoneNumber);
+    const res = await fetch(
+      `${this.config.baseUrl}/v1/sdk/auth/phone/verify-otp`,
+      {
+        method: 'POST',
+        headers: this.headers,
+        body: JSON.stringify({
+          phone_number: params.phoneNumber,
+          code: params.code,
+        }),
+      }
+    );
+    const data = await this.parsePhoneResponse(res);
+
+    const user: KoolbaseUser = {
+      id: data.user.id,
+      email: data.user.email ?? '',
+      phoneNumber: data.user.phone_number,
+      phoneVerified: data.user.phone_verified ?? false,
+      fullName: data.user.full_name,
+      avatarUrl: data.user.avatar_url,
+      verified: data.user.verified ?? false,
+      createdAt: data.user.created_at,
+    };
+
+    const session: KoolbaseSession = {
+      accessToken: data.access_token,
+      refreshToken: data.refresh_token,
+      user,
+    };
+
+    this.session = session;
+    return { session, isNewUser: data.is_new_user ?? false };
+  }
+
+  async linkPhone(params: LinkPhoneParams): Promise<void> {
+    if (!this.session) {
+      throw new KoolbaseAuthError(
+        'Must be signed in to link a phone number',
+        'unauthenticated'
+      );
+    }
+    this.validatePhone(params.phoneNumber);
+    const res = await fetch(
+      `${this.config.baseUrl}/v1/sdk/auth/phone/link`,
+      {
+        method: 'POST',
+        headers: this.authHeaders,
+        body: JSON.stringify({
+          phone_number: params.phoneNumber,
+          code: params.code,
+        }),
+      }
+    );
+    await this.parsePhoneResponse(res);
+  }
+
+  private validatePhone(phoneNumber: string): void {
+    if (!/^\+[1-9]\d{6,14}$/.test(phoneNumber)) {
+      throw new InvalidPhoneNumberError();
+    }
+  }
+
+  private async parsePhoneResponse(res: Response): Promise<any> {
+    let body: any = {};
+    try {
+      body = await res.json();
+    } catch {}
+
+    if (res.ok) return body;
+
+    const msg: string = body.error ?? '';
+
+    if (res.status === 429) throw new OtpRateLimitError();
+    if (res.status === 409) throw new PhoneAlreadyLinkedError();
+
+    if (msg.includes('E.164')) throw new InvalidPhoneNumberError();
+    if (msg.includes('OTP has expired')) throw new OtpExpiredError();
+    if (msg.includes('too many incorrect attempts')) {
+      throw new OtpMaxAttemptsError();
+    }
+    if (
+      msg.includes('invalid OTP') ||
+      msg.includes('invalid or expired OTP')
+    ) {
+      throw new OtpInvalidError();
+    }
+    if (msg.includes('SMS provider not configured')) {
+      throw new SmsConfigMissingError();
+    }
+
+    throw new KoolbaseAuthError(msg || 'An unexpected error occurred');
   }
 }

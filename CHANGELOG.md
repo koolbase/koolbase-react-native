@@ -1,3 +1,21 @@
+## 1.7.0
+
+### Phone + OTP authentication
+Sign users in with their phone number — for emerging markets and apps where email isn't the primary identifier.
+
+New methods on `Koolbase.auth`:
+- `sendOtp({ phoneNumber })` — sends a 6-digit OTP to an E.164 phone number, returns the expiry timestamp.
+- `verifyOtp({ phoneNumber, code })` — verifies the code and signs the user in (creates the account if new). Returns `PhoneVerifyResult` with an `isNewUser` flag for routing first-time users to onboarding.
+- `linkPhone({ phoneNumber, code })` — links a phone number to an already-authenticated user.
+
+New types: `OtpSendResult`, `PhoneVerifyResult`, `SendOtpParams`, `VerifyOtpParams`, `LinkPhoneParams`.
+
+`KoolbaseUser` now exposes `phoneNumber` and `phoneVerified` fields.
+
+New errors (all extend `KoolbaseAuthError`): `InvalidPhoneNumberError`, `OtpExpiredError`, `OtpInvalidError`, `OtpMaxAttemptsError`, `OtpRateLimitError`, `PhoneAlreadyLinkedError`, `SmsConfigMissingError`.
+
+Phone numbers must be in E.164 format (e.g. `+233244000000`). Configure your SMS provider (Twilio, Africa's Talking, or Hubtel) in the Koolbase dashboard before using.
+
 ## 1.6.1
 
 - README update — Logic Engine v2 operators

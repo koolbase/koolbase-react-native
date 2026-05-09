@@ -12,6 +12,8 @@ export interface KoolbaseConfig {
 export interface KoolbaseUser {
   id: string;
   email: string;
+  phoneNumber?: string;
+  phoneVerified?: boolean;
   fullName?: string;
   avatarUrl?: string;
   verified: boolean;
@@ -34,6 +36,30 @@ export interface LoginParams {
   email: string;
   password: string;
 }
+
+export interface SendOtpParams {
+  phoneNumber: string;
+}
+
+export interface VerifyOtpParams {
+  phoneNumber: string;
+  code: string;
+}
+
+export interface LinkPhoneParams {
+  phoneNumber: string;
+  code: string;
+}
+
+export interface OtpSendResult {
+  expiresAt: string;
+}
+
+export interface PhoneVerifyResult {
+  session: KoolbaseSession;
+  isNewUser: boolean;
+}
+
 
 // ─── Database ──────────────────────────────────────────────────────────────
 
