@@ -89,7 +89,7 @@ Install @invertase/react-native-apple-authentication and configure your App ID i
 - `KoolbaseConfig` extended with `messagingEnabled` parameter (default: true)
 - Device ID automatically reused from analytics stable device ID (AsyncStorage)
 
-### Usage
+## Usage
 
 ```typescript
 // After obtaining FCM token from @react-native-firebase/messaging
@@ -108,7 +108,7 @@ await Koolbase.messaging.send({
 });
 ```
 
-### Setup required
+## Setup required
 
 Add your FCM server key as a project secret named `FCM_SERVER_KEY` in the Koolbase dashboard.
 
@@ -145,7 +145,7 @@ Add your FCM server key as a project secret named `FCM_SERVER_KEY` in the Koolba
 - `BundlePayload` extended with `flows` and `screens` fields
 - Never throws — returns safe `FlowResult` on any error
 
-### Usage
+## Usage
 
 ```typescript
 // Analytics

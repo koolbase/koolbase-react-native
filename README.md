@@ -1,18 +1,6 @@
-# Koolbase React Native SDK
+# @techfinityedge/koolbase-react-native
 
-⚠️ ## This package has moved
-
-This package is deprecated.
-
-👉 Install the official version:
-
-```bash
-npm install @techfinityedge/koolbase-react-native
-```
-
----
-
-[![npm](https://img.shields.io/npm/v/koolbase-react-native.svg)](https://www.npmjs.com/package/koolbase-react-native)
+[![npm](https://img.shields.io/npm/v/@techfinityedge/koolbase-react-native.svg)](https://www.npmjs.com/package/@techfinityedge/koolbase-react-native)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 
 React Native SDK for [Koolbase](https://koolbase.com) — Backend as a Service built for mobile developers.
@@ -30,15 +18,15 @@ Auth, database, storage, realtime, functions, feature flags, remote config, vers
 3. Add the SDK:
 
 ```bash
-npm install koolbase-react-native
+npm install @techfinityedge/koolbase-react-native@^1.8.0
 # or
-yarn add koolbase-react-native
+yarn add @techfinityedge/koolbase-react-native@^1.8.0
 ```
 
 **4. Initialize at app startup:**
 
 ```typescript
-import { Koolbase } from 'koolbase-react-native';
+import { Koolbase } from '@techfinityedge/koolbase-react-native';
 
 await Koolbase.initialize({
   publicKey: 'pk_live_xxxx',
@@ -51,6 +39,8 @@ That's it. Every feature below is now available via `Koolbase.*`.
 ---
 
 ## Authentication
+
+Email + password, Google, Apple, and phone + OTP — out of the box.
 
 ```typescript
 // Register
@@ -69,6 +59,50 @@ await Koolbase.auth.logout();
 await Koolbase.auth.forgotPassword('user@example.com');
 ```
 
+### OAuth — Google & Apple
+
+```typescript
+// Google
+await Koolbase.auth.signInWithGoogle({ idToken: googleIdToken });
+```
+
+Apple uses the native authentication flow via `@invertase/react-native-apple-authentication` as a peer dependency:
+
+```typescript
+import { KoolbaseAppleAuth } from '@techfinityedge/koolbase-react-native';
+import { appleAuth } from '@invertase/react-native-apple-authentication';
+
+const session = await KoolbaseAppleAuth.signIn(async () => {
+  return await appleAuth.performRequest({
+    requestedOperation: appleAuth.Operation.LOGIN,
+    requestedScopes: [appleAuth.Scope.EMAIL, appleAuth.Scope.FULL_NAME],
+  });
+});
+```
+
+Full setup guide at [docs.koolbase.com/auth/oauth](https://docs.koolbase.com/auth/oauth).
+
+### Phone + OTP
+
+```typescript
+// Send a one-time code
+await Koolbase.auth.sendOtp({ phoneE164: '+233200000000' });
+
+// Verify and sign in
+await Koolbase.auth.verifyOtp({
+  phoneE164: '+233200000000',
+  code: '123456',
+});
+
+// Or link a phone to an existing account
+await Koolbase.auth.linkPhone({
+  phoneE164: '+233200000000',
+  code: '123456',
+});
+```
+
+Configure your SMS provider (Twilio, Africa's Talking, or Hubtel) in the dashboard under Phone Auth.
+
 ---
 
 ## Database
@@ -86,7 +120,7 @@ const { records } = await Koolbase.db.query('posts', {
 });
 
 // Populate related records
-const { records } = await Koolbase.db.query('posts', {
+const { records: postsWithAuthor } = await Koolbase.db.query('posts', {
   populate: ['author_id:users'],
 });
 
@@ -134,10 +168,40 @@ unsubscribe();
 
 ---
 
+## Functions
+
+Invoke deployed serverless functions. When a user is signed in via `Koolbase.auth`, their access token is automatically forwarded — the function receives the caller's identity via `ctx.auth`. No token handling on the client side.
+
+```typescript
+// Invoke a deployed function
+const result = await Koolbase.functions.invoke('send-welcome-email', {
+  userId: '123',
+});
+
+if (result.success) console.log(result.data);
+```
+
+Inside the function (Deno runtime), read the caller:
+
+```typescript
+export async function handler(ctx) {
+  const userId = ctx.auth?.user_id;
+  if (!userId) {
+    return { error: { code: 'AUTH_REQUIRED' }, status: 401 };
+  }
+  // Authenticated logic here
+  return { ok: true };
+}
+```
+
+Token refresh is transparent — the SDK reads the current token fresh on every invoke. Full docs at [docs.koolbase.com/functions/authentication](https://docs.koolbase.com/functions/authentication).
+
+---
+
 ## Feature Flags & Remote Config
 
 ```typescript
-if (Koolbase.isEnabled('new_checkout')) { ... }
+if (Koolbase.isEnabled('new_checkout')) { /* ... */ }
 
 const timeout = Koolbase.configNumber('timeout_seconds', 30);
 const apiUrl = Koolbase.configString('api_url', 'https://api.myapp.com');
@@ -158,6 +222,8 @@ if (result.status === 'force_update') {
 ---
 
 ## Code Push
+
+Push config overrides, feature flag overrides, and directive-driven behaviour without a store release.
 
 ```typescript
 await Koolbase.initialize({
@@ -180,10 +246,13 @@ Koolbase.codePush.applyDirectives();
 
 ## Logic Engine
 
+Define conditional app behavior as data in your Runtime Bundle — no code changes required.
+
 ```typescript
-// Define flows in your bundle's flows.json
-// Execute from anywhere in your app
-const result = Koolbase.executeFlow('on_checkout_tap', { plan: user.plan });
+const result = Koolbase.executeFlow('on_checkout_tap', {
+  plan: user.plan,
+  usage: user.usage,
+});
 
 if (result.hasEvent) {
   switch (result.eventName) {
@@ -193,9 +262,15 @@ if (result.hasEvent) {
 }
 ```
 
+**v2 operators:** `eq`, `neq`, `gt`, `gte`, `lt`, `lte`, `contains`, `starts_with`, `ends_with`, `in_list`, `not_in_list`, `between`, `is_true`, `is_false`, `exists`, `not_exists`, `and`, `or`
+
+Full docs at [docs.koolbase.com/sdk/logic-engine](https://docs.koolbase.com/sdk/logic-engine).
+
 ---
 
 ## Analytics
+
+Track screen views, custom events, and user behaviour. View DAU, WAU, MAU, funnels, and retention in the Koolbase dashboard.
 
 ```typescript
 await Koolbase.initialize({
@@ -248,43 +323,22 @@ await Koolbase.messaging.send({
 
 ---
 
-## Logic Engine v2
+## What's included
 
-```typescript
-const result = Koolbase.executeFlow('on_checkout_tap', {
-  plan: user.plan,
-  usage: user.usage,
-});
-
-if (result.hasEvent) {
-  switch (result.eventName) {
-    case 'show_upgrade': navigation.navigate('Upgrade'); break;
-    case 'go_checkout': navigation.navigate('Checkout'); break;
-  }
-}
-```
-
-**v2 operators:** `eq`, `neq`, `gt`, `gte`, `lt`, `lte`, `contains`, `starts_with`, `ends_with`, `in_list`, `not_in_list`, `between`, `is_true`, `is_false`, `exists`, `not_exists`, `and`, `or`
-
-Full docs at [docs.koolbase.com/sdk/logic-engine](https://docs.koolbase.com/sdk/logic-engine).
-
----
-
-## Sign in with Apple
-
-```typescript
-import { KoolbaseAppleAuth } from 'koolbase-react-native';
-import { appleAuth } from '@invertase/react-native-apple-authentication';
-
-const session = await KoolbaseAppleAuth.signIn(async () => {
-  return await appleAuth.performRequest({
-    requestedOperation: appleAuth.Operation.LOGIN,
-    requestedScopes: [appleAuth.Scope.EMAIL, appleAuth.Scope.FULL_NAME],
-  });
-});
-```
-
-Install `@invertase/react-native-apple-authentication` as a peer dependency. Full setup guide at [docs.koolbase.com/auth/oauth](https://docs.koolbase.com/auth/oauth).
+| Feature | Koolbase | Firebase | Supabase |
+| --- | --- | --- | --- |
+| TypeScript SDK | Yes | Yes | Yes |
+| Feature flags | Yes | — | — |
+| Remote config | Yes | Yes | — |
+| Version enforcement | Yes | — | — |
+| Offline-first database | Yes | Yes | — |
+| Code push | Yes | — | — |
+| Logic engine (flows OTA) | Yes | — | — |
+| Analytics | Yes | Yes | — |
+| Cloud Messaging | Yes | Yes | — |
+| Sign in with Apple | Yes | Yes | Yes |
+| Phone + OTP | Yes | Yes | Yes |
+| Authenticated functions (`ctx.auth`) | Yes | Yes | Yes |
 
 ---
 
@@ -300,7 +354,7 @@ Manage your projects at [app.koolbase.com](https://app.koolbase.com)
 
 - [GitHub Issues](https://github.com/kennedyowusu/koolbase-react-native/issues)
 - [docs.koolbase.com](https://docs.koolbase.com)
-- Email: hello@koolbase.com
+- Email: <hello@koolbase.com>
 
 ## License
 
