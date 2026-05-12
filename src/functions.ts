@@ -8,9 +8,14 @@ import {
 
 export class KoolbaseFunctions {
   private config: KoolbaseConfig;
+  private getUserAccessToken?: () => string | null;
 
-  constructor(config: KoolbaseConfig) {
+  constructor(
+    config: KoolbaseConfig,
+    getUserAccessToken?: () => string | null,
+  ) {
     this.config = config;
+    this.getUserAccessToken = getUserAccessToken;
   }
 
   // ─── Deploy ────────────────────────────────────────────────────────────────
@@ -61,14 +66,21 @@ export class KoolbaseFunctions {
     name: string,
     body?: Record<string, unknown>
   ): Promise<FunctionInvokeResult> {
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+      'x-api-key': this.config.publicKey,
+    };
+
+    const userToken = this.getUserAccessToken?.();
+    if (userToken) {
+      headers['Authorization'] = `Bearer ${userToken}`;
+    }
+
     const res = await fetch(
       `${this.config.baseUrl}/v1/sdk/functions/${name}`,
       {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-api-key': this.config.publicKey,
-        },
+        headers,
         body: JSON.stringify({ body: body ?? {} }),
       }
     );

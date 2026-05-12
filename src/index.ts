@@ -48,7 +48,7 @@ export const Koolbase = {
     _db = new KoolbaseDatabase(config, () => _auth?.currentUser?.id ?? null);
     _storage = new KoolbaseStorage(config, () => _auth?.accessToken ?? null);
     _realtime = new KoolbaseRealtime(config);
-    _functions = new KoolbaseFunctions(config);
+    _functions = new KoolbaseFunctions(config, () => _auth?.accessToken ?? null);
     _flags = new KoolbaseFlags(config, 'rn-device');
 
     _codePush = new KoolbaseCodePush(config, config.codePushChannel ?? 'stable');

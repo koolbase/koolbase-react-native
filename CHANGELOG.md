@@ -1,9 +1,20 @@
+# 1.8.0
+
+- **Functions:** Authenticated invocations now forward the signed-in user's session automatically.
+  - When a user is signed in via `Koolbase.auth`, calls to `Koolbase.functions.invoke()` include their access token in the request.
+  - Functions receive caller identity via `ctx.auth` — an object with `user_id` (string or null) and `is_authenticated` (boolean).
+  - Unauthenticated invokes continue to work; Functions decide whether they require auth and respond with `AUTH_REQUIRED` if needed.
+  - Token refresh is handled transparently — the next invoke after a refresh uses the fresh token without any client-side wiring.
+- Backwards compatible: no breaking changes. Existing code paths continue to work.
+
 ## 1.7.0
 
 ### Phone + OTP authentication
+
 Sign users in with their phone number — for emerging markets and apps where email isn't the primary identifier.
 
 New methods on `Koolbase.auth`:
+
 - `sendOtp({ phoneNumber })` — sends a 6-digit OTP to an E.164 phone number, returns the expiry timestamp.
 - `verifyOtp({ phoneNumber, code })` — verifies the code and signs the user in (creates the account if new). Returns `PhoneVerifyResult` with an `isNewUser` flag for routing first-time users to onboarding.
 - `linkPhone({ phoneNumber, code })` — links a phone number to an already-authenticated user.
@@ -25,6 +36,7 @@ Phone numbers must be in E.164 format (e.g. `+233244000000`). Configure your SMS
 ### Logic Engine v2 — Richer conditions
 
 New operators:
+
 - `gte` — greater than or equals
 - `lte` — less than or equals
 - `contains` — string or list contains value
@@ -64,6 +76,7 @@ const session = await KoolbaseAppleAuth.signIn(async () => {
 ```
 
 ### Setup required
+
 Install @invertase/react-native-apple-authentication and configure your App ID in the Apple Developer portal.
 
 ## 1.4.0
@@ -77,6 +90,7 @@ Install @invertase/react-native-apple-authentication and configure your App ID i
 - Device ID automatically reused from analytics stable device ID (AsyncStorage)
 
 ### Usage
+
 ```typescript
 // After obtaining FCM token from @react-native-firebase/messaging
 const fcmToken = await messaging().getToken();
@@ -95,6 +109,7 @@ await Koolbase.messaging.send({
 ```
 
 ### Setup required
+
 Add your FCM server key as a project secret named `FCM_SERVER_KEY` in the Koolbase dashboard.
 
 ## 1.3.1
@@ -104,6 +119,7 @@ Add your FCM server key as a project secret named `FCM_SERVER_KEY` in the Koolba
 ## 1.3.0
 
 ### Analytics
+
 - Added `KoolbaseAnalytics` — event tracking with batched flush
 - Added `Koolbase.analytics` — top-level accessor
 - Added `Koolbase.analytics.track(eventName, properties)` — custom event tracking
@@ -120,6 +136,7 @@ Add your FCM server key as a project secret named `FCM_SERVER_KEY` in the Koolba
 - `KoolbaseConfig` extended with `analyticsEnabled` and `appVersion` parameters
 
 ### Logic Engine v1
+
 - Added `Koolbase.executeFlow(flowId, context)` — evaluate named flow from active bundle
 - Added `KoolbaseLogicEngine` — safe, deterministic flow evaluator
 - Supported node types: `if`, `sequence`, `event` (terminal), `set`
@@ -129,6 +146,7 @@ Add your FCM server key as a project secret named `FCM_SERVER_KEY` in the Koolba
 - Never throws — returns safe `FlowResult` on any error
 
 ### Usage
+
 ```typescript
 // Analytics
 await Koolbase.initialize({
