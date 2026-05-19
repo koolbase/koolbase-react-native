@@ -12,15 +12,13 @@ Auth, database, storage, realtime, functions, feature flags, remote config, vers
 ## Get started in 2 minutes
 
 1. Create a free account at [app.koolbase.com](https://app.koolbase.com)
-
 2. Create a project and copy your public key from Environments
-
 3. Add the SDK:
 
 ```bash
-npm install @techfinityedge/koolbase-react-native@^1.8.0
+npm install @techfinityedge/koolbase-react-native@^1.10.0
 # or
-yarn add @techfinityedge/koolbase-react-native@^1.8.0
+yarn add @techfinityedge/koolbase-react-native@^1.10.0
 ```
 
 **4. Initialize at app startup:**
@@ -40,7 +38,7 @@ That's it. Every feature below is now available via `Koolbase.*`.
 
 ## Authentication
 
-Email + password, Google, Apple, and phone + OTP — out of the box.
+Email + password, Apple Sign-In, and phone + OTP — out of the box.
 
 ```typescript
 // Register
@@ -57,30 +55,41 @@ await Koolbase.auth.logout();
 
 // Password reset
 await Koolbase.auth.forgotPassword('user@example.com');
-```
 
-### OAuth — Google & Apple
-
-```typescript
-// Google
-await Koolbase.auth.signInWithGoogle({ idToken: googleIdToken });
-```
-
-Apple uses the native authentication flow via `@invertase/react-native-apple-authentication` as a peer dependency:
-
-```typescript
-import { KoolbaseAppleAuth } from '@techfinityedge/koolbase-react-native';
-import { appleAuth } from '@invertase/react-native-apple-authentication';
-
-const session = await KoolbaseAppleAuth.signIn(async () => {
-  return await appleAuth.performRequest({
-    requestedOperation: appleAuth.Operation.LOGIN,
-    requestedScopes: [appleAuth.Scope.EMAIL, appleAuth.Scope.FULL_NAME],
-  });
+// Listen to auth state changes (fires immediately with current state)
+const unsubscribe = Koolbase.auth.onAuthStateChange((user) => {
+  console.log(user ? 'signed in' : 'signed out');
 });
 ```
 
-Full setup guide at [docs.koolbase.com/auth/oauth](https://docs.koolbase.com/auth/oauth).
+### OAuth — Apple
+
+Apple Sign-In uses the native authentication flow via `@invertase/react-native-apple-authentication` as a peer dependency:
+
+```typescript
+import appleAuth from '@invertase/react-native-apple-authentication';
+import { Koolbase } from '@techfinityedge/koolbase-react-native';
+
+const response = await appleAuth.performRequest({
+  requestedOperation: appleAuth.Operation.LOGIN,
+  requestedScopes: [appleAuth.Scope.EMAIL, appleAuth.Scope.FULL_NAME],
+});
+
+const session = await Koolbase.auth.signInWithApple({
+  identityToken: response.identityToken!,
+  nonce: response.nonce,
+  fullName: response.fullName
+    ? {
+        givenName: response.fullName.givenName ?? undefined,
+        familyName: response.fullName.familyName ?? undefined,
+      }
+    : undefined,
+});
+```
+
+Before users can sign in, configure Apple Sign-In for your environment with your iOS app's Bundle ID. Full setup guide at [docs.koolbase.com/auth/oauth](https://docs.koolbase.com/auth/oauth).
+
+> **Google Sign-In** — coming in v1.11.0.
 
 ### Phone + OTP
 
@@ -150,6 +159,7 @@ const { url } = await Koolbase.storage.upload({
 });
 
 const downloadUrl = await Koolbase.storage.getDownloadUrl('avatars', `user-${userId}.jpg`);
+
 await Koolbase.storage.delete('avatars', `user-${userId}.jpg`);
 ```
 
@@ -177,11 +187,10 @@ Invoke deployed serverless functions. When a user is signed in via `Koolbase.aut
 const result = await Koolbase.functions.invoke('send-welcome-email', {
   userId: '123',
 });
-
 if (result.success) console.log(result.data);
 ```
 
-Inside the function (Deno runtime), read the caller:
+Inside the function, read the caller:
 
 ```typescript
 export async function handler(ctx) {
@@ -325,20 +334,18 @@ await Koolbase.messaging.send({
 
 ## What's included
 
-| Feature | Koolbase | Firebase | Supabase |
-| --- | --- | --- | --- |
-| TypeScript SDK | Yes | Yes | Yes |
-| Feature flags | Yes | — | — |
-| Remote config | Yes | Yes | — |
-| Version enforcement | Yes | — | — |
-| Offline-first database | Yes | Yes | — |
-| Code push | Yes | — | — |
-| Logic engine (flows OTA) | Yes | — | — |
-| Analytics | Yes | Yes | — |
-| Cloud Messaging | Yes | Yes | — |
-| Sign in with Apple | Yes | Yes | Yes |
-| Phone + OTP | Yes | Yes | Yes |
-| Authenticated functions (`ctx.auth`) | Yes | Yes | Yes |
+- Authentication: email + password, Apple Sign-In, phone + OTP
+- Database with offline-first cache, realtime subscriptions, and populate
+- Storage with download URLs
+- Realtime subscriptions over WebSocket
+- Authenticated functions (`ctx.auth` exposes the caller automatically)
+- Feature flags and remote config
+- Version enforcement
+- Code push (config + flag overrides + directives, no store release)
+- Logic engine (conditional flows as data, updatable OTA)
+- Analytics (DAU/WAU/MAU, funnels, retention)
+- Cloud Messaging (FCM token registration, targeted send, broadcast)
+- TypeScript-native with full type definitions
 
 ---
 

@@ -7,6 +7,97 @@ adheres to [Semantic Versioning][semver].
 [kac]: https://keepachangelog.com/en/1.1.0/
 [semver]: https://semver.org/
 
+## 1.10.1 — 2026-05-19
+
+### Documentation
+
+- README rewritten to accurately reflect the v1.10.0 SDK surface. No SDK
+  code changes; this release exists to refresh the README rendered on the
+  npmjs.com package page.
+- Removed fictional `Koolbase.auth.signInWithGoogle` reference. Google
+  Sign-In is planned for v1.11.0 — noted explicitly in the OAuth section.
+- Replaced the deprecated `KoolbaseAppleAuth.signIn(callback)` example
+  with the new `Koolbase.auth.signInWithApple({identityToken, nonce?, fullName?})`
+  v1.10.0 API using `@invertase/react-native-apple-authentication`.
+- Added `Koolbase.auth.onAuthStateChange(listener)` example (v1.9.0 feature).
+- Replaced the Firebase/Supabase comparison table with a Koolbase-only
+  feature inventory.
+- Bumped install snippet from `^1.8.0` to `^1.10.0`.
+
+## 1.10.0 — 2026-05-19
+
+### Added
+
+- **Sign in with Apple** — production-ready end-user OAuth via
+  `koolbase.auth.signInWithApple({identityToken, nonce?, fullName?})`.
+  Routes to the new server endpoint at `/v1/sdk/auth/oauth/apple` with
+  RS256-only JWKS verification, audience bound to your project's iOS
+  Bundle ID, 15-minute replay defense, and optional nonce check.
+- `AppleFullName` interface and `SignInWithAppleParams` interface in
+  `types.ts`.
+- Four new typed errors in `auth-errors.ts`:
+  `AppleSignInNotConfiguredError`, `InvalidAppleTokenError`,
+  `AppleEmailRequiredError`, `OAuthEmailConflictError`.
+
+#### Example with `@invertase/react-native-apple-authentication`
+
+```typescript
+import appleAuth from '@invertase/react-native-apple-authentication';
+
+// Get credential from native Apple Sign-In
+const appleResponse = await appleAuth.performRequest({
+  requestedOperation: appleAuth.Operation.LOGIN,
+  requestedScopes: [appleAuth.Scope.EMAIL, appleAuth.Scope.FULL_NAME],
+});
+
+// Pass to Koolbase
+const session = await koolbase.auth.signInWithApple({
+  identityToken: appleResponse.identityToken!,
+  nonce: appleResponse.nonce,
+  fullName: appleResponse.fullName
+    ? {
+        givenName: appleResponse.fullName.givenName ?? undefined,
+        familyName: appleResponse.fullName.familyName ?? undefined,
+      }
+    : undefined,
+});
+```
+
+### Auto-link policy
+
+A new Apple identity attaches to an existing user only when BOTH the
+provider email AND the existing user's email are verified, AND emails
+match (case-insensitive). Otherwise sign-in either creates a new user
+(no email collision) or surfaces `OAuthEmailConflictError` — user signs
+in with existing method, then links Apple from settings.
+
+### Configuration required
+
+Before users can sign in with Apple, configure the provider for your
+environment via direct DB insert (dashboard UI lands in v1.10.x):
+
+```sql
+INSERT INTO project_oauth_configs (environment_id, provider, bundle_id, enabled)
+VALUES ('<your-environment-id>', 'apple', 'com.yourapp.bundle', true);
+```
+
+The Bundle ID is the audience claim in identity tokens from native Apple
+Sign-In and must match exactly.
+
+### Still deprecated — `KoolbaseAppleAuth.signIn` and `oauthLogin`
+
+These remain deprecated and throw `KoolbaseAuthError('not_implemented')`.
+The v1.10.0 surface is `koolbase.auth.signInWithApple(...)` on the auth
+instance — same place as all other auth methods.
+
+### Coming next
+
+- **Dashboard UI** for OAuth config (v1.10.x) — minimal Bundle-ID input,
+  enable/disable toggle.
+- **Google Sign-In** (v1.11.0) — same endpoint pattern at
+  `/v1/sdk/auth/oauth/google`.
+- **GitHub OAuth** (v1.12.0) — code-exchange flow.
+
 ## 1.9.0 — 2026-05-19
 
 ### 🚨 Fixed (critical)
