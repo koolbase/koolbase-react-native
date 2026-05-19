@@ -5,6 +5,13 @@ export interface KoolbaseConfig {
   analyticsEnabled?: boolean;
   appVersion?: string;
   messagingEnabled?: boolean;
+  /**
+   * Optional custom storage adapter for persisting auth state. If omitted,
+   * the SDK uses SecureAuthStorage backed by react-native-keychain (must
+   * be installed). For Expo Go or custom secure backends, provide your
+   * own KoolbaseAuthStorage implementation.
+   */
+  authStorage?: KoolbaseAuthStorage;
 }
 
 // ─── Auth ──────────────────────────────────────────────────────────────────
@@ -23,7 +30,38 @@ export interface KoolbaseUser {
 export interface KoolbaseSession {
   accessToken: string;
   refreshToken: string;
+  /** ISO 8601 timestamp when accessToken expires; from server response. */
+  expiresAt: string;
   user: KoolbaseUser;
+}
+
+/**
+ * Abstract storage interface for persisting authentication state.
+ *
+ * The SDK ships with SecureAuthStorage (react-native-keychain) as the
+ * default. Apps with custom requirements — Expo Go (where keychain is
+ * unavailable), compliant encryption layers, or in-memory test mocks —
+ * can implement this interface and inject it via KoolbaseConfig.authStorage.
+ */
+export interface KoolbaseAuthStorage {
+  saveSession(session: KoolbaseSession): Promise<void>;
+  readSession(): Promise<KoolbaseSession | null>;
+  clear(): Promise<void>;
+}
+
+/**
+ * Result of KoolbaseAuth.restoreSession(). Apps should branch on this:
+ * - NoSession  → show login screen
+ * - Restored   → show authenticated UI
+ * - Expired    → show login screen with "session expired" message
+ * - Offline    → show authenticated UI optimistically; API calls will
+ *                fail until network is reachable
+ */
+export enum RestoreResult {
+  NoSession = 'no_session',
+  Restored = 'restored',
+  Expired = 'expired',
+  Offline = 'offline',
 }
 
 export interface RegisterParams {
