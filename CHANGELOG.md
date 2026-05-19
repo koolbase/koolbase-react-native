@@ -1,41 +1,205 @@
-# 1.8.0
+# Changelog
 
-- **Functions:** Authenticated invocations now forward the signed-in user's session automatically.
-  - When a user is signed in via `Koolbase.auth`, calls to `Koolbase.functions.invoke()` include their access token in the request.
-  - Functions receive caller identity via `ctx.auth` — an object with `user_id` (string or null) and `is_authenticated` (boolean).
-  - Unauthenticated invokes continue to work; Functions decide whether they require auth and respond with `AUTH_REQUIRED` if needed.
-  - Token refresh is handled transparently — the next invoke after a refresh uses the fresh token without any client-side wiring.
-- Backwards compatible: no breaking changes. Existing code paths continue to work.
+All notable changes to `@techfinityedge/koolbase-react-native` are documented
+in this file. The format is based on [Keep a Changelog][kac], and this project
+adheres to [Semantic Versioning][semver].
+
+[kac]: https://keepachangelog.com/en/1.1.0/
+[semver]: https://semver.org/
+
+## 1.9.0 — 2026-05-19
+
+### 🚨 Fixed (critical)
+
+v1.8.0 and earlier shipped with silent breakages on the SDK auth surface.
+Anyone using `KoolbaseAuth` before v1.9.0 should upgrade immediately.
+
+- **`x-api-key` header is now sent on every auth request.** Previously the
+  SDK sent only `Content-Type`, causing the server's caller middleware to
+  resolve every project-scoped call as anonymous — every `/v1/sdk/auth/*`
+  endpoint returned 401.
+- **Password reset endpoints were targeting wrong paths.** Both
+  `forgotPassword` (was `/v1/sdk/auth/forgot-password`) and `resetPassword`
+  (was `/v1/sdk/auth/reset-password`) silently 404'd on the server. Now
+  corrected to `/password-reset` and `/password-reset/confirm`.
+- **Session responses were not being mapped.** The server returns
+  `access_token` / `refresh_token` / `expires_at` (snake_case); the SDK cast
+  directly to camelCase types, so `session.accessToken` was `undefined` and
+  the Authorization header silently sent `Bearer undefined`. Now mapped
+  properly on every session-returning endpoint.
+- **`register()` was discarding the session** the server returned; only the
+  user object was kept. Now persists the full session.
+
+### Added
+
+- **Persistent sessions.** New `SecureAuthStorage` default backed by
+  `react-native-keychain` (iOS Keychain + Android Keystore-backed
+  encryption). The peer dependency is **optional** — apps without it
+  installed see a clear warning and operate without persistence rather than
+  crashing. Apps with custom requirements (Expo Go, compliance encryption,
+  in-memory test mocks) can implement the `KoolbaseAuthStorage` interface
+  and inject it via `KoolbaseConfig.authStorage`.
+- **Offline-aware session restoration.** New `restoreSession()` method
+  returning a `RestoreResult` enum:
+  - `NoSession` → no persisted session, show login
+  - `Restored` → ready, show authenticated UI
+  - `Expired` → refresh token rejected, show login
+  - `Offline` → network unreachable, optimistically authenticated
+
+  Optimistic state is populated from disk *before* any network call, so
+  authenticated UI renders immediately at app launch with no round-trip.
+- **Auth state listener.** New `KoolbaseAuth.onAuthStateChange(listener)`
+  API following the RN ecosystem convention (Firebase/Supabase style):
+  fires immediately on subscribe with current state, then on every state
+  change. Returns an unsubscribe function for cleanup.
+- **Single-flight token refresh.** Concurrent callers hitting a stale token
+  share one underlying refresh and receive the same result. Prevents the
+  race where parallel refreshes each rotate the refresh token,
+  invalidating peers mid-flight.
+- **Typed error hierarchy.** 10 new typed errors for granular handling:
+  `InvalidCredentialsError`, `EmailAlreadyInUseError`, `UserDisabledError`,
+  `WeakPasswordError`, `SessionExpiredError`, `TokenRevokedError`,
+  `AccountLockedError` (with forward-compatible `lockedUntil` field),
+  `UnlockTokenInvalidError`, `RateLimitError`, `NetworkError`. All extend
+  `KoolbaseAuthError` for generic catches.
+- **Account unlock.** New `KoolbaseAuth.unlock(token)` method consumes the
+  one-shot token from a brute-force unlock email and restores login access.
+- **Device metadata.** Every auth request now carries seven identifying
+  headers including a stable per-install UUID device label, SDK version,
+  platform info, and app version. Helps server-side debugging and
+  version-conditional logic.
+- **Configurable timeout.** `KoolbaseConfig.authTimeout` (default 10000ms)
+  sets a per-request timeout via `AbortController`.
+- **Injectable fetch.** `KoolbaseConfig.fetch` accepts an alternate `fetch`
+  implementation. Useful for testing (mock fetch), corporate proxies, or
+  instrumented HTTP.
+- **`koolbaseSdkVersion` constant** exported for runtime SDK version
+  introspection.
+
+### Changed
+
+- **`logout()` returns `Promise<boolean>`** — `true` if the server-side
+  logout call succeeded, `false` otherwise. Local session is always cleared
+  regardless. Apps that don't care about the server signal can continue to
+  ignore the return value.
+- **`setSession()` is now async** (returns `Promise<void>`) so storage
+  persistence completes before the call resolves. Source-compatible for
+  callers that ignored the previous void return.
+- **`register()` validates password length client-side** (must be ≥ 8
+  characters) before hitting the network. Throws `WeakPasswordError`.
+
+### Deprecated
+
+- **`KoolbaseAuth.oauthLogin()` and `KoolbaseAppleAuth.signIn()`** now
+  throw `KoolbaseAuthError('not_implemented')`. The earlier implementations
+  routed through `/v1/auth/oauth` — the dashboard developer OAuth endpoint,
+  which never created project-scoped end-user sessions. Apple Sign-In has
+  therefore never actually worked for SDK consumers since it was first
+  introduced. Proper OAuth (Apple, Google, GitHub) will ship in v1.10.0
+  against new server endpoints at `/v1/sdk/auth/oauth/{provider}`. Use
+  email/password authentication in the meantime.
+
+### Peer dependencies
+
+- `react-native-keychain >= 8.0.0` (**optional** —
+  `peerDependenciesMeta.optional = true`)
+
+### Migration
+
+Most apps work without code changes after upgrading. To opt into
+persistence, install the peer dependency:
+
+```bash
+npm install react-native-keychain
+cd ios && pod install
+```
+
+Then call `restoreSession()` at app launch:
+
+```typescript
+useEffect(() => {
+  koolbase.auth.restoreSession().then((result) => {
+    if (result === RestoreResult.Restored) {
+      navigate('Home');
+    } else {
+      navigate('Login');
+    }
+  });
+}, []);
+```
+
+For apps using Apple Sign-In: temporarily switch to email/password until
+v1.10.0 ships. The deprecated method now throws explicitly rather than
+silently failing.
+
+---
+
+## 1.8.0
+
+### Added
+
+- **Functions:** Authenticated invocations now forward the signed-in user's
+  session automatically.
+  - When a user is signed in via `Koolbase.auth`, calls to
+    `Koolbase.functions.invoke()` include their access token in the
+    request.
+  - Functions receive caller identity via `ctx.auth` — an object with
+    `user_id` (string or null) and `is_authenticated` (boolean).
+  - Unauthenticated invokes continue to work; Functions decide whether
+    they require auth and respond with `AUTH_REQUIRED` if needed.
+  - Token refresh is handled transparently — the next invoke after a
+    refresh uses the fresh token without any client-side wiring.
+
+Backwards compatible: no breaking changes. Existing code paths continue
+to work.
+
+---
 
 ## 1.7.0
 
-### Phone + OTP authentication
+### Added — Phone + OTP authentication
 
-Sign users in with their phone number — for emerging markets and apps where email isn't the primary identifier.
+Sign users in with their phone number — for emerging markets and apps
+where email isn't the primary identifier.
 
 New methods on `Koolbase.auth`:
 
-- `sendOtp({ phoneNumber })` — sends a 6-digit OTP to an E.164 phone number, returns the expiry timestamp.
-- `verifyOtp({ phoneNumber, code })` — verifies the code and signs the user in (creates the account if new). Returns `PhoneVerifyResult` with an `isNewUser` flag for routing first-time users to onboarding.
-- `linkPhone({ phoneNumber, code })` — links a phone number to an already-authenticated user.
+- `sendOtp({ phoneNumber })` — sends a 6-digit OTP to an E.164 phone
+  number, returns the expiry timestamp.
+- `verifyOtp({ phoneNumber, code })` — verifies the code and signs the
+  user in (creates the account if new). Returns `PhoneVerifyResult` with
+  an `isNewUser` flag for routing first-time users to onboarding.
+- `linkPhone({ phoneNumber, code })` — links a phone number to an
+  already-authenticated user.
 
-New types: `OtpSendResult`, `PhoneVerifyResult`, `SendOtpParams`, `VerifyOtpParams`, `LinkPhoneParams`.
+New types: `OtpSendResult`, `PhoneVerifyResult`, `SendOtpParams`,
+`VerifyOtpParams`, `LinkPhoneParams`.
 
 `KoolbaseUser` now exposes `phoneNumber` and `phoneVerified` fields.
 
-New errors (all extend `KoolbaseAuthError`): `InvalidPhoneNumberError`, `OtpExpiredError`, `OtpInvalidError`, `OtpMaxAttemptsError`, `OtpRateLimitError`, `PhoneAlreadyLinkedError`, `SmsConfigMissingError`.
+New errors (all extend `KoolbaseAuthError`): `InvalidPhoneNumberError`,
+`OtpExpiredError`, `OtpInvalidError`, `OtpMaxAttemptsError`,
+`OtpRateLimitError`, `PhoneAlreadyLinkedError`, `SmsConfigMissingError`.
 
-Phone numbers must be in E.164 format (e.g. `+233244000000`). Configure your SMS provider (Twilio, Africa's Talking, or Hubtel) in the Koolbase dashboard before using.
+Phone numbers must be in E.164 format (e.g. `+233244000000`). Configure
+your SMS provider (Twilio, Africa's Talking, or Hubtel) in the Koolbase
+dashboard before using.
+
+---
 
 ## 1.6.1
 
-- README update — Logic Engine v2 operators
+### Changed
+
+- README update — Logic Engine v2 operators.
+
+---
 
 ## 1.6.0
 
-### Logic Engine v2 — Richer conditions
+### Added — Logic Engine v2
 
-New operators:
+Richer conditions with new operators:
 
 - `gte` — greater than or equals
 - `lte` — less than or equals
@@ -44,29 +208,34 @@ New operators:
 - `ends_with` — string ends with
 - `in_list` — value is in a list
 - `not_in_list` — value is not in a list
-- `between` — numeric value in range [min, max]
+- `between` — numeric value in range `[min, max]`
 - `is_true` — value is boolean true
 - `is_false` — value is boolean false
 - `not_exists` — value is null or missing
 
 All operators work with AND/OR condition groups.
 
+---
+
 ## 1.5.0
 
-### Sign in with Apple
+### Added — Sign in with Apple
+
+> **Note:** This functionality is deprecated as of v1.9.0 — it never
+> created project-scoped end-user sessions. See the v1.9.0 entry above.
 
 - Added `KoolbaseAppleAuth.signIn()` — Sign in with Apple for React Native
 - Added `KoolbaseAuth.oauthLogin()` — unified OAuth login method
 - Apple identity token verified server-side using Apple's JWKS endpoint
-- Works with any Apple credential provider (bring your own apple-auth library)
+- Works with any Apple credential provider (bring your own apple-auth
+  library)
 
-### Usage
+#### Usage
 
 ```typescript
 import { KoolbaseAppleAuth } from 'koolbase-react-native';
 
 const session = await KoolbaseAppleAuth.signIn(async () => {
-  // Use @invertase/react-native-apple-authentication or any other library
   const credential = await appleAuth.performRequest({
     requestedOperation: appleAuth.Operation.LOGIN,
     requestedScopes: [appleAuth.Scope.EMAIL, appleAuth.Scope.FULL_NAME],
@@ -75,21 +244,28 @@ const session = await KoolbaseAppleAuth.signIn(async () => {
 });
 ```
 
-### Setup required
+#### Setup required
 
-Install @invertase/react-native-apple-authentication and configure your App ID in the Apple Developer portal.
+Install `@invertase/react-native-apple-authentication` and configure your
+App ID in the Apple Developer portal.
+
+---
 
 ## 1.4.0
 
-### Koolbase Cloud Messaging
+### Added — Koolbase Cloud Messaging
 
-- Added `KoolbaseMessaging` — push notification delivery via FCM
-- Added `Koolbase.messaging.registerToken({ token, platform, userId? })` — register FCM device token
-- Added `Koolbase.messaging.send({ to, title, body, data? })` — send push notification to a specific device
-- `KoolbaseConfig` extended with `messagingEnabled` parameter (default: true)
-- Device ID automatically reused from analytics stable device ID (AsyncStorage)
+- Added `KoolbaseMessaging` — push notification delivery via FCM.
+- Added `Koolbase.messaging.registerToken({ token, platform, userId? })`
+  — register FCM device token.
+- Added `Koolbase.messaging.send({ to, title, body, data? })` — send push
+  notification to a specific device.
+- `KoolbaseConfig` extended with `messagingEnabled` parameter (default
+  `true`).
+- Device ID automatically reused from analytics stable device ID
+  (AsyncStorage).
 
-## Usage
+#### Usage
 
 ```typescript
 // After obtaining FCM token from @react-native-firebase/messaging
@@ -108,44 +284,59 @@ await Koolbase.messaging.send({
 });
 ```
 
-## Setup required
+#### Setup required
 
-Add your FCM server key as a project secret named `FCM_SERVER_KEY` in the Koolbase dashboard.
+Add your FCM server key as a project secret named `FCM_SERVER_KEY` in the
+Koolbase dashboard.
+
+---
 
 ## 1.3.1
 
-- Updated README — added Code Push, Analytics, Logic Engine sections, clearer get started guide
+### Changed
+
+- Updated README — added Code Push, Analytics, Logic Engine sections,
+  clearer get started guide.
+
+---
 
 ## 1.3.0
 
-### Analytics
+### Added — Analytics
 
-- Added `KoolbaseAnalytics` — event tracking with batched flush
-- Added `Koolbase.analytics` — top-level accessor
-- Added `Koolbase.analytics.track(eventName, properties)` — custom event tracking
-- Added `Koolbase.analytics.screenView(screenName, properties)` — screen view tracking
-- Added `Koolbase.analytics.identify(userId)` — attach authenticated user
-- Added `Koolbase.analytics.setUserProperty(key, value)` — user property
-- Added `Koolbase.analytics.setUserProperties(map)` — bulk user properties
-- Added `Koolbase.analytics.reset()` — clear identity on logout
-- Added `Koolbase.analytics.flush()` — manual flush
-- Added `Koolbase.analytics.dispose()` — flush and shut down
-- Auto events: `app_open`, `screen_view`, `session_end`
-- Batch flush: every 30s, on app background, on close, or at 20 events
-- Anonymous by default (stable device_id via AsyncStorage), attach user_id on identify()
-- `KoolbaseConfig` extended with `analyticsEnabled` and `appVersion` parameters
+- Added `KoolbaseAnalytics` — event tracking with batched flush.
+- Added `Koolbase.analytics` — top-level accessor.
+- Added `Koolbase.analytics.track(eventName, properties)` — custom event
+  tracking.
+- Added `Koolbase.analytics.screenView(screenName, properties)` — screen
+  view tracking.
+- Added `Koolbase.analytics.identify(userId)` — attach authenticated user.
+- Added `Koolbase.analytics.setUserProperty(key, value)` — user property.
+- Added `Koolbase.analytics.setUserProperties(map)` — bulk user
+  properties.
+- Added `Koolbase.analytics.reset()` — clear identity on logout.
+- Added `Koolbase.analytics.flush()` — manual flush.
+- Added `Koolbase.analytics.dispose()` — flush and shut down.
+- Auto events: `app_open`, `screen_view`, `session_end`.
+- Batch flush: every 30s, on app background, on close, or at 20 events.
+- Anonymous by default (stable `device_id` via AsyncStorage), attach
+  `user_id` on `identify()`.
+- `KoolbaseConfig` extended with `analyticsEnabled` and `appVersion`
+  parameters.
 
-### Logic Engine v1
+### Added — Logic Engine v1
 
-- Added `Koolbase.executeFlow(flowId, context)` — evaluate named flow from active bundle
-- Added `KoolbaseLogicEngine` — safe, deterministic flow evaluator
-- Supported node types: `if`, `sequence`, `event` (terminal), `set`
-- Supported operators: `eq`, `neq`, `gt`, `lt`, `and`, `or`, `exists`
-- Supported data sources: `context` (app-provided), `config` (bundle), `flags` (bundle)
-- `BundlePayload` extended with `flows` and `screens` fields
-- Never throws — returns safe `FlowResult` on any error
+- Added `Koolbase.executeFlow(flowId, context)` — evaluate named flow
+  from active bundle.
+- Added `KoolbaseLogicEngine` — safe, deterministic flow evaluator.
+- Supported node types: `if`, `sequence`, `event` (terminal), `set`.
+- Supported operators: `eq`, `neq`, `gt`, `lt`, `and`, `or`, `exists`.
+- Supported data sources: `context` (app-provided), `config` (bundle),
+  `flags` (bundle).
+- `BundlePayload` extended with `flows` and `screens` fields.
+- Never throws — returns safe `FlowResult` on any error.
 
-## Usage
+#### Usage
 
 ```typescript
 // Analytics
@@ -166,25 +357,34 @@ const result = Koolbase.executeFlow('on_checkout_tap', { plan: user.plan });
 if (result.hasEvent) navigation.navigate(result.eventName!);
 ```
 
+---
+
 ## 1.1.0
 
-- **Database:** Offline-first support powered by AsyncStorage
-  - Cache-first reads — returns local data instantly, refreshes from network in background
-  - Optimistic writes — inserts saved locally first, synced when online
-  - Auto-sync on network reconnect via NetInfo
-  - `Koolbase.db.syncPendingWrites()` — manually trigger sync
-  - `QueryResult.isFromCache` flag — know whether data came from cache or network
-  - Write queue with max 3 retries before dropping failed writes
-  - User-scoped cache — no cross-user data leakage on shared devices
-  - `PendingWrite` type exported from package
+### Added — Offline-first database
+
+- Database: offline-first support powered by AsyncStorage.
+- Cache-first reads — returns local data instantly, refreshes from
+  network in background.
+- Optimistic writes — inserts saved locally first, synced when online.
+- Auto-sync on network reconnect via NetInfo.
+- `Koolbase.db.syncPendingWrites()` — manually trigger sync.
+- `QueryResult.isFromCache` flag — know whether data came from cache or
+  network.
+- Write queue with max 3 retries before dropping failed writes.
+- User-scoped cache — no cross-user data leakage on shared devices.
+- `PendingWrite` type exported from package.
+
+---
 
 ## 1.0.0
 
-- Initial release
-- Auth — register, login, logout, current user
-- Database — insert, query, get, update, delete, populate
-- Storage — upload, download, delete
-- Realtime — WebSocket subscriptions
-- Functions — invoke deployed functions
-- Feature flags and remote config
-- Version enforcement
+### Initial release
+
+- Auth — register, login, logout, current user.
+- Database — insert, query, get, update, delete, populate.
+- Storage — upload, download, delete.
+- Realtime — WebSocket subscriptions.
+- Functions — invoke deployed functions.
+- Feature flags and remote config.
+- Version enforcement.
