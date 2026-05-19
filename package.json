@@ -1,7 +1,7 @@
 {
   "name": "@techfinityedge/koolbase-react-native",
-  "version": "1.8.0",
-  "description": "React Native SDK for Koolbase — auth, database, storage, realtime, feature flags, and functions in one package.",
+  "version": "1.9.0",
+  "description": "React Native SDK for Koolbase \u2014 auth, database, storage, realtime, feature flags, and functions in one package.",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "files": [

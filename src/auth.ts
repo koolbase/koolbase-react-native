@@ -1,4 +1,6 @@
 import {
+  AuthStateListener,
+  FetchLike,
   KoolbaseAuthStorage,
   KoolbaseConfig,
   KoolbaseSession,
@@ -32,24 +34,24 @@ import {
   WeakPasswordError,
 } from './auth-errors';
 import { SecureAuthStorage, isKeychainAvailable } from './auth-storage';
+import { DeviceMetadata } from './device-metadata';
 
 export class KoolbaseAuth {
   private config: KoolbaseConfig;
   private storage: KoolbaseAuthStorage | null;
   private session: KoolbaseSession | null = null;
+  private metadata: DeviceMetadata;
+  private fetchFn: FetchLike;
+  private timeoutMs: number;
 
-  /**
-   * Single-flight refresh slot. Multiple concurrent callers that hit
-   * {@link _ensureValidToken} or {@link refresh} while a refresh is in
-   * progress share the same Promise and receive the same resulting
-   * session — avoiding the race where parallel callers each trigger
-   * their own refresh and the server rotates the refresh token from
-   * under the in-flight peers.
-   */
   private ongoingRefresh: Promise<KoolbaseSession> | null = null;
+  private listeners: Set<AuthStateListener> = new Set();
 
   constructor(config: KoolbaseConfig) {
     this.config = config;
+    this.metadata = new DeviceMetadata(config.appVersion);
+    this.fetchFn = config.fetch ?? ((url, init) => fetch(url, init));
+    this.timeoutMs = config.authTimeout ?? 10_000;
 
     if (config.authStorage) {
       this.storage = config.authStorage;
@@ -67,22 +69,121 @@ export class KoolbaseAuth {
     }
   }
 
-  // ─── Headers ────────────────────────────────────────────────────────────
+  // ─── Auth state listener ────────────────────────────────────────────────
 
-  private get headers(): Record<string, string> {
-    return {
-      'Content-Type': 'application/json',
-      'x-api-key': this.config.publicKey,
+  /**
+   * Subscribe to authentication state changes. The listener fires:
+   * - Immediately on subscribe, with the current user (or null).
+   * - On every successful login, register, refresh, session restoration.
+   * - On logout / explicit setSession(null).
+   * - On linkPhone success (user object updated with phone fields).
+   *
+   * Returns an unsubscribe function. Call it when the consumer no longer
+   * needs updates (e.g. in a React useEffect cleanup).
+   *
+   * Listener errors are swallowed so a buggy listener can't break auth
+   * state propagation to other listeners.
+   *
+   * @example
+   * const unsubscribe = auth.onAuthStateChange((user) => {
+   *   setCurrentUser(user);
+   * });
+   * // later:
+   * unsubscribe();
+   */
+  onAuthStateChange(listener: AuthStateListener): () => void {
+    this.listeners.add(listener);
+    // Fire immediately with current state — matches RN ecosystem
+    // convention (Firebase Auth, Supabase Auth) so consumers don't
+    // need to separately read currentUser on mount.
+    try {
+      listener(this.session?.user ?? null);
+    } catch {
+      // swallow
+    }
+    return () => {
+      this.listeners.delete(listener);
     };
   }
 
-  private get authHeaders(): Record<string, string> {
+  private fireAuthStateChange(): void {
+    const user = this.session?.user ?? null;
+    for (const listener of this.listeners) {
+      try {
+        listener(user);
+      } catch {
+        // swallow — one broken listener doesn't break others
+      }
+    }
+  }
+
+  // ─── Headers ────────────────────────────────────────────────────────────
+
+  /**
+   * Compose the full header set for an outbound request: base headers,
+   * device metadata, and optionally the Authorization bearer token.
+   * Async because device metadata's first build may read from keychain.
+   */
+  private async prepareHeaders(
+    includeAuth: boolean
+  ): Promise<Record<string, string>> {
+    const deviceHeaders = await this.metadata.build();
     return {
-      ...this.headers,
-      ...(this.session
+      'Content-Type': 'application/json',
+      'x-api-key': this.config.publicKey,
+      ...deviceHeaders,
+      ...(includeAuth && this.session
         ? { Authorization: `Bearer ${this.session.accessToken}` }
         : {}),
     };
+  }
+
+  // ─── Request plumbing ───────────────────────────────────────────────────
+
+  /**
+   * Low-level request helper used by every endpoint. Wires together:
+   * - The injected fetch implementation (config.fetch or global fetch)
+   * - Device metadata + x-api-key + auth header in one place
+   * - AbortController-based timeout (config.authTimeout, default 10s)
+   *
+   * On timeout, fetch rejects with an AbortError; callers see this as a
+   * non-KoolbaseAuthError exception, which restoreSession() treats as
+   * Offline (preserving optimistic state).
+   */
+  private async authRequest(
+    path: string,
+    options: {
+      method?: string;
+      body?: unknown;
+      includeAuth?: boolean;
+    } = {}
+  ): Promise<Response> {
+    const headers = await this.prepareHeaders(options.includeAuth ?? false);
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), this.timeoutMs);
+    try {
+      return await this.fetchFn(`${this.config.baseUrl}${path}`, {
+        method: options.method ?? 'GET',
+        headers,
+        body: options.body !== undefined ? JSON.stringify(options.body) : undefined,
+        signal: controller.signal,
+      });
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  /**
+   * Authenticated request wrapper. Refreshes the access token if it's
+   * stale (within 1-min buffer of expiry) before issuing the call, then
+   * delegates to {@link authRequest} with includeAuth=true.
+   */
+  private async authedRequest(
+    path: string,
+    options: { method?: string; body?: unknown } = {}
+  ): Promise<Response> {
+    await this._ensureValidToken();
+    return this.authRequest(path, { ...options, includeAuth: true });
   }
 
   // ─── Internal session lifecycle ─────────────────────────────────────────
@@ -101,6 +202,7 @@ export class KoolbaseAuth {
         );
       }
     }
+    this.fireAuthStateChange();
   }
 
   private async clearSessionInternal(): Promise<void> {
@@ -109,9 +211,10 @@ export class KoolbaseAuth {
       try {
         await this.storage.clear();
       } catch {
-        // Best effort.
+        // best effort
       }
     }
+    this.fireAuthStateChange();
   }
 
   // ─── Session restoration ────────────────────────────────────────────────
@@ -122,10 +225,11 @@ export class KoolbaseAuth {
     const persisted = await this.storage.readSession();
     if (!persisted) return RestoreResult.NoSession;
 
-    // Optimistic restore — populate state from disk before any network.
+    // Optimistic restore — populate state and fire listener before any
+    // network call. App can render authenticated UI immediately.
     this.session = persisted;
+    this.fireAuthStateChange();
 
-    // If access token is still valid (with 1-min buffer), we're done.
     const expiresAt = persisted.expiresAt
       ? new Date(persisted.expiresAt).getTime()
       : 0;
@@ -134,14 +238,10 @@ export class KoolbaseAuth {
       return RestoreResult.Restored;
     }
 
-    // Access token expired (or no expiresAt) — attempt to refresh.
     try {
       await this.refresh(persisted.refreshToken);
       return RestoreResult.Restored;
     } catch (e) {
-      // Definitive auth-rejection types clear the session — refresh token
-      // is no longer valid, user must log in again. Everything else (5xx,
-      // rate-limit, network) keeps the optimistic state for retry later.
       if (
         e instanceof SessionExpiredError ||
         e instanceof TokenRevokedError ||
@@ -158,10 +258,9 @@ export class KoolbaseAuth {
 
   async register(params: RegisterParams): Promise<KoolbaseUser> {
     if (params.password.length < 8) throw new WeakPasswordError();
-    const res = await fetch(`${this.config.baseUrl}/v1/sdk/auth/register`, {
+    const res = await this.authRequest('/v1/sdk/auth/register', {
       method: 'POST',
-      headers: this.headers,
-      body: JSON.stringify(params),
+      body: params,
     });
     const session = await this.parseSessionResponse(res, false);
     await this.setSessionInternal(session);
@@ -169,51 +268,30 @@ export class KoolbaseAuth {
   }
 
   async login(params: LoginParams): Promise<KoolbaseSession> {
-    const res = await fetch(`${this.config.baseUrl}/v1/sdk/auth/login`, {
+    const res = await this.authRequest('/v1/sdk/auth/login', {
       method: 'POST',
-      headers: this.headers,
-      body: JSON.stringify(params),
+      body: params,
     });
     const session = await this.parseSessionResponse(res, false);
     await this.setSessionInternal(session);
     return session;
   }
 
-  /**
-   * Refresh the access token using the supplied refresh token (or the
-   * persisted/in-memory one if not provided).
-   *
-   * Concurrent calls are deduplicated via a single-flight Promise slot —
-   * multiple simultaneous callers share one underlying refresh and
-   * receive the same resulting session (or same error). This prevents
-   * the race where parallel refreshes each rotate the refresh token,
-   * invalidating peers mid-flight.
-   */
   async refresh(refreshToken?: string): Promise<KoolbaseSession> {
-    // Share an in-flight refresh if one exists.
     if (this.ongoingRefresh) {
       return this.ongoingRefresh;
     }
-
-    // Claim the slot synchronously. JavaScript is single-threaded so the
-    // check above and the assignment below are atomic relative to other
-    // SDK callers — no await between them.
     const promise = this._doRefresh(refreshToken);
     this.ongoingRefresh = promise;
-
-    // Clear the slot once the refresh settles (whether resolved or
-    // rejected). The strict-equality check protects against the rare
-    // case where another refresh has already replaced this one.
     promise
       .catch(() => {
-        // swallow; the original promise still rejects to awaiters
+        // swallow; original promise still rejects to awaiters
       })
       .finally(() => {
         if (this.ongoingRefresh === promise) {
           this.ongoingRefresh = null;
         }
       });
-
     return promise;
   }
 
@@ -222,37 +300,25 @@ export class KoolbaseAuth {
     if (!token) {
       throw new SessionExpiredError();
     }
-    const res = await fetch(`${this.config.baseUrl}/v1/sdk/auth/refresh`, {
+    const res = await this.authRequest('/v1/sdk/auth/refresh', {
       method: 'POST',
-      headers: this.headers,
-      body: JSON.stringify({ refresh_token: token }),
+      body: { refresh_token: token },
     });
     const session = await this.parseSessionResponse(res, true);
     await this.setSessionInternal(session);
     return session;
   }
 
-  /**
-   * Log the user out.
-   *
-   * The local session is **always cleared**, regardless of whether the
-   * server-side logout succeeded. Intentional best-effort behavior: a
-   * network error during logout should not leave the user locally
-   * "logged in" with a stale token — that's a worse UX (and a security
-   * regression on shared devices) than a silent server-side stale-session.
-   *
-   * Returns `true` if the server-side logout call succeeded (or if there
-   * was no session to invalidate); `false` if the server call failed.
-   * Apps that need to handle server-side failure explicitly can branch
-   * on this; apps that don't care can ignore the return value.
-   */
   async logout(): Promise<boolean> {
     let serverSucceeded = true;
     try {
       if (this.session) {
-        const res = await fetch(`${this.config.baseUrl}/v1/sdk/auth/logout`, {
+        // Best-effort: don't auto-refresh during logout. If the token's
+        // already expired, we still want to clear local state — server
+        // will reap expired sessions itself.
+        const res = await this.authRequest('/v1/sdk/auth/logout', {
           method: 'POST',
-          headers: this.authHeaders,
+          includeAuth: true,
         });
         if (!res.ok) serverSucceeded = false;
       }
@@ -265,42 +331,25 @@ export class KoolbaseAuth {
   }
 
   async forgotPassword(email: string): Promise<void> {
-    const res = await fetch(
-      `${this.config.baseUrl}/v1/sdk/auth/password-reset`,
-      {
-        method: 'POST',
-        headers: this.headers,
-        body: JSON.stringify({ email }),
-      }
-    );
+    const res = await this.authRequest('/v1/sdk/auth/password-reset', {
+      method: 'POST',
+      body: { email },
+    });
     await this.checkResponse(res);
   }
 
   async resetPassword(token: string, password: string): Promise<void> {
-    const res = await fetch(
-      `${this.config.baseUrl}/v1/sdk/auth/password-reset/confirm`,
-      {
-        method: 'POST',
-        headers: this.headers,
-        body: JSON.stringify({ token, password }),
-      }
-    );
+    const res = await this.authRequest('/v1/sdk/auth/password-reset/confirm', {
+      method: 'POST',
+      body: { token, password },
+    });
     await this.checkResponse(res);
   }
 
-  /**
-   * Consume an unlock token from a brute-force unlock email. Apps
-   * typically extract this token from a deep link parameter when the
-   * user clicks the unlock link.
-   *
-   * Throws {@link UnlockTokenInvalidError} if the token is invalid,
-   * expired, or already consumed (one-shot).
-   */
   async unlock(token: string): Promise<void> {
-    const res = await fetch(`${this.config.baseUrl}/v1/sdk/auth/unlock`, {
+    const res = await this.authRequest('/v1/sdk/auth/unlock', {
       method: 'POST',
-      headers: this.headers,
-      body: JSON.stringify({ token }),
+      body: { token },
     });
     await this.checkResponse(res);
   }
@@ -321,76 +370,55 @@ export class KoolbaseAuth {
     }
   }
 
-  // ─── OAuth (DEPRECATED — see Batch C) ───────────────────────────────────
+  // ─── OAuth (DEPRECATED — see v1.10.0) ───────────────────────────────────
 
   /**
-   * @deprecated Server endpoint /v1/sdk/auth/oauth not yet shipped. This
-   * method previously targeted /v1/auth/oauth (dashboard developer OAuth)
-   * which never created project-scoped end-user sessions. Properly
-   * implemented in v2.10.x. For Sign in with Apple use KoolbaseAppleAuth —
-   * same status applies (deprecated cascadingly in Batch C). Use
-   * email/password for now.
+   * @deprecated v1.9.0: Server endpoint /v1/sdk/auth/oauth not yet
+   * shipped. This method previously routed to /v1/auth/oauth (dashboard
+   * developer OAuth) which never created project-scoped end-user
+   * sessions. Properly implemented in v1.10.0 with provider-specific
+   * server endpoints under /v1/sdk/auth/oauth/{apple,google,github}.
+   * Use email/password sign-in for now.
+   *
+   * @throws Always throws KoolbaseAuthError('not_implemented').
    */
-  async oauthLogin({
-    provider,
-    token,
-    email = '',
-    name = '',
-    avatarUrl = '',
-  }: {
+  async oauthLogin(_params: {
     provider: string;
     token: string;
     email?: string;
     name?: string;
     avatarUrl?: string;
-  }): Promise<Record<string, unknown> | null> {
-    void provider;
-    void token;
-    void email;
-    void name;
-    void avatarUrl;
-    try {
-      const response = await fetch(`${this.config.baseUrl}/v1/auth/oauth`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ provider, token, email, name, avatar_url: avatarUrl }),
-      });
-      if (response.ok) return response.json();
-      return null;
-    } catch {
-      return null;
-    }
+  }): Promise<never> {
+    throw new KoolbaseAuthError(
+      'OAuth sign-in is not yet implemented for the Koolbase SDK. ' +
+        'Planned for v1.10.0 (server-side endpoints under ' +
+        '/v1/sdk/auth/oauth/{provider}). Use email/password authentication ' +
+        'in the meantime.',
+      'not_implemented'
+    );
   }
 
   // ─── Phone OTP ──────────────────────────────────────────────────────────
 
   async sendOtp(params: SendOtpParams): Promise<OtpSendResult> {
     this.validatePhone(params.phoneNumber);
-    const res = await fetch(
-      `${this.config.baseUrl}/v1/sdk/auth/phone/send-otp`,
-      {
-        method: 'POST',
-        headers: this.headers,
-        body: JSON.stringify({ phone_number: params.phoneNumber }),
-      }
-    );
+    const res = await this.authRequest('/v1/sdk/auth/phone/send-otp', {
+      method: 'POST',
+      body: { phone_number: params.phoneNumber },
+    });
     const data = await this.parsePhoneResponse(res);
     return { expiresAt: data.expires_at };
   }
 
   async verifyOtp(params: VerifyOtpParams): Promise<PhoneVerifyResult> {
     this.validatePhone(params.phoneNumber);
-    const res = await fetch(
-      `${this.config.baseUrl}/v1/sdk/auth/phone/verify-otp`,
-      {
-        method: 'POST',
-        headers: this.headers,
-        body: JSON.stringify({
-          phone_number: params.phoneNumber,
-          code: params.code,
-        }),
-      }
-    );
+    const res = await this.authRequest('/v1/sdk/auth/phone/verify-otp', {
+      method: 'POST',
+      body: {
+        phone_number: params.phoneNumber,
+        code: params.code,
+      },
+    });
     const data = await this.parsePhoneResponse(res);
 
     const session: KoolbaseSession = {
@@ -404,14 +432,6 @@ export class KoolbaseAuth {
     return { session, isNewUser: data.is_new_user ?? false };
   }
 
-  /**
-   * Link a phone number to the currently authenticated user. The user
-   * must already be signed in and must have requested an OTP for this
-   * phone number first.
-   *
-   * Uses {@link _authedFetch} to auto-refresh the access token if it's
-   * stale, preventing 401 errors on expired tokens.
-   */
   async linkPhone(params: LinkPhoneParams): Promise<void> {
     if (!this.session) {
       throw new KoolbaseAuthError(
@@ -420,17 +440,43 @@ export class KoolbaseAuth {
       );
     }
     this.validatePhone(params.phoneNumber);
-    const res = await this._authedFetch(
-      `${this.config.baseUrl}/v1/sdk/auth/phone/link`,
-      {
-        method: 'POST',
-        body: JSON.stringify({
-          phone_number: params.phoneNumber,
-          code: params.code,
-        }),
-      }
-    );
-    await this.parsePhoneResponse(res);
+    const res = await this.authedRequest('/v1/sdk/auth/phone/link', {
+      method: 'POST',
+      body: {
+        phone_number: params.phoneNumber,
+        code: params.code,
+      },
+    });
+    const body = await this.parsePhoneResponse(res);
+
+    // Update local session: prefer the canonical user from the server
+    // response if present; otherwise merge the linked phone into the
+    // existing in-memory user. Either way, setSessionInternal fires the
+    // auth state listener so consumers can react to the phone link.
+    if (this.session) {
+      const updatedUser: KoolbaseUser = body.user
+        ? this.mapUser(body.user)
+        : {
+            ...this.session.user,
+            phoneNumber: params.phoneNumber,
+            phoneVerified: true,
+          };
+      await this.setSessionInternal({
+        ...this.session,
+        user: updatedUser,
+      });
+    }
+  }
+
+  // ─── Cleanup ────────────────────────────────────────────────────────────
+
+  /**
+   * Release resources held by this auth client. Clears the in-memory
+   * listener set. Does not invalidate sessions or clear storage — call
+   * {@link logout} for that.
+   */
+  dispose(): void {
+    this.listeners.clear();
   }
 
   // ─── Helpers ────────────────────────────────────────────────────────────
@@ -441,11 +487,6 @@ export class KoolbaseAuth {
     }
   }
 
-  /**
-   * Ensure the access token is fresh, refreshing if it's expired or
-   * within a 1-minute buffer of expiry. Throws {@link SessionExpiredError}
-   * if no session is available or refresh fails.
-   */
   private async _ensureValidToken(): Promise<string> {
     if (this.session && this.session.expiresAt) {
       const expiresAt = new Date(this.session.expiresAt).getTime();
@@ -465,26 +506,6 @@ export class KoolbaseAuth {
     }
   }
 
-  /**
-   * Wrapper around fetch that auto-refreshes the access token before
-   * making an authenticated call. Use this for any endpoint that
-   * requires `Authorization: Bearer …`.
-   */
-  private async _authedFetch(
-    url: string,
-    init: RequestInit = {}
-  ): Promise<Response> {
-    const token = await this._ensureValidToken();
-    return fetch(url, {
-      ...init,
-      headers: {
-        ...this.headers,
-        Authorization: `Bearer ${token}`,
-        ...(init.headers || {}),
-      },
-    });
-  }
-
   private mapUser(raw: any): KoolbaseUser {
     return {
       id: raw.id,
@@ -498,15 +519,6 @@ export class KoolbaseAuth {
     };
   }
 
-  /**
-   * Parse a session-returning response (login, register, refresh). Maps
-   * snake_case server fields to camelCase typed session AND routes
-   * status-coded errors to specific typed exceptions.
-   *
-   * [isRefresh] controls how 401 is interpreted:
-   * - false (login/register): 401 → InvalidCredentialsError
-   * - true (refresh): 401 → SessionExpiredError
-   */
   private async parseSessionResponse(
     res: Response,
     isRefresh: boolean
@@ -527,35 +539,17 @@ export class KoolbaseAuth {
     };
   }
 
-  /**
-   * Generic status check for endpoints that return void on success.
-   * Routes non-2xx responses to specific typed errors via
-   * {@link throwTypedError}.
-   */
   private async checkResponse(res: Response): Promise<void> {
     if (res.ok) return;
     await this.throwTypedError(res);
   }
 
-  /**
-   * Map a non-2xx response to a typed exception.
-   *
-   * Status-based routing:
-   * - 429 + "account temporarily locked" → AccountLockedError
-   * - 429 (other)                        → RateLimitError
-   *
-   * Message-based routing (for status codes too generic on their own):
-   * - "invalid or expired unlock token"  → UnlockTokenInvalidError
-   * - "session revoked" / "token revoked" → TokenRevokedError
-   *
-   * Fallback: generic KoolbaseAuthError with the server-provided message.
-   */
   private async throwTypedError(res: Response): Promise<never> {
     let body: any = {};
     try {
       body = await res.json();
     } catch {
-      // ignore JSON parse failure
+      // ignore
     }
     const msg: string = body.error ?? '';
 

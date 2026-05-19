@@ -12,6 +12,19 @@ export interface KoolbaseConfig {
    * own KoolbaseAuthStorage implementation.
    */
   authStorage?: KoolbaseAuthStorage;
+
+  /**
+   * Per-request timeout in milliseconds for auth endpoints. Default 10000.
+   * On timeout, fetch rejects with an AbortError. restoreSession() treats
+   * this as Offline (preserves optimistic state).
+   */
+  authTimeout?: number;
+
+  /**
+   * Injectable fetch implementation. Defaults to the global fetch. Useful
+   * for testing (mock fetch), corporate proxies, or instrumented HTTP.
+   */
+  fetch?: FetchLike;
 }
 
 // ─── Auth ──────────────────────────────────────────────────────────────────
@@ -63,6 +76,25 @@ export enum RestoreResult {
   Expired = 'expired',
   Offline = 'offline',
 }
+
+/**
+ * Callback invoked when authentication state changes. Receives the
+ * current user, or null when signed out. Listeners fire on login,
+ * register, refresh, session restoration, logout, setSession, and
+ * linkPhone. Errors thrown from a listener are swallowed so one
+ * broken listener cannot break propagation to others.
+ */
+export type AuthStateListener = (user: KoolbaseUser | null) => void;
+
+/**
+ * Drop-in replacement for the global `fetch` function. Inject via
+ * KoolbaseConfig.fetch for testing (mock fetch), proxying, or
+ * monitoring. Matches the standard fetch signature.
+ */
+export type FetchLike = (
+  input: string,
+  init?: RequestInit
+) => Promise<Response>;
 
 export interface RegisterParams {
   email: string;

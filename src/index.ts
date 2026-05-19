@@ -163,3 +163,29 @@ export const Koolbase = {
     return _flags!.checkVersion(currentVersion);
   },
 };
+
+// v1.9.0 additions
+export { koolbaseSdkVersion } from './device-metadata';
+export { RestoreResult } from './types';
+export type { AuthStateListener, FetchLike, KoolbaseAuthStorage } from './types';
+export { SecureAuthStorage } from './auth-storage';
+export {
+  KoolbaseAuthError,
+  InvalidCredentialsError,
+  EmailAlreadyInUseError,
+  UserDisabledError,
+  WeakPasswordError,
+  SessionExpiredError,
+  TokenRevokedError,
+  AccountLockedError,
+  UnlockTokenInvalidError,
+  RateLimitError,
+  NetworkError,
+  InvalidPhoneNumberError,
+  OtpExpiredError,
+  OtpInvalidError,
+  OtpMaxAttemptsError,
+  OtpRateLimitError,
+  PhoneAlreadyLinkedError,
+  SmsConfigMissingError,
+} from './auth-errors';
