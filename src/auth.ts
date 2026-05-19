@@ -12,6 +12,7 @@ import {
   RegisterParams,
   RestoreResult,
   SendOtpParams,
+  SignInWithAppleParams,
   VerifyOtpParams,
 } from './types';
 import {
@@ -32,6 +33,10 @@ import {
   UnlockTokenInvalidError,
   UserDisabledError,
   WeakPasswordError,
+  AppleEmailRequiredError,
+  AppleSignInNotConfiguredError,
+  InvalidAppleTokenError,
+  OAuthEmailConflictError,
 } from './auth-errors';
 import { SecureAuthStorage, isKeychainAvailable } from './auth-storage';
 import { DeviceMetadata } from './device-metadata';
@@ -276,6 +281,104 @@ export class KoolbaseAuth {
     await this.setSessionInternal(session);
     return session;
   }
+
+  /**
+ * Sign in with Apple using a credential obtained from a native Apple
+ * Sign-In SDK.
+ *
+ * The SDK is library-agnostic — use any native Apple Sign-In package
+ * (`@invertase/react-native-apple-authentication`, etc.) and pass the
+ * resulting `identityToken`, optional `nonce`, and optional `fullName`.
+ *
+ * `fullName` is meaningful only on first sign-in — Apple omits name
+ * data on subsequent sign-ins. The server persists at link time and
+ * ignores on subsequent sign-ins.
+ *
+ * On success the session is persisted via the configured storage and
+ * `onAuthStateChange` fires with the resolved user.
+ *
+ * @throws AppleSignInNotConfiguredError when Apple is not enabled in
+ *   the dashboard OAuth config for this environment (400).
+ * @throws InvalidAppleTokenError when the token signature, audience,
+ *   expiry, replay, or nonce check failed server-side (401).
+ * @throws UserDisabledError when the account flag is set to disabled (403).
+ * @throws AppleEmailRequiredError when Apple did not return email for
+ *   a new-account sign-in (400).
+ * @throws OAuthEmailConflictError when email matches existing user
+ *   but auto-link rule blocked (409).
+ */
+
+async signInWithApple(params: SignInWithAppleParams): Promise<KoolbaseSession> {
+  const body: Record<string, unknown> = {
+    identity_token: params.identityToken,
+  };
+  if (params.nonce && params.nonce.length > 0) {
+    body.nonce = params.nonce;
+  }
+  if (params.fullName) {
+    const nameJson: Record<string, string> = {};
+    if (params.fullName.givenName) nameJson.given_name = params.fullName.givenName;
+    if (params.fullName.familyName) nameJson.family_name = params.fullName.familyName;
+    if (Object.keys(nameJson).length > 0) {
+      body.full_name = nameJson;
+    }
+  }
+
+  const res = await this.authRequest('/v1/sdk/auth/oauth/apple', {
+    method: 'POST',
+    body,
+  });
+  const session = await this.parseAppleSessionResponse(res);
+  await this.setSessionInternal(session);
+  return session;
+}
+
+/**
+ * Parses a /v1/sdk/auth/oauth/apple response. Distinct from
+ * parseSessionResponse because OAuth error semantics differ from
+ * credential auth — status codes map to a separate error set.
+ */
+private async parseAppleSessionResponse(res: Response): Promise<KoolbaseSession> {
+  if (res.status === 200) {
+    const data = await res.json();
+    return {
+      accessToken: data.access_token,
+      refreshToken: data.refresh_token,
+      expiresAt: data.expires_at,
+      user: this.mapUser(data.user),
+    };
+  }
+
+  let errorMessage = '';
+  try {
+    const data = await res.json();
+    errorMessage = data?.error ?? '';
+  } catch {
+    // best-effort error message extraction
+  }
+
+  if (res.status === 400) {
+    if (errorMessage.includes('not configured')) {
+      throw new AppleSignInNotConfiguredError();
+    }
+    if (errorMessage.includes('did not return email')) {
+      throw new AppleEmailRequiredError();
+    }
+    throw new KoolbaseAuthError(
+      `apple sign-in failed: ${errorMessage}`,
+      'apple_signin_failed',
+    );
+  }
+  if (res.status === 401) throw new InvalidAppleTokenError();
+  if (res.status === 403) throw new UserDisabledError();
+  if (res.status === 409) throw new OAuthEmailConflictError();
+  if (res.status === 429) throw new RateLimitError(errorMessage);
+
+  throw new KoolbaseAuthError(
+    `apple sign-in failed: ${res.status} ${errorMessage}`,
+    `apple_signin_http_${res.status}`,
+  );
+}
 
   async refresh(refreshToken?: string): Promise<KoolbaseSession> {
     if (this.ongoingRefresh) {

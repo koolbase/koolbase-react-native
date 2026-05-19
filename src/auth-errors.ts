@@ -212,3 +212,41 @@ export class SmsConfigMissingError extends KoolbaseAuthError {
     Object.setPrototypeOf(this, SmsConfigMissingError.prototype);
   }
 }
+
+export class AppleSignInNotConfiguredError extends KoolbaseAuthError {
+  constructor() {
+    super('Apple Sign-In is not configured for this environment', 'apple_not_configured');
+    this.name = 'AppleSignInNotConfiguredError';
+    Object.setPrototypeOf(this, AppleSignInNotConfiguredError.prototype);
+  }
+}
+
+export class InvalidAppleTokenError extends KoolbaseAuthError {
+  constructor() {
+    super('Invalid Apple identity token', 'invalid_apple_token');
+    this.name = 'InvalidAppleTokenError';
+    Object.setPrototypeOf(this, InvalidAppleTokenError.prototype);
+  }
+}
+
+export class AppleEmailRequiredError extends KoolbaseAuthError {
+  constructor() {
+    super(
+      'Apple did not return email for this sign-in. Revoke this app in iOS Settings → Apple ID and retry.',
+      'apple_email_required',
+    );
+    this.name = 'AppleEmailRequiredError';
+    Object.setPrototypeOf(this, AppleEmailRequiredError.prototype);
+  }
+}
+
+export class OAuthEmailConflictError extends KoolbaseAuthError {
+  constructor() {
+    super(
+      'Email is already in use by another account. Sign in with your existing method and link Apple from settings.',
+      'oauth_email_conflict',
+    );
+    this.name = 'OAuthEmailConflictError';
+    Object.setPrototypeOf(this, OAuthEmailConflictError.prototype);
+  }
+}

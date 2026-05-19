@@ -246,3 +246,28 @@ export interface FunctionInvokeResult {
   data: Record<string, unknown> | null;
   success: boolean;
 }
+
+/**
+ * Apple's optional full-name structure returned only on a user's FIRST
+ * Sign in with Apple. Both fields nullable; subsequent sign-ins omit
+ * this entirely.
+ *
+ * Pass to `KoolbaseAuth.signInWithApple` only on first sign-in. The
+ * server persists at link time and ignores on subsequent sign-ins
+ * (matches Apple's documented contract).
+ */
+export interface AppleFullName {
+  givenName?: string;
+  familyName?: string;
+}
+
+/**
+ * Parameters for `KoolbaseAuth.signInWithApple`. The SDK is
+ * library-agnostic — `identityToken` should come from any native
+ * Apple Sign-In package (e.g. `@invertase/react-native-apple-authentication`).
+ */
+export interface SignInWithAppleParams {
+  identityToken: string;
+  nonce?: string;
+  fullName?: AppleFullName;
+}
