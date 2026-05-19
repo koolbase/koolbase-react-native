@@ -13,6 +13,9 @@ import {
   VerifyOtpParams,
 } from './types';
 import {
+  AccountLockedError,
+  EmailAlreadyInUseError,
+  InvalidCredentialsError,
   InvalidPhoneNumberError,
   KoolbaseAuthError,
   OtpExpiredError,
@@ -20,35 +23,34 @@ import {
   OtpMaxAttemptsError,
   OtpRateLimitError,
   PhoneAlreadyLinkedError,
+  RateLimitError,
+  SessionExpiredError,
   SmsConfigMissingError,
+  TokenRevokedError,
+  UnlockTokenInvalidError,
+  UserDisabledError,
+  WeakPasswordError,
 } from './auth-errors';
 import { SecureAuthStorage, isKeychainAvailable } from './auth-storage';
-
-/**
- * Internal error carrying HTTP status, used to distinguish server-side
- * rejections (4xx) from network failures (no status). Replaced by a richer
- * typed-error hierarchy in v1.9.0 Batch B.
- */
-class RequestError extends Error {
-  status: number;
-  constructor(message: string, status: number) {
-    super(message);
-    this.status = status;
-    this.name = 'RequestError';
-  }
-}
 
 export class KoolbaseAuth {
   private config: KoolbaseConfig;
   private storage: KoolbaseAuthStorage | null;
   private session: KoolbaseSession | null = null;
 
+  /**
+   * Single-flight refresh slot. Multiple concurrent callers that hit
+   * {@link _ensureValidToken} or {@link refresh} while a refresh is in
+   * progress share the same Promise and receive the same resulting
+   * session — avoiding the race where parallel callers each trigger
+   * their own refresh and the server rotates the refresh token from
+   * under the in-flight peers.
+   */
+  private ongoingRefresh: Promise<KoolbaseSession> | null = null;
+
   constructor(config: KoolbaseConfig) {
     this.config = config;
 
-    // Resolve auth storage: explicit user-provided wins, else default to
-    // SecureAuthStorage iff react-native-keychain is installed, else null
-    // (no persistence — sessions live in memory only, with a clear warning).
     if (config.authStorage) {
       this.storage = config.authStorage;
     } else if (isKeychainAvailable()) {
@@ -85,11 +87,6 @@ export class KoolbaseAuth {
 
   // ─── Internal session lifecycle ─────────────────────────────────────────
 
-  /**
-   * Set the in-memory session AND persist it to storage so it survives
-   * app restarts. The persisted write is awaited so callers know the
-   * session is durable before returning.
-   */
   private async setSessionInternal(session: KoolbaseSession): Promise<void> {
     this.session = session;
     if (this.storage) {
@@ -106,11 +103,6 @@ export class KoolbaseAuth {
     }
   }
 
-  /**
-   * Clear in-memory session AND persisted storage. Best-effort: failures
-   * to clear storage are logged but don't surface to the caller — the
-   * in-memory clear always happens.
-   */
   private async clearSessionInternal(): Promise<void> {
     this.session = null;
     if (this.storage) {
@@ -124,19 +116,6 @@ export class KoolbaseAuth {
 
   // ─── Session restoration ────────────────────────────────────────────────
 
-  /**
-   * Restore a previously saved session on app launch.
-   *
-   * Offline-aware and optimistic:
-   * 1. Read persisted session. If none → {@link RestoreResult.NoSession}.
-   * 2. Populate in-memory state immediately so app UI can render.
-   * 3. If access token still valid → {@link RestoreResult.Restored}.
-   * 4. Otherwise refresh against the server:
-   *    - Success → {@link RestoreResult.Restored}.
-   *    - Server rejection (4xx) → clear, return {@link RestoreResult.Expired}.
-   *    - Network error → keep optimistic state, return
-   *      {@link RestoreResult.Offline}.
-   */
   async restoreSession(): Promise<RestoreResult> {
     if (!this.storage) return RestoreResult.NoSession;
 
@@ -146,7 +125,7 @@ export class KoolbaseAuth {
     // Optimistic restore — populate state from disk before any network.
     this.session = persisted;
 
-    // If access token is still valid, we're done — no network needed.
+    // If access token is still valid (with 1-min buffer), we're done.
     const expiresAt = persisted.expiresAt
       ? new Date(persisted.expiresAt).getTime()
       : 0;
@@ -155,19 +134,22 @@ export class KoolbaseAuth {
       return RestoreResult.Restored;
     }
 
-    // Access token expired (or no expiresAt on legacy session) — refresh.
+    // Access token expired (or no expiresAt) — attempt to refresh.
     try {
       await this.refresh(persisted.refreshToken);
       return RestoreResult.Restored;
     } catch (e) {
-      if (e instanceof RequestError && e.status >= 400 && e.status < 500) {
-        // Server rejected the refresh token — clear and require fresh login.
+      // Definitive auth-rejection types clear the session — refresh token
+      // is no longer valid, user must log in again. Everything else (5xx,
+      // rate-limit, network) keeps the optimistic state for retry later.
+      if (
+        e instanceof SessionExpiredError ||
+        e instanceof TokenRevokedError ||
+        e instanceof InvalidCredentialsError
+      ) {
         await this.clearSessionInternal();
         return RestoreResult.Expired;
       }
-      // Network error (no response, timeout, 5xx). Keep optimistic state;
-      // API calls will fail until network returns. App can retry via
-      // refreshSession() when connectivity is restored.
       return RestoreResult.Offline;
     }
   }
@@ -175,6 +157,7 @@ export class KoolbaseAuth {
   // ─── Public auth API ────────────────────────────────────────────────────
 
   async register(params: RegisterParams): Promise<KoolbaseUser> {
+    if (params.password.length < 8) throw new WeakPasswordError();
     const res = await fetch(`${this.config.baseUrl}/v1/sdk/auth/register`, {
       method: 'POST',
       headers: this.headers,
@@ -198,21 +181,47 @@ export class KoolbaseAuth {
 
   /**
    * Refresh the access token using the supplied refresh token (or the
-   * persisted one if not provided). On success the new session is stored
-   * both in memory and in persistent storage.
+   * persisted/in-memory one if not provided).
    *
-   * Single-flight deduplication of concurrent refresh calls lands in
-   * Batch B.
+   * Concurrent calls are deduplicated via a single-flight Promise slot —
+   * multiple simultaneous callers share one underlying refresh and
+   * receive the same resulting session (or same error). This prevents
+   * the race where parallel refreshes each rotate the refresh token,
+   * invalidating peers mid-flight.
    */
   async refresh(refreshToken?: string): Promise<KoolbaseSession> {
-    const token = refreshToken ?? this.session?.refreshToken;
-    if (!token) {
-      throw new KoolbaseAuthError(
-        'No refresh token available',
-        'session_expired'
-      );
+    // Share an in-flight refresh if one exists.
+    if (this.ongoingRefresh) {
+      return this.ongoingRefresh;
     }
 
+    // Claim the slot synchronously. JavaScript is single-threaded so the
+    // check above and the assignment below are atomic relative to other
+    // SDK callers — no await between them.
+    const promise = this._doRefresh(refreshToken);
+    this.ongoingRefresh = promise;
+
+    // Clear the slot once the refresh settles (whether resolved or
+    // rejected). The strict-equality check protects against the rare
+    // case where another refresh has already replaced this one.
+    promise
+      .catch(() => {
+        // swallow; the original promise still rejects to awaiters
+      })
+      .finally(() => {
+        if (this.ongoingRefresh === promise) {
+          this.ongoingRefresh = null;
+        }
+      });
+
+    return promise;
+  }
+
+  private async _doRefresh(refreshToken?: string): Promise<KoolbaseSession> {
+    const token = refreshToken ?? this.session?.refreshToken;
+    if (!token) {
+      throw new SessionExpiredError();
+    }
     const res = await fetch(`${this.config.baseUrl}/v1/sdk/auth/refresh`, {
       method: 'POST',
       headers: this.headers,
@@ -223,27 +232,39 @@ export class KoolbaseAuth {
     return session;
   }
 
-  async logout(): Promise<void> {
+  /**
+   * Log the user out.
+   *
+   * The local session is **always cleared**, regardless of whether the
+   * server-side logout succeeded. Intentional best-effort behavior: a
+   * network error during logout should not leave the user locally
+   * "logged in" with a stale token — that's a worse UX (and a security
+   * regression on shared devices) than a silent server-side stale-session.
+   *
+   * Returns `true` if the server-side logout call succeeded (or if there
+   * was no session to invalidate); `false` if the server call failed.
+   * Apps that need to handle server-side failure explicitly can branch
+   * on this; apps that don't care can ignore the return value.
+   */
+  async logout(): Promise<boolean> {
+    let serverSucceeded = true;
     try {
       if (this.session) {
         const res = await fetch(`${this.config.baseUrl}/v1/sdk/auth/logout`, {
           method: 'POST',
           headers: this.authHeaders,
         });
-        // Don't throw on logout failure — local clear is best-effort.
-        // Batch B will surface the success/failure signal to callers.
-        void res;
+        if (!res.ok) serverSucceeded = false;
       }
     } catch {
-      // Network / server error — local clear still happens below.
+      serverSucceeded = false;
     } finally {
       await this.clearSessionInternal();
     }
+    return serverSucceeded;
   }
 
   async forgotPassword(email: string): Promise<void> {
-    // Endpoint path fixed in v1.9.0 Batch A. Previously hit
-    // /v1/sdk/auth/forgot-password which 404s on the server.
     const res = await fetch(
       `${this.config.baseUrl}/v1/sdk/auth/password-reset`,
       {
@@ -256,8 +277,6 @@ export class KoolbaseAuth {
   }
 
   async resetPassword(token: string, password: string): Promise<void> {
-    // Endpoint path fixed in v1.9.0 Batch A. Previously hit
-    // /v1/sdk/auth/reset-password which 404s on the server.
     const res = await fetch(
       `${this.config.baseUrl}/v1/sdk/auth/password-reset/confirm`,
       {
@@ -269,6 +288,23 @@ export class KoolbaseAuth {
     await this.checkResponse(res);
   }
 
+  /**
+   * Consume an unlock token from a brute-force unlock email. Apps
+   * typically extract this token from a deep link parameter when the
+   * user clicks the unlock link.
+   *
+   * Throws {@link UnlockTokenInvalidError} if the token is invalid,
+   * expired, or already consumed (one-shot).
+   */
+  async unlock(token: string): Promise<void> {
+    const res = await fetch(`${this.config.baseUrl}/v1/sdk/auth/unlock`, {
+      method: 'POST',
+      headers: this.headers,
+      body: JSON.stringify({ token }),
+    });
+    await this.checkResponse(res);
+  }
+
   get currentUser(): KoolbaseUser | null {
     return this.session?.user ?? null;
   }
@@ -277,15 +313,6 @@ export class KoolbaseAuth {
     return this.session?.accessToken ?? null;
   }
 
-  /**
-   * Set the current session and persist it to storage. Accepts null to
-   * clear. The in-memory update is synchronous; the persistence write is
-   * awaited.
-   *
-   * Previously synchronous (returned void). Now returns a Promise to
-   * await persistence; source-compatible for callers ignoring the
-   * return value.
-   */
   async setSession(session: KoolbaseSession | null): Promise<void> {
     if (session) {
       await this.setSessionInternal(session);
@@ -300,9 +327,9 @@ export class KoolbaseAuth {
    * @deprecated Server endpoint /v1/sdk/auth/oauth not yet shipped. This
    * method previously targeted /v1/auth/oauth (dashboard developer OAuth)
    * which never created project-scoped end-user sessions. Properly
-   * implemented in v2.10.x. For Sign in with Apple use the
-   * KoolbaseAppleAuth wrapper — same status applies (also deprecated in
-   * Batch C). Use email/password for now.
+   * implemented in v2.10.x. For Sign in with Apple use KoolbaseAppleAuth —
+   * same status applies (deprecated cascadingly in Batch C). Use
+   * email/password for now.
    */
   async oauthLogin({
     provider,
@@ -317,9 +344,6 @@ export class KoolbaseAuth {
     name?: string;
     avatarUrl?: string;
   }): Promise<Record<string, unknown> | null> {
-    // Deprecation made loud in Batch C. For Batch A, behavior unchanged
-    // so we don't break consumers mid-migration. Avoid lint warning on
-    // unused params:
     void provider;
     void token;
     void email;
@@ -380,6 +404,14 @@ export class KoolbaseAuth {
     return { session, isNewUser: data.is_new_user ?? false };
   }
 
+  /**
+   * Link a phone number to the currently authenticated user. The user
+   * must already be signed in and must have requested an OTP for this
+   * phone number first.
+   *
+   * Uses {@link _authedFetch} to auto-refresh the access token if it's
+   * stale, preventing 401 errors on expired tokens.
+   */
   async linkPhone(params: LinkPhoneParams): Promise<void> {
     if (!this.session) {
       throw new KoolbaseAuthError(
@@ -388,11 +420,10 @@ export class KoolbaseAuth {
       );
     }
     this.validatePhone(params.phoneNumber);
-    const res = await fetch(
+    const res = await this._authedFetch(
       `${this.config.baseUrl}/v1/sdk/auth/phone/link`,
       {
         method: 'POST',
-        headers: this.authHeaders,
         body: JSON.stringify({
           phone_number: params.phoneNumber,
           code: params.code,
@@ -411,9 +442,49 @@ export class KoolbaseAuth {
   }
 
   /**
-   * Map a server user (snake_case) to the typed {@link KoolbaseUser}
-   * (camelCase). Used by every session-returning endpoint.
+   * Ensure the access token is fresh, refreshing if it's expired or
+   * within a 1-minute buffer of expiry. Throws {@link SessionExpiredError}
+   * if no session is available or refresh fails.
    */
+  private async _ensureValidToken(): Promise<string> {
+    if (this.session && this.session.expiresAt) {
+      const expiresAt = new Date(this.session.expiresAt).getTime();
+      if (Date.now() < expiresAt - 60 * 1000) {
+        return this.session.accessToken;
+      }
+    }
+    if (!this.session) {
+      throw new SessionExpiredError();
+    }
+    try {
+      const session = await this.refresh();
+      return session.accessToken;
+    } catch (e) {
+      if (e instanceof KoolbaseAuthError) throw e;
+      throw new SessionExpiredError();
+    }
+  }
+
+  /**
+   * Wrapper around fetch that auto-refreshes the access token before
+   * making an authenticated call. Use this for any endpoint that
+   * requires `Authorization: Bearer …`.
+   */
+  private async _authedFetch(
+    url: string,
+    init: RequestInit = {}
+  ): Promise<Response> {
+    const token = await this._ensureValidToken();
+    return fetch(url, {
+      ...init,
+      headers: {
+        ...this.headers,
+        Authorization: `Bearer ${token}`,
+        ...(init.headers || {}),
+      },
+    });
+  }
+
   private mapUser(raw: any): KoolbaseUser {
     return {
       id: raw.id,
@@ -429,47 +500,23 @@ export class KoolbaseAuth {
 
   /**
    * Parse a session-returning response (login, register, refresh). Maps
-   * snake_case server fields to camelCase typed session AND handles
-   * status-coded auth errors.
+   * snake_case server fields to camelCase typed session AND routes
+   * status-coded errors to specific typed exceptions.
    *
    * [isRefresh] controls how 401 is interpreted:
-   * - false (login/register): 401 = invalid credentials
-   * - true (refresh): 401 = session expired (refresh token rejected)
+   * - false (login/register): 401 → InvalidCredentialsError
+   * - true (refresh): 401 → SessionExpiredError
    */
   private async parseSessionResponse(
     res: Response,
     isRefresh: boolean
   ): Promise<KoolbaseSession> {
-    if (res.status === 409) {
-      throw new KoolbaseAuthError(
-        'Email is already in use',
-        'email_taken'
-      );
-    }
+    if (res.status === 409) throw new EmailAlreadyInUseError();
     if (res.status === 401) {
-      throw new KoolbaseAuthError(
-        isRefresh ? 'Session expired, please log in again' : 'Invalid email or password',
-        isRefresh ? 'session_expired' : 'invalid_credentials'
-      );
+      throw isRefresh ? new SessionExpiredError() : new InvalidCredentialsError();
     }
-    if (res.status === 403) {
-      throw new KoolbaseAuthError(
-        'This account has been disabled',
-        'user_disabled'
-      );
-    }
-    if (!res.ok) {
-      let body: any = {};
-      try {
-        body = await res.json();
-      } catch {
-        // ignore JSON parse failure
-      }
-      throw new RequestError(
-        body.error || `Request failed: ${res.status}`,
-        res.status
-      );
-    }
+    if (res.status === 403) throw new UserDisabledError();
+    if (!res.ok) await this.throwTypedError(res);
 
     const data = await res.json();
     return {
@@ -481,20 +528,59 @@ export class KoolbaseAuth {
   }
 
   /**
-   * Generic status check for endpoints that return void on success
-   * (forgotPassword, resetPassword, verifyEmail). Throws on non-2xx.
+   * Generic status check for endpoints that return void on success.
+   * Routes non-2xx responses to specific typed errors via
+   * {@link throwTypedError}.
    */
   private async checkResponse(res: Response): Promise<void> {
     if (res.ok) return;
+    await this.throwTypedError(res);
+  }
+
+  /**
+   * Map a non-2xx response to a typed exception.
+   *
+   * Status-based routing:
+   * - 429 + "account temporarily locked" → AccountLockedError
+   * - 429 (other)                        → RateLimitError
+   *
+   * Message-based routing (for status codes too generic on their own):
+   * - "invalid or expired unlock token"  → UnlockTokenInvalidError
+   * - "session revoked" / "token revoked" → TokenRevokedError
+   *
+   * Fallback: generic KoolbaseAuthError with the server-provided message.
+   */
+  private async throwTypedError(res: Response): Promise<never> {
     let body: any = {};
     try {
       body = await res.json();
     } catch {
-      // ignore
+      // ignore JSON parse failure
     }
-    throw new RequestError(
-      body.error || `Request failed: ${res.status}`,
-      res.status
+    const msg: string = body.error ?? '';
+
+    if (res.status === 429) {
+      if (msg.includes('account temporarily locked')) {
+        throw new AccountLockedError();
+      }
+      throw new RateLimitError(msg || undefined);
+    }
+
+    if (msg.includes('invalid or expired unlock token')) {
+      throw new UnlockTokenInvalidError();
+    }
+
+    if (
+      msg.includes('session revoked') ||
+      msg.includes('token revoked') ||
+      msg.includes('session has been revoked')
+    ) {
+      throw new TokenRevokedError();
+    }
+
+    throw new KoolbaseAuthError(
+      msg || `Request failed: ${res.status}`,
+      `http_${res.status}`
     );
   }
 
