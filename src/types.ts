@@ -271,3 +271,16 @@ export interface SignInWithAppleParams {
   nonce?: string;
   fullName?: AppleFullName;
 }
+
+/**
+ * Parameters for `KoolbaseAuth.signInWithGoogle`. The SDK is
+ * library-agnostic — `idToken` should come from any native Google
+ * Sign-In package (e.g. `@react-native-google-signin/google-signin`).
+ *
+ * Unlike Apple, Google embeds the user's name and email in the idToken
+ * itself, so no separate `fullName` parameter is needed.
+ */
+export interface SignInWithGoogleParams {
+  idToken: string;
+  nonce?: string;
+}

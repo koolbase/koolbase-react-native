@@ -37,7 +37,11 @@ import {
   AppleSignInNotConfiguredError,
   InvalidAppleTokenError,
   OAuthEmailConflictError,
+  GoogleEmailRequiredError,
+  GoogleSignInNotConfiguredError,
+  InvalidGoogleTokenError,
 } from './auth-errors';
+import type { SignInWithGoogleParams } from './types';
 import { SecureAuthStorage, isKeychainAvailable } from './auth-storage';
 import { DeviceMetadata } from './device-metadata';
 
@@ -331,6 +335,92 @@ async signInWithApple(params: SignInWithAppleParams): Promise<KoolbaseSession> {
   const session = await this.parseAppleSessionResponse(res);
   await this.setSessionInternal(session);
   return session;
+}
+
+/**
+ * Sign in with Google using an idToken from a native Google Sign-In SDK.
+ *
+ * The SDK is library-agnostic — use any native Google Sign-In package
+ * (`@react-native-google-signin/google-signin`, etc.) and pass the
+ * resulting `idToken`. Google embeds the user's name and email in the
+ * idToken itself, so this method does not take a `fullName` parameter
+ * (unlike `signInWithApple`).
+ *
+ * On success the session is persisted via the configured storage and
+ * `onAuthStateChange` fires with the resolved user.
+ *
+ * @throws GoogleSignInNotConfiguredError when Google is not enabled
+ *   in the OAuth config for this environment (400).
+ * @throws InvalidGoogleTokenError when the token signature, audience,
+ *   expiry, replay, or nonce check failed server-side (401).
+ * @throws UserDisabledError when the account flag is set to disabled (403).
+ * @throws GoogleEmailRequiredError when Google did not return email
+ *   for a new-account sign-in (400).
+ * @throws OAuthEmailConflictError when email matches existing user
+ *   but auto-link rule blocked (409).
+ */
+async signInWithGoogle(params: SignInWithGoogleParams): Promise<KoolbaseSession> {
+  const body: Record<string, unknown> = {
+    identity_token: params.idToken,
+  };
+  if (params.nonce && params.nonce.length > 0) {
+    body.nonce = params.nonce;
+  }
+
+  const res = await this.authRequest('/v1/sdk/auth/oauth/google', {
+    method: 'POST',
+    body,
+  });
+  const session = await this.parseGoogleSessionResponse(res);
+  await this.setSessionInternal(session);
+  return session;
+}
+
+/**
+ * Parses a /v1/sdk/auth/oauth/google response. Distinct from
+ * parseSessionResponse and parseAppleSessionResponse because OAuth
+ * error semantics differ per-provider.
+ */
+private async parseGoogleSessionResponse(res: Response): Promise<KoolbaseSession> {
+  if (res.status === 200) {
+    const data = await res.json();
+    return {
+      accessToken: data.access_token,
+      refreshToken: data.refresh_token,
+      expiresAt: data.expires_at,
+      user: this.mapUser(data.user),
+    };
+  }
+
+  let errorMessage = '';
+  try {
+    const data = await res.json();
+    errorMessage = data?.error ?? '';
+  } catch {
+    // best-effort error message extraction
+  }
+
+  if (res.status === 400) {
+    if (errorMessage.includes('not configured')) {
+      throw new GoogleSignInNotConfiguredError();
+    }
+    if (errorMessage.includes('did not return email')) {
+      throw new GoogleEmailRequiredError();
+    }
+    throw new KoolbaseAuthError(
+      `google sign-in failed: ${errorMessage}`,
+      'google_signin_failed',
+    );
+  }
+  if (res.status === 401) throw new InvalidGoogleTokenError();
+  if (res.status === 403) throw new UserDisabledError();
+  if (res.status === 409) throw new OAuthEmailConflictError();
+  if (res.status === 429) throw new RateLimitError(errorMessage);
+
+  throw new KoolbaseAuthError(
+    `google sign-in failed: ${res.status} ${errorMessage}`,
+    `google_signin_http_${res.status}`,
+  );
 }
 
 /**

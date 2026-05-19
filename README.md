@@ -38,7 +38,7 @@ That's it. Every feature below is now available via `Koolbase.*`.
 
 ## Authentication
 
-Email + password, Apple Sign-In, and phone + OTP — out of the box.
+Email + password, Apple Sign-In, Google Sign-In, and phone + OTP — out of the box.
 
 ```typescript
 // Register
@@ -87,9 +87,28 @@ const session = await Koolbase.auth.signInWithApple({
 });
 ```
 
-Before users can sign in, configure Apple Sign-In for your environment with your iOS app's Bundle ID. Full setup guide at [docs.koolbase.com/auth/oauth](https://docs.koolbase.com/auth/oauth).
+Configure Apple Sign-In for your environment with your iOS app's Bundle ID. Full setup guide at [docs.koolbase.com/auth/oauth](https://docs.koolbase.com/auth/oauth).
 
-> **Google Sign-In** — coming in v1.11.0.
+### OAuth — Google
+
+Google Sign-In uses the native authentication flow via `@react-native-google-signin/google-signin` as a peer dependency:
+
+```typescript
+import { GoogleSignin } from '@react-native-google-signin/google-signin';
+import { Koolbase } from '@techfinityedge/koolbase-react-native';
+
+GoogleSignin.configure({
+  webClientId: '<your-web-client-id>.apps.googleusercontent.com',
+});
+
+const userInfo = await GoogleSignin.signIn();
+
+const session = await Koolbase.auth.signInWithGoogle({
+  idToken: userInfo.idToken!,
+});
+```
+
+Configure Google Sign-In for your environment with the OAuth client IDs from Google Cloud Console (typically one each for iOS, Android, and web). Full setup guide at [docs.koolbase.com/auth/oauth](https://docs.koolbase.com/auth/oauth).
 
 ### Phone + OTP
 

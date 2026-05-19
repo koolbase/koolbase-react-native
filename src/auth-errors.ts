@@ -250,3 +250,30 @@ export class OAuthEmailConflictError extends KoolbaseAuthError {
     Object.setPrototypeOf(this, OAuthEmailConflictError.prototype);
   }
 }
+
+export class GoogleSignInNotConfiguredError extends KoolbaseAuthError {
+  constructor() {
+    super('Google Sign-In is not configured for this environment', 'google_not_configured');
+    this.name = 'GoogleSignInNotConfiguredError';
+    Object.setPrototypeOf(this, GoogleSignInNotConfiguredError.prototype);
+  }
+}
+
+export class InvalidGoogleTokenError extends KoolbaseAuthError {
+  constructor() {
+    super('Invalid Google identity token', 'invalid_google_token');
+    this.name = 'InvalidGoogleTokenError';
+    Object.setPrototypeOf(this, InvalidGoogleTokenError.prototype);
+  }
+}
+
+export class GoogleEmailRequiredError extends KoolbaseAuthError {
+  constructor() {
+    super(
+      'Google did not return email for this sign-in. Ensure the email scope is requested in the native flow.',
+      'google_email_required',
+    );
+    this.name = 'GoogleEmailRequiredError';
+    Object.setPrototypeOf(this, GoogleEmailRequiredError.prototype);
+  }
+}

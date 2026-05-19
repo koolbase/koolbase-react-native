@@ -7,6 +7,56 @@ adheres to [Semantic Versioning][semver].
 [kac]: https://keepachangelog.com/en/1.1.0/
 [semver]: https://semver.org/
 
+## 1.11.0 — 2026-05-19
+
+### Added
+
+- **Sign in with Google** — production-ready end-user OAuth via
+  `Koolbase.auth.signInWithGoogle({idToken, nonce?})`. Routes to the
+  server endpoint at `/v1/sdk/auth/oauth/google` with RS256-only JWKS
+  verification against Google's certs endpoint, multi-audience support
+  (iOS / Android / web client IDs configured per environment),
+  15-minute replay defense, and optional nonce check.
+- `SignInWithGoogleParams` interface in `types.ts`.
+- Three new typed errors in `auth-errors.ts`:
+  `GoogleSignInNotConfiguredError`, `InvalidGoogleTokenError`,
+  `GoogleEmailRequiredError`. Reuses existing `OAuthEmailConflictError`
+  and `UserDisabledError`.
+
+#### Example with `@react-native-google-signin/google-signin`
+
+```typescript
+import { GoogleSignin } from '@react-native-google-signin/google-signin';
+
+GoogleSignin.configure({
+  webClientId: '<your-web-client-id>.apps.googleusercontent.com',
+});
+
+const userInfo = await GoogleSignin.signIn();
+
+const session = await Koolbase.auth.signInWithGoogle({
+  idToken: userInfo.idToken!,
+});
+```
+
+### Auto-link policy
+
+Same as Apple Sign-In (v1.10.0). A new Google identity attaches to an
+existing user only when BOTH the Google email AND the existing user's
+email are verified, AND emails match (case-insensitive). Otherwise
+sign-in either creates a new user (no email collision) or surfaces
+`OAuthEmailConflictError`.
+
+### Configuration required
+
+Before users can sign in with Google, configure the provider for your
+environment with the OAuth client IDs from Google Cloud Console (one
+each for iOS, Android, and web). See the README for the SQL setup.
+
+### Coming next
+
+- **Dashboard UI** for OAuth config — replaces the SQL workflow
+
 ## 1.10.1 — 2026-05-19
 
 ### Documentation

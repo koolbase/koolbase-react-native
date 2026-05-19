@@ -7,7 +7,7 @@ import { isKeychainAvailable } from './auth-storage';
  * version-conditional logic (deprecation warnings, schema migrations,
  * feature flags). Must match the `version` field in package.json.
  */
-export const koolbaseSdkVersion = '1.10.1';
+export const koolbaseSdkVersion = '1.11.0';
 
 /**
  * Generate a UUIDv4-shaped string for use as a stable per-install
