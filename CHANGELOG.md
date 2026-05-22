@@ -7,6 +7,35 @@ adheres to [Semantic Versioning][semver].
 [kac]: https://keepachangelog.com/en/1.1.0/
 [semver]: https://semver.org/
 
+## 2.0.0 — 2026-05-22
+
+### Breaking
+
+- **Flat record shape.** Records are no longer wrapped in a `data` envelope on
+  the wire — your fields come back top-level, with system metadata in a reserved
+  `$`-prefixed namespace (`$id`, `$createdAt`, `$updatedAt`, `$collection`,
+  `$createdBy`). The SDK maps this back into `KoolbaseRecord`, so you still read
+  fields via `record.data.<field>`.
+- Removed `KoolbaseRecord.projectId` and `KoolbaseRecord.collectionId`.
+- Requires a Koolbase server on the flat record contract (shipped alongside this
+  release). Older servers return the legacy envelope and are not compatible.
+
+### Added
+
+- `KoolbaseRecord.collection` — the record's collection name.
+
+### Fixed
+
+- `KoolbaseRecord.createdAt` / `updatedAt` are now reliably populated. Under the
+  previous raw cast they were silently `undefined` (snake_case wire vs camelCase).
+
+### Changed
+
+- Realtime events and populated/related records now use the same flat shape.
+- Offline cache is forward-compatible: existing entries stay readable (`id` and
+  `data` are shape-stable) and refresh to the new shape on the next online read;
+  pending offline writes are preserved.
+
 ## 1.11.0 — 2026-05-19
 
 ### Added

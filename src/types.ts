@@ -135,8 +135,7 @@ export interface PhoneVerifyResult {
 
 export interface KoolbaseRecord {
   id: string;
-  projectId: string;
-  collectionId: string;
+  collection?: string;
   createdBy?: string;
   data: Record<string, unknown>;
   createdAt: string;

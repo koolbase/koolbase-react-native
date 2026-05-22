@@ -1,4 +1,5 @@
 import { KoolbaseConfig, RealtimeCallback, RealtimeEvent } from './types';
+import { recordFromWire } from './record';
 
 export class KoolbaseRealtime {
   private config: KoolbaseConfig;
@@ -39,7 +40,13 @@ export class KoolbaseRealtime {
 
     this.ws.onmessage = (event) => {
       try {
-        const msg = JSON.parse(event.data) as RealtimeEvent;
+        const raw: any = JSON.parse(event.data);
+        if (!raw || !raw.record) return;
+        const msg: RealtimeEvent = {
+          type: raw.type,
+          collection: raw.collection,
+          record: recordFromWire(raw.record),
+        };
         const callbacks = this.listeners.get(msg.collection) ?? [];
         callbacks.forEach((cb) => cb(msg));
       } catch (_) {}

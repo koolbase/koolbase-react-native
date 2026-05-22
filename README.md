@@ -16,9 +16,9 @@ Auth, database, storage, realtime, functions, feature flags, remote config, vers
 3. Add the SDK:
 
 ```bash
-npm install @techfinityedge/koolbase-react-native@^1.10.0
+npm install @techfinityedge/koolbase-react-native@^2.0.0
 # or
-yarn add @techfinityedge/koolbase-react-native@^1.10.0
+yarn add @techfinityedge/koolbase-react-native@^2.0.0
 ```
 
 **4. Initialize at app startup:**
@@ -146,6 +146,11 @@ const { records } = await Koolbase.db.query('posts', {
   orderBy: 'created_at',
   orderDesc: true,
 });
+
+// Read fields off a record
+const post = records[0];
+console.log(post.data.title);          // your fields live under .data
+console.log(post.id, post.collection); // metadata
 
 // Populate related records
 const { records: postsWithAuthor } = await Koolbase.db.query('posts', {

@@ -13,6 +13,7 @@ import {
   hashQuery,
 } from './cache-store';
 import { SyncEngine } from './sync-engine';
+import { recordFromWire } from './record';
 
 function generateId(): string {
   return 'local_' + Math.random().toString(36).slice(2) + Date.now().toString(36);
@@ -58,6 +59,26 @@ export class KoolbaseDatabase {
 
   // ─── Query (cache-first) ───────────────────────────────────────────────────
 
+  private async runQuery(
+    collection: string,
+    options: QueryOptions
+  ): Promise<QueryResult> {
+    const raw = await this.request<{ records: Record<string, unknown>[]; total: number }>(
+      'POST',
+      '/v1/sdk/db/query',
+      {
+        collection,
+        filters: options.filters ?? {},
+        limit: options.limit ?? 20,
+        offset: options.offset ?? 0,
+        order_by: options.orderBy,
+        order_desc: options.orderDesc ?? false,
+        populate: options.populate ?? [],
+      }
+    );
+    return { records: raw.records.map(recordFromWire), total: raw.total };
+  }
+
   async query(
     collection: string,
     options: QueryOptions = {}
@@ -65,41 +86,19 @@ export class KoolbaseDatabase {
     const userId = this.getUserId() ?? 'anonymous';
     const queryHash = hashQuery(collection, options as Record<string, unknown>);
 
-    // 1. Return cached data immediately if available
     const cached = await getCached(userId, collection, queryHash);
 
-    // 2. Fetch from network in background
-    this.request<QueryResult>('POST', '/v1/sdk/db/query', {
-      collection,
-      filters: options.filters ?? {},
-      limit: options.limit ?? 20,
-      offset: options.offset ?? 0,
-      order_by: options.orderBy,
-      order_desc: options.orderDesc ?? false,
-      populate: options.populate ?? [],
-    })
-      .then(async result => {
-        await setCached(userId, collection, queryHash, result);
-      })
+    this.runQuery(collection, options)
+      .then(result => setCached(userId, collection, queryHash, result))
       .catch(() => {
-        // Network unavailable — cached data is already returned
+        // Network unavailable — cached data already returned
       });
 
     if (cached) {
       return { ...cached, isFromCache: true };
     }
 
-    // No cache — wait for network
-    const result = await this.request<QueryResult>('POST', '/v1/sdk/db/query', {
-      collection,
-      filters: options.filters ?? {},
-      limit: options.limit ?? 20,
-      offset: options.offset ?? 0,
-      order_by: options.orderBy,
-      order_desc: options.orderDesc ?? false,
-      populate: options.populate ?? [],
-    });
-
+    const result = await this.runQuery(collection, options);
     await setCached(userId, collection, queryHash, result);
     return { ...result, isFromCache: false };
   }
@@ -115,8 +114,6 @@ export class KoolbaseDatabase {
     // Build optimistic record
     const optimisticRecord: KoolbaseRecord = {
       id: generateId(),
-      projectId: '',
-      collectionId: '',
       createdBy: userId,
       data,
       createdAt: new Date().toISOString(),
@@ -152,11 +149,12 @@ export class KoolbaseDatabase {
 
   // ─── Get single record ──────────────────────────────────────────────────────
 
-  async get(recordId: string): Promise<KoolbaseRecord> {
-    return this.request<KoolbaseRecord>(
+ async get(recordId: string): Promise<KoolbaseRecord> {
+    const raw = await this.request<Record<string, unknown>>(
       'GET',
       `/v1/sdk/db/records/${recordId}`
     );
+    return recordFromWire(raw);
   }
 
   // ─── Update ─────────────────────────────────────────────────────────────────
@@ -167,7 +165,6 @@ export class KoolbaseDatabase {
   ): Promise<KoolbaseRecord> {
     const userId = this.getUserId() ?? 'anonymous';
 
-    // Add to write queue
     await addToWriteQueue(userId, {
       id: generateId(),
       type: 'update',
@@ -175,20 +172,16 @@ export class KoolbaseDatabase {
       data,
     });
 
-    // Try network
     try {
-      const result = await this.request<KoolbaseRecord>(
+      const raw = await this.request<Record<string, unknown>>(
         'PATCH',
         `/v1/sdk/db/records/${recordId}`,
         { data }
       );
-      return result;
+      return recordFromWire(raw);
     } catch {
-      // Return optimistic version
       return {
         id: recordId,
-        projectId: '',
-        collectionId: '',
         data,
         createdAt: '',
         updatedAt: new Date().toISOString(),
