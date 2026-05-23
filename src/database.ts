@@ -3,6 +3,7 @@ import {
   KoolbaseRecord,
   QueryOptions,
   QueryResult,
+  UpsertResult,
 } from './types';
 import {
   getCached,
@@ -145,6 +146,48 @@ export class KoolbaseDatabase {
       });
 
     return optimisticRecord;
+  }
+
+  // ─── Upsert (online-only) ─────────────────────────────────────────────────
+
+  /**
+   * Insert a record, or update the existing one matching `match`.
+   *
+   * The server decides: exactly one match updates it, no match inserts a new
+   * record (seeded with the `match` fields), more than one match is an error.
+   * Returns the resulting record and a `created` flag (true = inserted, false
+   * = updated).
+   *
+   * Online-only by design. Unlike `insert`, an upsert is NOT queued offline:
+   * the insert-vs-update decision needs the server's authoritative view of
+   * what already exists, so deferring it could create a duplicate or apply a
+   * wrong update on later sync. It throws on network failure instead. A raw
+   * fetch is used (not `request`) so the status code is readable: 201 =
+   * created, 200 = updated.
+   */
+  async upsert(
+    collection: string,
+    match: Record<string, unknown>,
+    data: Record<string, unknown>
+  ): Promise<UpsertResult> {
+    const res = await fetch(`${this.config.baseUrl}/v1/sdk/db/upsert`, {
+      method: 'POST',
+      headers: this.headers,
+      body: JSON.stringify({ collection, match, data }),
+    });
+    const body = await res.json();
+    if (!res.ok) {
+      throw new Error(body.error ?? `Upsert failed: ${res.status}`);
+    }
+
+    const created = res.status === 201;
+    const record = recordFromWire(body as Record<string, unknown>);
+
+    // Keep the cache fresh, same intent as insert's post-success invalidate.
+    const userId = this.getUserId() ?? 'anonymous';
+    await invalidateCache(userId, collection);
+
+    return { record, created };
   }
 
   // ─── Get single record ──────────────────────────────────────────────────────

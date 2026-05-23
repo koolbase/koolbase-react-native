@@ -157,6 +157,11 @@ export interface QueryResult {
   isFromCache?: boolean;
 }
 
+export interface UpsertResult {
+  record: KoolbaseRecord;
+  created: boolean;
+}
+
 export interface PendingWrite {
   id: string;
   type: 'insert' | 'update' | 'delete';
