@@ -190,6 +190,39 @@ export class KoolbaseDatabase {
     return { record, created };
   }
 
+  // ─── Delete where (online-only) ─────────────────────────────────────────────
+
+  /**
+   * Bulk-delete every record in `collection` matching `filters`.
+   *
+   * The server applies the collection's delete rule (scoping to the caller for
+   * owner/scoped rules) and returns the number of records deleted.
+   *
+   * Online-only by design — like upsert, this is NOT queued offline: a bulk
+   * delete needs the server's authoritative view of what matches, so it throws
+   * on network failure rather than risk deleting the wrong set on later sync.
+   * The collection cache is invalidated on success.
+   */
+  async deleteWhere(
+    collection: string,
+    filters: Record<string, unknown>
+  ): Promise<number> {
+    const res = await fetch(`${this.config.baseUrl}/v1/sdk/db/delete-where`, {
+      method: 'POST',
+      headers: this.headers,
+      body: JSON.stringify({ collection, filters }),
+    });
+    const body = await res.json();
+    if (!res.ok) {
+      throw new Error(body.error ?? `Delete failed: ${res.status}`);
+    }
+
+    const userId = this.getUserId() ?? 'anonymous';
+    await invalidateCache(userId, collection);
+
+    return (body.deleted as number) ?? 0;
+  }
+
   // ─── Get single record ──────────────────────────────────────────────────────
 
  async get(recordId: string): Promise<KoolbaseRecord> {
