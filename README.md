@@ -162,6 +162,38 @@ await Koolbase.db.update('record-id', { title: 'Updated' });
 await Koolbase.db.delete('record-id');
 ```
 
+### Upsert
+
+Insert a record, or update the existing one matching a filter.
+
+\`\`\`ts
+const result = await Koolbase.db.upsert(
+  'profiles',
+  { user_id: userId },
+  { weightKg: 70 }
+);
+
+console.log(result.created); // true if inserted, false if updated
+console.log(result.record.id);
+\`\`\`
+
+> Online-only: needs the server's view to decide insert vs update, so unlike
+> `insert` it isn't queued offline and throws on network failure.
+
+### Delete where
+
+Bulk-delete every record matching a filter. Returns the number deleted.
+
+\`\`\`ts
+const deleted = await Koolbase.db.deleteWhere('sessions', {
+  user_id: userId,
+  status: 'expired',
+});
+\`\`\`
+
+> A non-empty filter is required. The collection's delete rule applies; for
+> `owner`/`scoped` rules the delete is scoped to your own records. Online-only.
+
 ### Offline-first
 
 ```typescript
