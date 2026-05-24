@@ -402,6 +402,44 @@ await Koolbase.messaging.send({
 
 ---
 
+## Error handling
+
+Koolbase throws typed errors selected from the server's stable error `code`, so
+handling doesn't depend on message text.
+
+### Database errors
+
+All data-layer failures extend `KoolbaseDataError` (which extends `Error`):
+
+| Error | When |
+|---|---|
+| `KoolbaseConflictError` | A write violates a unique constraint (409). Exposes `.field`. |
+| `KoolbaseNotFoundError` | The record or collection doesn't exist (404). |
+| `KoolbaseValidationError` | The request was rejected as invalid (400). |
+| `KoolbasePermissionError` | An access rule denied the operation (403). |
+| `KoolbaseRateLimitError` | The caller is being rate-limited (429). |
+
+```ts
+import { KoolbaseConflictError, KoolbaseDataError } from '@techfinityedge/koolbase-react-native';
+
+try {
+  await koolbase.db.upsert('users', { email }, { name });
+} catch (e) {
+  if (e instanceof KoolbaseConflictError) {
+    showError(`That ${e.field ?? 'value'} is already taken.`);
+  } else if (e instanceof KoolbaseDataError) {
+    showError(e.message);
+  }
+}
+```
+
+> `query`, `get`, `upsert`, and `deleteWhere` throw these typed errors. `insert`,
+> `update`, and `delete` are optimistic/offline-first — they queue and sync in
+> the background, so their conflicts surface via the sync engine, not as a
+> thrown error.
+
+---
+
 ## What's included
 
 - Authentication: email + password, Apple Sign-In, phone + OTP

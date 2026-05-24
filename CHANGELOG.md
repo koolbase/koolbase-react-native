@@ -7,7 +7,18 @@ adheres to [Semantic Versioning][semver].
 [kac]: https://keepachangelog.com/en/1.1.0/
 [semver]: https://semver.org/
 
-## 2.2.0 2026-05-24
+## 2.3.0 - 2026-05-24
+
+- Auth errors are now selected from the server's stable error `code` (with
+  status/message fallback for older servers), retiring message string-matching.
+- New typed data-layer errors — KoolbaseNotFoundError, KoolbaseValidationError,
+  KoolbasePermissionError, KoolbaseRateLimitError — plus a shared
+  KoolbaseDataError base. query/get/upsert/deleteWhere now throw these
+  (code-first) instead of a generic Error.
+- KoolbaseConflictError now exposes the collided `field` and extends
+  KoolbaseDataError.
+
+## 2.2.0 - 2026-05-24
 
 - Added `KoolbaseConflictError`, thrown by `upsert` on a unique-constraint violation (HTTP 409). insert/update are optimistic/offline-first and surface conflicts at sync time, not as a thrown error.
 

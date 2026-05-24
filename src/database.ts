@@ -15,7 +15,7 @@ import {
 } from './cache-store';
 import { SyncEngine } from './sync-engine';
 import { recordFromWire } from './record';
-import { KoolbaseConflictError } from './database-errors';
+import { koolbaseDataError } from './database-errors';
 
 function generateId(): string {
   return 'local_' + Math.random().toString(36).slice(2) + Date.now().toString(36);
@@ -54,7 +54,7 @@ export class KoolbaseDatabase {
     });
     const data = await res.json();
     if (!res.ok) {
-      throw new Error(data.error ?? `Request failed: ${res.status}`);
+      throw koolbaseDataError(res.status, data, `Request failed: ${res.status}`);
     }
     return data as T;
   }
@@ -179,10 +179,7 @@ export class KoolbaseDatabase {
 
     const body = await res.json();
     if (!res.ok) {
-      if (res.status === 409) {
-        throw new KoolbaseConflictError(body.error);
-      }
-      throw new Error(body.error ?? `Upsert failed: ${res.status}`);
+      throw koolbaseDataError(res.status, body, `Upsert failed: ${res.status}`);
     }
 
     const created = res.status === 201;
@@ -219,7 +216,7 @@ export class KoolbaseDatabase {
     });
     const body = await res.json();
     if (!res.ok) {
-      throw new Error(body.error ?? `Delete failed: ${res.status}`);
+      throw koolbaseDataError(res.status, body, `Delete failed: ${res.status}`);
     }
 
     const userId = this.getUserId() ?? 'anonymous';

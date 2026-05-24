@@ -377,9 +377,11 @@ async signInWithGoogle(params: SignInWithGoogleParams): Promise<KoolbaseSession>
 }
 
 /**
- * Parses a /v1/sdk/auth/oauth/google response. Distinct from
- * parseSessionResponse and parseAppleSessionResponse because OAuth
- * error semantics differ per-provider.
+ * Parses a /v1/sdk/auth/oauth/google response. Code-first: the server
+ * emits unified OAuth codes (oauth_not_configured, invalid_oauth_token,
+ * oauth_email_required, oauth_email_conflict) for both providers; the
+ * provider distinction is made here so Google codes map to Google-specific
+ * errors. Status + message logic is retained as a fallback for older servers.
  */
 private async parseGoogleSessionResponse(res: Response): Promise<KoolbaseSession> {
   if (res.status === 200) {
@@ -392,14 +394,32 @@ private async parseGoogleSessionResponse(res: Response): Promise<KoolbaseSession
     };
   }
 
-  let errorMessage = '';
+  let body: any = {};
   try {
-    const data = await res.json();
-    errorMessage = data?.error ?? '';
+    body = await res.json();
   } catch {
     // best-effort error message extraction
   }
+  const code: string = body?.code ?? '';
+  const errorMessage: string = body?.error ?? '';
 
+  // ─── code-first ───
+  switch (code) {
+    case 'oauth_not_configured':
+      throw new GoogleSignInNotConfiguredError();
+    case 'invalid_oauth_token':
+      throw new InvalidGoogleTokenError();
+    case 'account_disabled':
+      throw new UserDisabledError();
+    case 'oauth_email_required':
+      throw new GoogleEmailRequiredError();
+    case 'oauth_email_conflict':
+      throw new OAuthEmailConflictError();
+    case 'rate_limit':
+      throw new RateLimitError(errorMessage || undefined);
+  }
+
+  // ─── status + message fallback (pre-code servers) ───
   if (res.status === 400) {
     if (errorMessage.includes('not configured')) {
       throw new GoogleSignInNotConfiguredError();
@@ -424,9 +444,10 @@ private async parseGoogleSessionResponse(res: Response): Promise<KoolbaseSession
 }
 
 /**
- * Parses a /v1/sdk/auth/oauth/apple response. Distinct from
- * parseSessionResponse because OAuth error semantics differ from
- * credential auth — status codes map to a separate error set.
+ * Parses a /v1/sdk/auth/oauth/apple response. Code-first; the provider
+ * distinction is made here so the server's unified OAuth codes map to
+ * Apple-specific errors. Status + message logic is retained as a fallback
+ * for older servers.
  */
 private async parseAppleSessionResponse(res: Response): Promise<KoolbaseSession> {
   if (res.status === 200) {
@@ -439,14 +460,32 @@ private async parseAppleSessionResponse(res: Response): Promise<KoolbaseSession>
     };
   }
 
-  let errorMessage = '';
+  let body: any = {};
   try {
-    const data = await res.json();
-    errorMessage = data?.error ?? '';
+    body = await res.json();
   } catch {
     // best-effort error message extraction
   }
+  const code: string = body?.code ?? '';
+  const errorMessage: string = body?.error ?? '';
 
+  // ─── code-first ───
+  switch (code) {
+    case 'oauth_not_configured':
+      throw new AppleSignInNotConfiguredError();
+    case 'invalid_oauth_token':
+      throw new InvalidAppleTokenError();
+    case 'account_disabled':
+      throw new UserDisabledError();
+    case 'oauth_email_required':
+      throw new AppleEmailRequiredError();
+    case 'oauth_email_conflict':
+      throw new OAuthEmailConflictError();
+    case 'rate_limit':
+      throw new RateLimitError(errorMessage || undefined);
+  }
+
+  // ─── status + message fallback (pre-code servers) ───
   if (res.status === 400) {
     if (errorMessage.includes('not configured')) {
       throw new AppleSignInNotConfiguredError();
@@ -712,16 +751,17 @@ private async parseAppleSessionResponse(res: Response): Promise<KoolbaseSession>
     };
   }
 
+  /**
+   * Parse a session-returning response (login, register, refresh).
+   * Non-2xx is delegated to throwTypedError, which is code-first
+   * (reads body.code) with a status/message fallback. isRefresh only
+   * affects how a bare 401 (no code, older server) is interpreted.
+   */
   private async parseSessionResponse(
     res: Response,
     isRefresh: boolean
   ): Promise<KoolbaseSession> {
-    if (res.status === 409) throw new EmailAlreadyInUseError();
-    if (res.status === 401) {
-      throw isRefresh ? new SessionExpiredError() : new InvalidCredentialsError();
-    }
-    if (res.status === 403) throw new UserDisabledError();
-    if (!res.ok) await this.throwTypedError(res);
+    if (!res.ok) await this.throwTypedError(res, isRefresh); // never returns
 
     const data = await res.json();
     return {
@@ -737,15 +777,52 @@ private async parseAppleSessionResponse(res: Response): Promise<KoolbaseSession>
     await this.throwTypedError(res);
   }
 
-  private async throwTypedError(res: Response): Promise<never> {
+  /**
+   * Map a non-2xx credential/session response to a typed error.
+   *
+   * Code-first: the server now emits a stable `code` on every error
+   * (contract conformance), so we switch on body.code. The status +
+   * message logic is retained as a fallback for older servers or any
+   * response that arrives without a code. isRefresh only changes how a
+   * bare 401 is interpreted in the fallback path.
+   */
+  private async throwTypedError(res: Response, isRefresh = false): Promise<never> {
     let body: any = {};
     try {
       body = await res.json();
     } catch {
       // ignore
     }
+    const code: string = body.code ?? '';
     const msg: string = body.error ?? '';
 
+    // ─── code-first ───
+    switch (code) {
+      case 'invalid_credentials':
+        throw new InvalidCredentialsError();
+      case 'email_in_use':
+        throw new EmailAlreadyInUseError();
+      case 'account_disabled':
+        throw new UserDisabledError();
+      case 'account_locked':
+        throw new AccountLockedError();
+      case 'invalid_refresh_token':
+        // Refresh token rejected — the session is unrecoverable; re-login.
+        throw new SessionExpiredError();
+      case 'token_revoked':
+        throw new TokenRevokedError();
+      case 'invalid_unlock_token':
+        throw new UnlockTokenInvalidError();
+      case 'rate_limit':
+        throw new RateLimitError(msg || undefined);
+    }
+
+    // ─── status fallback (pre-code servers) ───
+    if (res.status === 409) throw new EmailAlreadyInUseError();
+    if (res.status === 401) {
+      throw isRefresh ? new SessionExpiredError() : new InvalidCredentialsError();
+    }
+    if (res.status === 403) throw new UserDisabledError();
     if (res.status === 429) {
       if (msg.includes('account temporarily locked')) {
         throw new AccountLockedError();
@@ -753,10 +830,10 @@ private async parseAppleSessionResponse(res: Response): Promise<KoolbaseSession>
       throw new RateLimitError(msg || undefined);
     }
 
+    // ─── legacy message fallback ───
     if (msg.includes('invalid or expired unlock token')) {
       throw new UnlockTokenInvalidError();
     }
-
     if (
       msg.includes('session revoked') ||
       msg.includes('token revoked') ||
@@ -767,10 +844,17 @@ private async parseAppleSessionResponse(res: Response): Promise<KoolbaseSession>
 
     throw new KoolbaseAuthError(
       msg || `Request failed: ${res.status}`,
-      `http_${res.status}`
+      code || `http_${res.status}`
     );
   }
 
+  /**
+   * Parse a phone-auth response. Code-first, with a phone-specific twist:
+   * the server emits the generic `rate_limit` code for the phone endpoints
+   * (they share the default 429), but phone has a dedicated server-side
+   * rate-limiter, so we surface OtpRateLimitError rather than RateLimitError.
+   * Status + message logic is retained as a fallback for older servers.
+   */
   private async parsePhoneResponse(res: Response): Promise<any> {
     let body: any = {};
     try {
@@ -781,11 +865,32 @@ private async parseAppleSessionResponse(res: Response): Promise<KoolbaseSession>
 
     if (res.ok) return body;
 
+    const code: string = body.code ?? '';
     const msg: string = body.error ?? '';
 
+    // ─── code-first ───
+    switch (code) {
+      case 'invalid_phone':
+        throw new InvalidPhoneNumberError();
+      case 'otp_expired':
+        throw new OtpExpiredError();
+      case 'otp_invalid':
+        throw new OtpInvalidError();
+      case 'otp_max_attempts':
+        throw new OtpMaxAttemptsError();
+      case 'phone_in_use':
+        throw new PhoneAlreadyLinkedError();
+      case 'sms_not_configured':
+        throw new SmsConfigMissingError();
+      case 'rate_limit':
+        throw new OtpRateLimitError();
+    }
+
+    // ─── status fallback (pre-code servers) ───
     if (res.status === 429) throw new OtpRateLimitError();
     if (res.status === 409) throw new PhoneAlreadyLinkedError();
 
+    // ─── legacy message fallback ───
     if (msg.includes('E.164')) throw new InvalidPhoneNumberError();
     if (msg.includes('OTP has expired')) throw new OtpExpiredError();
     if (msg.includes('too many incorrect attempts')) {
@@ -801,6 +906,6 @@ private async parseAppleSessionResponse(res: Response): Promise<KoolbaseSession>
       throw new SmsConfigMissingError();
     }
 
-    throw new KoolbaseAuthError(msg || 'An unexpected error occurred');
+    throw new KoolbaseAuthError(msg || 'An unexpected error occurred', code || undefined);
   }
 }
