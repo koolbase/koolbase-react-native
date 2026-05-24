@@ -15,6 +15,7 @@ import {
 } from './cache-store';
 import { SyncEngine } from './sync-engine';
 import { recordFromWire } from './record';
+import { KoolbaseConflictError } from './database-errors';
 
 function generateId(): string {
   return 'local_' + Math.random().toString(36).slice(2) + Date.now().toString(36);
@@ -175,8 +176,12 @@ export class KoolbaseDatabase {
       headers: this.headers,
       body: JSON.stringify({ collection, match, data }),
     });
+
     const body = await res.json();
     if (!res.ok) {
+      if (res.status === 409) {
+        throw new KoolbaseConflictError(body.error);
+      }
       throw new Error(body.error ?? `Upsert failed: ${res.status}`);
     }
 
