@@ -7,7 +7,11 @@ adheres to [Semantic Versioning][semver].
 [kac]: https://keepachangelog.com/en/1.1.0/
 [semver]: https://semver.org/
 
-## 2.1.0 - — 2026-05-23
+## 2.2.0 2026-05-24
+
+- Added `KoolbaseConflictError`, thrown by `upsert` on a unique-constraint violation (HTTP 409). insert/update are optimistic/offline-first and surface conflicts at sync time, not as a thrown error.
+
+## 2.1.0 - 2026-05-23
 
 - Added `Koolbase.db.upsert(collection:, match:, data:)` — insert-or-update by a match filter; returns `KoolbaseUpsertResult { record, created }`. Online-only.
   - Added `Koolbase.db.deleteWhere(collection:, filters:)` — bulk delete by filter; returns the number of records deleted. Online-only.

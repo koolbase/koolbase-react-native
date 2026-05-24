@@ -162,6 +162,20 @@ await Koolbase.db.update('record-id', { title: 'Updated' });
 await Koolbase.db.delete('record-id');
 ```
 
+### Handling unique-constraint conflicts
+
+  A write that would violate a unique constraint throws `KoolbaseConflictError`:
+
+  \`\`\`ts
+  try {
+    await koolbase.db.upsert('users', { email }, { name });
+  } catch (e) {
+    if (e instanceof KoolbaseConflictError) {
+      showError('That email is already registered.');
+    }
+  }
+  \`\`\`
+
 ### Upsert
 
 Insert a record, or update the existing one matching a filter.
