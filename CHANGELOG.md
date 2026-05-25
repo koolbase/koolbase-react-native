@@ -7,7 +7,14 @@ adheres to [Semantic Versioning][semver].
 [kac]: https://keepachangelog.com/en/1.1.0/
 [semver]: https://semver.org/
 
-## 2.3.0 - 2026-05-24
+## 2.4.0
+
+- **Code Push — mandatory bundles.** The SDK now honors a bundle's `mandatory` flag. When a mandatory bundle is staged:
+  - `Koolbase.codePush.hasMandatoryUpdate` returns `true` — read it on app resume to gate your UI.
+  - The optional `onMandatoryUpdate` callback on the config passed to `Koolbase.initialize()` fires with `{ version, bundleId }` so you can prompt the user to restart.
+- No breaking changes.
+-
+## 2.3.0
 
 - Auth errors are now selected from the server's stable error `code` (with
   status/message fallback for older servers), retiring message string-matching.
@@ -18,17 +25,17 @@ adheres to [Semantic Versioning][semver].
 - KoolbaseConflictError now exposes the collided `field` and extends
   KoolbaseDataError.
 
-## 2.2.0 - 2026-05-24
+## 2.2.0
 
 - Added `KoolbaseConflictError`, thrown by `upsert` on a unique-constraint violation (HTTP 409). insert/update are optimistic/offline-first and surface conflicts at sync time, not as a thrown error.
 
-## 2.1.0 - 2026-05-23
+## 2.1.0
 
 - Added `Koolbase.db.upsert(collection:, match:, data:)` — insert-or-update by a match filter; returns `KoolbaseUpsertResult { record, created }`. Online-only.
   - Added `Koolbase.db.deleteWhere(collection:, filters:)` — bulk delete by filter; returns the number of records deleted. Online-only.
 -
 
-## 2.0.0 — 2026-05-22
+## 2.0.0
 
 ### Breaking
 
@@ -57,7 +64,7 @@ adheres to [Semantic Versioning][semver].
   `data` are shape-stable) and refresh to the new shape on the next online read;
   pending offline writes are preserved.
 
-## 1.11.0 — 2026-05-19
+## 1.11.0
 
 ### Added
 
@@ -107,7 +114,7 @@ each for iOS, Android, and web). See the README for the SQL setup.
 
 - **Dashboard UI** for OAuth config — replaces the SQL workflow
 
-## 1.10.1 — 2026-05-19
+## 1.10.1
 
 ### Documentation
 
@@ -124,7 +131,7 @@ each for iOS, Android, and web). See the README for the SQL setup.
   feature inventory.
 - Bumped install snippet from `^1.8.0` to `^1.10.0`.
 
-## 1.10.0 — 2026-05-19
+## 1.10.0
 
 ### Added
 
@@ -198,7 +205,7 @@ instance — same place as all other auth methods.
   `/v1/sdk/auth/oauth/google`.
 - **GitHub OAuth** (v1.12.0) — code-exchange flow.
 
-## 1.9.0 — 2026-05-19
+## 1.9.0
 
 ### 🚨 Fixed (critical)
 

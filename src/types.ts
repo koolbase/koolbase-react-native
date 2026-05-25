@@ -2,6 +2,7 @@ export interface KoolbaseConfig {
   publicKey: string;
   baseUrl: string;
   codePushChannel?: string;
+  onMandatoryUpdate?: (info: { version: number; bundleId: string }) => void;
   analyticsEnabled?: boolean;
   appVersion?: string;
   messagingEnabled?: boolean;

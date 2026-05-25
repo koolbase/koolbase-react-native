@@ -323,6 +323,30 @@ Koolbase.codePush.applyDirectives();
 
 ---
 
+### Mandatory updates
+
+Mark a bundle **mandatory** in the dashboard (or via `PATCH /mandatory`) when every device must apply it before continuing — surfaced as a push callback and a pollable flag:
+
+```typescript
+await Koolbase.initialize({
+  publicKey: 'pk_live_xxxx',
+  baseUrl: 'https://api.koolbase.com',
+  // Fires the moment a mandatory bundle is staged for the next launch
+  onMandatoryUpdate: ({ version }) => {
+    showRestartRequiredDialog(version);
+  },
+});
+
+// Or poll it — e.g. on app resume — before letting the user proceed
+if (Koolbase.codePush.hasMandatoryUpdate) {
+  showRestartRequiredDialog();
+}
+```
+
+A mandatory bundle still activates on the next cold launch like any other; the callback and flag just let you prompt the user to restart now instead of waiting.
+
+---
+
 ## Logic Engine
 
 Define conditional app behavior as data in your Runtime Bundle — no code changes required.
@@ -442,7 +466,7 @@ try {
 
 ## What's included
 
-- Authentication: email + password, Apple Sign-In, phone + OTP
+- Authentication: email + password, Apple Sign-In, Google Sign-In, phone + OTP
 - Database with offline-first cache, realtime subscriptions, and populate
 - Storage with download URLs
 - Realtime subscriptions over WebSocket

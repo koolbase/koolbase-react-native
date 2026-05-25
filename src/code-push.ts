@@ -24,6 +24,7 @@ export interface BundleManifest {
   signature: string;
   size_bytes: number;
   payload: BundlePayload;
+  mandatory?: boolean;
 }
 
 interface CheckResponse {
@@ -35,6 +36,7 @@ interface CheckResponse {
     checksum: string;
     signature: string;
     size_bytes: number;
+    mandatory: boolean;
   };
   revert_to?: string;
 }
@@ -78,6 +80,7 @@ export class KoolbaseCodePush {
   private config: KoolbaseConfig;
   private channel: string;
   private activeManifest: BundleManifest | null = null;
+  private mandatoryPending = false;
 
   constructor(config: KoolbaseConfig, channel = 'stable') {
     this.config = config;
@@ -204,9 +207,22 @@ export class KoolbaseCodePush {
         return;
       }
 
+      // Carry the mandatory flag from the check response onto the staged manifest
+      manifest.mandatory = ref.mandatory;
+
       // Store as pending — activates on next launch
       await AsyncStorage.setItem(STORAGE_KEY_PENDING, JSON.stringify(manifest));
       console.log(`[KoolbaseCodePush] bundle v${manifest.version} ready for next launch`);
+
+      if (ref.mandatory) {
+        this.mandatoryPending = true;
+        console.log('[KoolbaseCodePush] staged bundle is mandatory — notifying app');
+        try {
+          this.config.onMandatoryUpdate?.({ version: manifest.version, bundleId: manifest.bundle_id });
+        } catch (cbErr) {
+          console.warn('[KoolbaseCodePush] onMandatoryUpdate handler threw:', cbErr);
+        }
+      }
     } catch (e) {
       console.warn('[KoolbaseCodePush] download error:', e);
     }
@@ -224,6 +240,15 @@ export class KoolbaseCodePush {
 
   get hasActiveBundle(): boolean {
     return this.activeManifest !== null;
+  }
+
+  /**
+   * True when a mandatory bundle has been staged this session and is awaiting
+   * application (it activates on the next cold launch). Gate your UI on this to
+   * prompt the user to restart so the required update takes effect.
+   */
+  get hasMandatoryUpdate(): boolean {
+    return this.mandatoryPending;
   }
 
   get manifest(): BundleManifest | null {
