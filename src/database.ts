@@ -24,21 +24,29 @@ function generateId(): string {
 export class KoolbaseDatabase {
   private config: KoolbaseConfig;
   private getUserId: () => string | null;
+  private getToken: () => Promise<string | null>;
   private syncEngine: SyncEngine;
 
-  constructor(config: KoolbaseConfig, getUserId: () => string | null) {
+  constructor(
+    config: KoolbaseConfig,
+    getUserId: () => string | null,
+    getToken: () => Promise<string | null>,
+  ) {
     this.config = config;
     this.getUserId = getUserId;
-    this.syncEngine = new SyncEngine(config, getUserId);
+    this.getToken = getToken;
+    this.syncEngine = new SyncEngine(config, getUserId, getToken);
     this.syncEngine.start();
   }
 
-  private get headers(): Record<string, string> {
-    const userId = this.getUserId();
+  // getUserId is kept only for local cache keys / offline metadata; request
+  // identity now comes solely from the verified access token.
+  private async buildHeaders(): Promise<Record<string, string>> {
+    const token = await this.getToken();
     return {
       'Content-Type': 'application/json',
       'x-api-key': this.config.publicKey,
-      ...(userId ? { 'x-user-id': userId } : {}),
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
     };
   }
 
@@ -49,7 +57,7 @@ export class KoolbaseDatabase {
   ): Promise<T> {
     const res = await fetch(`${this.config.baseUrl}${path}`, {
       method,
-      headers: this.headers,
+      headers: await this.buildHeaders(),
       body: body ? JSON.stringify(body) : undefined,
     });
     const data = await res.json();
@@ -173,7 +181,7 @@ export class KoolbaseDatabase {
   ): Promise<UpsertResult> {
     const res = await fetch(`${this.config.baseUrl}/v1/sdk/db/upsert`, {
       method: 'POST',
-      headers: this.headers,
+     headers: await this.buildHeaders(),
       body: JSON.stringify({ collection, match, data }),
     });
 
@@ -211,7 +219,7 @@ export class KoolbaseDatabase {
   ): Promise<number> {
     const res = await fetch(`${this.config.baseUrl}/v1/sdk/db/delete-where`, {
       method: 'POST',
-      headers: this.headers,
+      headers: await this.buildHeaders(),
       body: JSON.stringify({ collection, filters }),
     });
     const body = await res.json();
@@ -282,7 +290,7 @@ export class KoolbaseDatabase {
     // Try network
     const res = await fetch(
       `${this.config.baseUrl}/v1/sdk/db/records/${recordId}`,
-      { method: 'DELETE', headers: this.headers }
+      { method: 'DELETE', headers: await this.buildHeaders(), }
     );
     if (!res.ok && res.status !== 204) {
       // Queued for sync — will retry when online

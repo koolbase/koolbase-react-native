@@ -8,11 +8,11 @@ import {
 
 export class KoolbaseFunctions {
   private config: KoolbaseConfig;
-  private getUserAccessToken?: () => string | null;
+  private getUserAccessToken?: () => Promise<string | null>;
 
   constructor(
     config: KoolbaseConfig,
-    getUserAccessToken?: () => string | null,
+    getUserAccessToken?: () => Promise<string | null>,
   ) {
     this.config = config;
     this.getUserAccessToken = getUserAccessToken;
@@ -71,7 +71,7 @@ export class KoolbaseFunctions {
       'x-api-key': this.config.publicKey,
     };
 
-    const userToken = this.getUserAccessToken?.();
+    const userToken = await this.getUserAccessToken?.();
     if (userToken) {
       headers['Authorization'] = `Bearer ${userToken}`;
     }

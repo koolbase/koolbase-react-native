@@ -2,15 +2,15 @@ import { KoolbaseConfig, UploadOptions } from './types';
 
 export class KoolbaseStorage {
   private config: KoolbaseConfig;
-  private getToken: () => string | null;
+  private getToken: () => Promise<string | null>;
 
-  constructor(config: KoolbaseConfig, getToken: () => string | null) {
+  constructor(config: KoolbaseConfig, getToken: () => Promise<string | null>) {
     this.config = config;
     this.getToken = getToken;
   }
 
-  private get headers(): Record<string, string> {
-    const token = this.getToken();
+  private async buildHeaders(): Promise<Record<string, string>> {
+    const token = await this.getToken();
     return {
       'x-api-key': this.config.publicKey,
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
@@ -23,7 +23,7 @@ export class KoolbaseStorage {
       `${this.config.baseUrl}/v1/sdk/storage/${options.bucket}/upload`,
       {
         method: 'POST',
-        headers: { ...this.headers, 'Content-Type': 'application/json' },
+        headers: { ...(await this.buildHeaders()), 'Content-Type': 'application/json' },
         body: JSON.stringify({
           path: options.path,
           content_type: options.file.type,
@@ -52,7 +52,7 @@ export class KoolbaseStorage {
   async getDownloadUrl(bucket: string, path: string): Promise<string> {
     const res = await fetch(
       `${this.config.baseUrl}/v1/sdk/storage/${bucket}/download?path=${encodeURIComponent(path)}`,
-      { headers: this.headers }
+      { headers: await this.buildHeaders() }
     );
     if (!res.ok) {
       const data = await res.json();
@@ -67,7 +67,7 @@ export class KoolbaseStorage {
       `${this.config.baseUrl}/v1/sdk/storage/${bucket}/delete`,
       {
         method: 'DELETE',
-        headers: { ...this.headers, 'Content-Type': 'application/json' },
+        headers: { ...(await this.buildHeaders()), 'Content-Type': 'application/json' },
         body: JSON.stringify({ path }),
       }
     );

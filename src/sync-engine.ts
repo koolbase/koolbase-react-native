@@ -11,6 +11,7 @@ type SyncCallback = () => void;
 export class SyncEngine {
   private config: KoolbaseConfig;
   private getUserId: () => string | null;
+  private getToken: () => Promise<string | null>;
   private onSyncComplete?: SyncCallback;
   private unsubscribe?: () => void;
   private isSyncing = false;
@@ -18,10 +19,12 @@ export class SyncEngine {
   constructor(
     config: KoolbaseConfig,
     getUserId: () => string | null,
+    getToken: () => Promise<string | null>,
     onSyncComplete?: SyncCallback
   ) {
     this.config = config;
     this.getUserId = getUserId;
+    this.getToken = getToken;
     this.onSyncComplete = onSyncComplete;
   }
 
@@ -68,9 +71,11 @@ export class SyncEngine {
     recordId?: string;
     data?: Record<string, unknown>;
   }): Promise<void> {
-    const headers = {
+    const token = await this.getToken();
+    const headers: Record<string, string> = {
       'Content-Type': 'application/json',
       'x-api-key': this.config.publicKey,
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
     };
 
     if (write.type === 'insert') {

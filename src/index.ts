@@ -46,10 +46,14 @@ export const Koolbase = {
     if (_initialized) return;
 
     _auth = new KoolbaseAuth(config);
-    _db = new KoolbaseDatabase(config, () => _auth?.currentUser?.id ?? null);
-    _storage = new KoolbaseStorage(config, () => _auth?.accessToken ?? null);
+    _db = new KoolbaseDatabase(
+      config,
+      () => _auth?.currentUser?.id ?? null,
+      () => _auth?.validAccessToken() ?? Promise.resolve(null),
+    );
+    _storage = new KoolbaseStorage(config, () => _auth?.validAccessToken() ?? Promise.resolve(null));
     _realtime = new KoolbaseRealtime(config);
-    _functions = new KoolbaseFunctions(config, () => _auth?.accessToken ?? null);
+    _functions = new KoolbaseFunctions(config, () => _auth?.validAccessToken() ?? Promise.resolve(null));
     _flags = new KoolbaseFlags(config, 'rn-device');
 
     _codePush = new KoolbaseCodePush(config, config.codePushChannel ?? 'stable');

@@ -594,6 +594,22 @@ private async parseAppleSessionResponse(res: Response): Promise<KoolbaseSession>
     return this.session?.accessToken ?? null;
   }
 
+  /**
+   * Currently-valid access token for data-plane requests, refreshing
+   * (via refresh()) if the cached one is near expiry. Returns null when no
+   * session exists or refresh fails — callers then go api-key-only and the
+   * server treats it as having no end-user identity. The db/storage/functions
+   * clients pull from this per request so identity follows the live session.
+   */
+  async validAccessToken(): Promise<string | null> {
+    if (!this.session) return null;
+    try {
+      return await this._ensureValidToken();
+    } catch {
+      return null;
+    }
+  }
+
   async setSession(session: KoolbaseSession | null): Promise<void> {
     if (session) {
       await this.setSessionInternal(session);
