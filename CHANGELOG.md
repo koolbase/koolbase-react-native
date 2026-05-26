@@ -7,6 +7,29 @@ adheres to [Semantic Versioning][semver].
 [kac]: https://keepachangelog.com/en/1.1.0/
 [semver]: https://semver.org/
 
+## 3.0.0
+
+### BREAKING — security
+
+- Data-plane requests (database, storage, functions, offline sync) now
+  authenticate with the signed-in user's access token (Authorization: Bearer)
+  instead of the x-user-id header. The header is no longer sent or trusted.
+  Requires the matching Koolbase server build.
+- End-user identity flows automatically from the active session — nothing to
+  pass on db/storage calls. owner/authenticated collections require an active
+  session.
+
+### Added
+
+- KoolbaseAuth.validAccessToken() — returns a currently-valid token,
+  refreshing near expiry; the data-plane clients pull from it per request so
+  identity follows the live session.
+
+### Fixed
+
+- Offline writes are now replayed with the user's identity (previously synced
+  anonymously through the sync engine).
+
 ## 2.4.0
 
 - **Code Push — mandatory bundles.** The SDK now honors a bundle's `mandatory` flag. When a mandatory bundle is staged:
@@ -14,6 +37,7 @@ adheres to [Semantic Versioning][semver].
   - The optional `onMandatoryUpdate` callback on the config passed to `Koolbase.initialize()` fires with `{ version, bundleId }` so you can prompt the user to restart.
 - No breaking changes.
 -
+
 ## 2.3.0
 
 - Auth errors are now selected from the server's stable error `code` (with

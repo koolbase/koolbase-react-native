@@ -16,9 +16,9 @@ Auth, database, storage, realtime, functions, feature flags, remote config, vers
 3. Add the SDK:
 
 ```bash
-npm install @techfinityedge/koolbase-react-native@^2.0.0
+npm install @techfinityedge/koolbase-react-native@^3.0.0
 # or
-yarn add @techfinityedge/koolbase-react-native@^2.0.0
+yarn add @techfinityedge/koolbase-react-native@^3.0.0
 ```
 
 **4. Initialize at app startup:**
@@ -33,6 +33,13 @@ await Koolbase.initialize({
 ```
 
 That's it. Every feature below is now available via `Koolbase.*`.
+
+---
+
+> **Auth is automatic (v3+).** Database, storage, and functions calls
+> authenticate as the currently signed-in user — nothing to pass, no manual
+> wiring. Log in (or restore a session) and every request carries that
+> identity. `owner`/`authenticated` collections require an active session.
 
 ---
 
