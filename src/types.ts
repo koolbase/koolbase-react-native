@@ -289,3 +289,49 @@ export interface SignInWithGoogleParams {
   idToken: string;
   nonce?: string;
 }
+
+export type BatchOp =
+  | { type: 'insert'; collection: string; data: Record<string, unknown> }
+  | { type: 'update'; recordId: string; data: Record<string, unknown> }
+  | { type: 'delete'; recordId: string }
+  | {
+      type: 'upsert';
+      collection: string;
+      match: Record<string, unknown>;
+      data: Record<string, unknown>;
+    };
+
+/**
+ * Factory helpers for constructing batch operations. Same shape as
+ * Flutter's `KoolbaseBatchOp.insert(...)` etc., so the mental model
+ * transfers between platforms.
+ */
+export const BatchOp = {
+  insert: (
+    collection: string,
+    data: Record<string, unknown>,
+  ): BatchOp => ({ type: 'insert', collection, data }),
+  update: (
+    recordId: string,
+    data: Record<string, unknown>,
+  ): BatchOp => ({ type: 'update', recordId, data }),
+  delete: (recordId: string): BatchOp => ({ type: 'delete', recordId }),
+  upsert: (
+    collection: string,
+    opts: { match: Record<string, unknown>; data: Record<string, unknown> },
+  ): BatchOp => ({
+    type: 'upsert',
+    collection,
+    match: opts.match,
+    data: opts.data,
+  }),
+};
+
+export interface BatchResult {
+  type: string;
+  record?: KoolbaseRecord;
+  /** For upsert: true if a new record was inserted, false if one was updated. */
+  created?: boolean;
+  /** True for a successful delete. */
+  deleted?: boolean;
+}

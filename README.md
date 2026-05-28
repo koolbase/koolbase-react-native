@@ -16,9 +16,13 @@ Auth, database, storage, realtime, functions, feature flags, remote config, vers
 3. Add the SDK:
 
 ```bash
-npm install @techfinityedge/koolbase-react-native@^3.0.0
+npm install @techfinityedge/koolbase-react-native
 # or
-yarn add @techfinityedge/koolbase-react-native@^3.0.0
+yarn add @techfinityedge/koolbase-react-native
+# or
+pnpm add @techfinityedge/koolbase-react-native
+# or
+bun add @techfinityedge/koolbase-react-native
 ```
 
 **4. Initialize at app startup:**
@@ -215,6 +219,8 @@ const deleted = await Koolbase.db.deleteWhere('sessions', {
 > A non-empty filter is required. The collection's delete rule applies; for
 > `owner`/`scoped` rules the delete is scoped to your own records. Online-only.
 
+---
+
 ### Offline-first
 
 ```typescript
@@ -223,6 +229,31 @@ if (isFromCache) console.log('Served from local cache');
 
 await Koolbase.db.syncPendingWrites();
 ```
+
+### Atomic batch writes
+
+Run multiple writes in a single server-side transaction. All operations commit together or none are applied — any failure rolls back the entire batch.
+
+```ts
+import { Koolbase, BatchOp } from '@techfinityedge/koolbase-react-native';
+
+const results = await Koolbase.db.batch([
+  BatchOp.insert('orders', { total: 50, customer_id: customerId }),
+  BatchOp.update(inventoryId, { stock: 9 }),
+  BatchOp.upsert('counters', {
+    match: { name: 'orders' },
+    data: { value: 1 },
+  }),
+  BatchOp.delete(cartItemId),
+]);
+
+// results[i] corresponds to operations[i]:
+//   - insert / update: { type, record }
+//   - upsert:          { type, record, created }   // created = true if inserted
+//   - delete:          { type, deleted: true }
+```
+
+**Online-only by design.** Atomicity needs the server's authoritative view, so `batch()` is never queued offline — it throws on network failure (like `upsert` and `deleteWhere`). A server-side rejection throws a `KoolbaseDataException` with the failing operation's details; nothing was persisted.
 
 ---
 

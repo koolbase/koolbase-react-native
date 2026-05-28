@@ -7,6 +7,13 @@ adheres to [Semantic Versioning][semver].
 [kac]: https://keepachangelog.com/en/1.1.0/
 [semver]: https://semver.org/
 
+## 3.1.0
+
+### Added
+
+- `batch()` method on `KoolbaseDatabase` for atomic multi-operation writes — runs `insert` / `update` / `delete` / `upsert` in a single server-side transaction. Closes the parity gap with `koolbase_flutter` 5.0.0, where `batch()` shipped on the Flutter side only. Online-only by design; throws on network failure rather than queuing.
+- `BatchOp` factory and `BatchResult` interface exported from `types`.
+
 ## 3.0.0
 
 ### BREAKING — security

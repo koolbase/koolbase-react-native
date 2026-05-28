@@ -4,6 +4,8 @@ import {
   QueryOptions,
   QueryResult,
   UpsertResult,
+  BatchOp,
+  BatchResult,
 } from './types';
 import {
   getCached,
@@ -19,6 +21,24 @@ import { koolbaseDataError } from './database-errors';
 
 function generateId(): string {
   return 'local_' + Math.random().toString(36).slice(2) + Date.now().toString(36);
+}
+
+function batchOpToWire(op: BatchOp): Record<string, unknown> {
+  switch (op.type) {
+    case 'insert':
+      return { type: 'insert', collection: op.collection, data: op.data };
+    case 'update':
+      return { type: 'update', record_id: op.recordId, data: op.data };
+    case 'delete':
+      return { type: 'delete', record_id: op.recordId };
+    case 'upsert':
+      return {
+        type: 'upsert',
+        collection: op.collection,
+        match: op.match,
+        data: op.data,
+      };
+  }
 }
 
 export class KoolbaseDatabase {
@@ -232,6 +252,80 @@ export class KoolbaseDatabase {
 
     return (body.deleted as number) ?? 0;
   }
+
+  // ─── Batch (atomic, online-only) ────────────────────────────────────────────
+
+  /**
+   * Run multiple writes as a single atomic transaction.
+   *
+   * All `operations` commit together or none are applied — the server runs
+   * them in one database transaction and rolls back entirely on any failure.
+   * Operations apply in order and may span multiple collections.
+   *
+   * Online-only by design (like `upsert` and `deleteWhere`): atomicity needs
+   * the server's authoritative view, so a batch is never queued offline — it
+   * throws on network failure. A server-side rejection throws a
+   * `KoolbaseDataException` whose message identifies which operation failed;
+   * nothing was persisted.
+   *
+   * Returns one `BatchResult` per operation, in order.
+   *
+   * @example
+   * const results = await Koolbase.db.batch([
+   *   BatchOp.insert('orders', { total: 50 }),
+   *   BatchOp.update(inventoryId, { stock: 9 }),
+   *   BatchOp.upsert('counters', { match: { name: 'orders' }, data: { value: 1 } }),
+   *   BatchOp.delete(cartItemId),
+   * ]);
+   */
+  async batch(operations: BatchOp[]): Promise<BatchResult[]> {
+    if (operations.length === 0) {
+      throw new Error('batch requires at least one operation');
+    }
+
+    const res = await fetch(`${this.config.baseUrl}/v1/sdk/db/batch`, {
+      method: 'POST',
+      headers: await this.buildHeaders(),
+      body: JSON.stringify({
+        operations: operations.map(batchOpToWire),
+      }),
+    });
+
+    const body = await res.json();
+    if (!res.ok) {
+      throw koolbaseDataError(res.status, body, `Batch failed: ${res.status}`);
+    }
+
+    const results: BatchResult[] = (
+      (body.results as Array<Record<string, unknown>>) ?? []
+    ).map(r => ({
+      type: (r.type as string) ?? '',
+      record: r.record
+        ? recordFromWire(r.record as Record<string, unknown>)
+        : undefined,
+      created: r.created as boolean | undefined,
+      deleted: (r.deleted as boolean | undefined) ?? false,
+    }));
+
+    // Keep the cache consistent with what committed. Insert/upsert carry the
+    // collection in the input op; update/delete address records by id, so we
+    // don't know the collection at this layer — those refresh naturally on
+    // the next query for the affected collection.
+    const userId = this.getUserId() ?? 'anonymous';
+    const touched = new Set<string>();
+    for (const op of operations) {
+      if (op.type === 'insert' || op.type === 'upsert') {
+        touched.add(op.collection);
+      }
+    }
+    for (const col of touched) {
+      await invalidateCache(userId, col);
+    }
+
+    return results;
+  }
+
+  // ─── Get single record ──────────────────────────────────────────────────────
 
   // ─── Get single record ──────────────────────────────────────────────────────
 
