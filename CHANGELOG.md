@@ -7,6 +7,16 @@ adheres to [Semantic Versioning][semver].
 [kac]: https://keepachangelog.com/en/1.1.0/
 [semver]: https://semver.org/
 
+## 4.1.0
+
+### Fixed
+
+- Realtime now works. The client previously hit the wrong endpoint, authenticated with the public key instead of the user session, never sent a subscribe message, and parsed the wrong event shape — so it delivered nothing. Rewritten to the real protocol: connects with the signed-in user's session, subscribes per collection, streams `created`/`updated` events, and reconnects automatically.
+
+### Changed
+
+- `Koolbase.realtime.subscribe(collection, cb)` no longer needs a project — it's derived from the user's session.
+
 ## 4.0.0
 
 ### Changed
