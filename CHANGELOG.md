@@ -7,7 +7,13 @@ adheres to [Semantic Versioning][semver].
 [kac]: https://keepachangelog.com/en/1.1.0/
 [semver]: https://semver.org/
 
-## 4.1.0
+## 4.2.1
+
+### Fixed
+
+- Realtime now delivers `deleted` events. v4.1.0 dropped them because `RealtimeEvent` required a `record`, which deletes don't carry. `record` is now optional and `recordId` is provided on deletes — bringing React Native to parity with Flutter.
+
+## 4.2.0
 
 ### Fixed
 

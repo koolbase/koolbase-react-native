@@ -94,12 +94,16 @@ export class KoolbaseRealtime {
       const mapped = EVENT_TYPE_MAP[raw?.type];
       if (!mapped) return; // ignore subscribed / unsubscribed / error / unknown
       const payload = raw.payload;
-      if (!payload || !payload.collection || !payload.record) return; // created/updated carry a record
-      const msg: RealtimeEvent = {
-        type: mapped,
-        collection: payload.collection,
-        record: recordFromWire(payload.record),
-      };
+      if (!payload || !payload.collection) return;
+
+      let msg: RealtimeEvent;
+      if (mapped === 'deleted') {
+        msg = { type: 'deleted', collection: payload.collection, recordId: payload.record_id };
+      } else if (payload.record) {
+        msg = { type: mapped, collection: payload.collection, record: recordFromWire(payload.record) };
+      } else {
+        return;
+      }
       (this.listeners.get(payload.collection) ?? []).forEach((cb) => cb(msg));
     };
 

@@ -191,7 +191,8 @@ export interface UploadOptions {
 export interface RealtimeEvent {
   type: 'created' | 'updated' | 'deleted';
   collection: string;
-  record: KoolbaseRecord;
+  record?: KoolbaseRecord; // absent on delete
+  recordId?: string;       // present on delete
 }
 
 export type RealtimeCallback = (event: RealtimeEvent) => void;

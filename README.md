@@ -297,26 +297,25 @@ await Koolbase.storage.delete('avatars', `user-${userId}.jpg`);
 
 ## Realtime
 
-Subscribe to live changes on a collection. Realtime uses the signed-in user's
-session, so subscribe after login. It streams `created` and `updated` events for
+Subscribe to live changes on a collection. Uses the signed-in user's session, so
+subscribe after login. Streams `created`, `updated`, and `deleted` events for
 collections whose read rule is `public` or `authenticated`.
 
 ```ts
-import { Koolbase } from '@techfinityedge/koolbase-react-native';
-
 const unsubscribe = Koolbase.realtime.subscribe('messages', (event) => {
-  // event.type       -> 'created' | 'updated'
-  // event.collection -> 'messages'
-  // event.record     -> KoolbaseRecord
-  console.log(event.type, event.record.data);
+  // event.type -> 'created' | 'updated' | 'deleted'
+  if (event.type === 'deleted') {
+    console.log('deleted', event.recordId);   // recordId on deletes
+  } else {
+    console.log(event.type, event.record!.data); // record on created/updated
+  }
 });
 
-unsubscribe(); // stop listening
+unsubscribe();
 ```
 
-The socket opens lazily on first `subscribe`, is shared across all subscriptions,
-and reconnects automatically. The project is taken from the user's session — you
-don't pass it.
+The socket opens lazily, is shared, and reconnects automatically. The project is
+taken from the user's session..
 
 ---
 
