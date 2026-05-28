@@ -52,7 +52,10 @@ export const Koolbase = {
       () => _auth?.validAccessToken() ?? Promise.resolve(null),
     );
     _storage = new KoolbaseStorage(config, () => _auth?.validAccessToken() ?? Promise.resolve(null));
-    _realtime = new KoolbaseRealtime(config);
+    _realtime = new KoolbaseRealtime(
+      config,
+      () => _auth?.validAccessToken() ?? Promise.resolve(null),
+    );
     _functions = new KoolbaseFunctions(config, () => _auth?.validAccessToken() ?? Promise.resolve(null));
     _flags = new KoolbaseFlags(config, 'rn-device');
 
