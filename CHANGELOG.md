@@ -7,6 +7,16 @@ adheres to [Semantic Versioning][semver].
 [kac]: https://keepachangelog.com/en/1.1.0/
 [semver]: https://semver.org/
 
+## 4.0.0
+
+### Changed
+
+- **BREAKING:** `insert` and `update` are now online-first with an offline fallback. When the server is reachable they await the response and throw typed errors on rejection — a unique-constraint conflict throws `KoolbaseConflictError` (with the offending `field`), matching `upsert`. Only a genuine network failure falls back to the optimistic local-cache + sync-queue path. Previously these methods swallowed all server errors and `insert` always returned a local-id optimistic record.
+
+### Migration
+
+- Wrap `insert`/`update` in `try/catch` to handle conflicts (`catch (e) { if (e instanceof KoolbaseConflictError) … }`). If you relied on the returned id beginning with `local_`, treat the returned record's `id` as authoritative instead — when online it is now the server id.
+
 ## 3.1.0
 
 ### Added

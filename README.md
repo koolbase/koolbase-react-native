@@ -257,6 +257,28 @@ const results = await Koolbase.db.batch([
 
 ---
 
+### Handling write conflicts
+
+`insert`, `update`, and `upsert` are online-first: when the server is reachable they throw a typed error on rejection. Catch `KoolbaseConflictError` to handle unique-constraint violations (e.g. a duplicate email):
+
+```ts
+import { KoolbaseConflictError } from '@techfinityedge/koolbase-react-native';
+
+try {
+  await Koolbase.db.insert('users', { email, name });
+} catch (e) {
+  if (e instanceof KoolbaseConflictError) {
+    showError(`That ${e.field ?? 'value'} is already in use.`);
+  } else {
+    throw e;
+  }
+}
+```
+
+When the device is offline, these writes are queued and synced automatically when connectivity returns.
+
+---
+
 ## Storage
 
 ```typescript

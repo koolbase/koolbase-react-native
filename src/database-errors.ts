@@ -27,10 +27,11 @@ export class KoolbaseDataError extends Error {
  * (`details.field`) — useful when a collection has more than one unique
  * constraint and you need to know which value clashed.
  *
- * Currently surfaced by `upsert` (the online-only write). `insert` and
- * `update` are optimistic/offline-first: they accept the write locally and
- * sync in the background, so a constraint conflict on those paths is a
- * sync-time concern rather than a thrown error.
+ * Surfaced by `insert`, `update`, and `upsert` whenever the server is
+ * reachable and rejects the write with a 409. These writes are online-first:
+ * a server-side conflict throws immediately. Only a genuine network failure
+ * falls back to the offline queue, where a conflict that surfaces at sync
+ * time is handled by the sync engine rather than thrown here.
  *
  * @example
  * try {

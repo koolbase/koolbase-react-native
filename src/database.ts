@@ -17,7 +17,7 @@ import {
 } from './cache-store';
 import { SyncEngine } from './sync-engine';
 import { recordFromWire } from './record';
-import { koolbaseDataError } from './database-errors';
+import { koolbaseDataError, KoolbaseDataError } from './database-errors';
 
 function generateId(): string {
   return 'local_' + Math.random().toString(36).slice(2) + Date.now().toString(36);
@@ -133,48 +133,64 @@ export class KoolbaseDatabase {
     return { ...result, isFromCache: false };
   }
 
-  // ─── Insert (optimistic) ────────────────────────────────────────────────────
+  // ─── Insert (online-first with offline fallback) ───────────────────────────
 
+  /**
+   * Insert a new record into a collection.
+   *
+   * Online-first: awaits the server so a server-side rejection (unique
+   * violation, validation error, permission denial) surfaces as the typed
+   * `KoolbaseDataError` subclass — `insert` now throws `KoolbaseConflictError`
+   * with the offending field on a 409, matching `upsert` and `update`.
+   *
+   * On genuine network failure (server unreachable, timeout) the write is
+   * accepted optimistically: saved to the local cache and queued for sync
+   * when connectivity returns.
+   */
   async insert(
     collection: string,
     data: Record<string, unknown>
   ): Promise<KoolbaseRecord> {
     const userId = this.getUserId() ?? 'anonymous';
 
-    // Build optimistic record
-    const optimisticRecord: KoolbaseRecord = {
-      id: generateId(),
-      createdBy: userId,
-      data,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
+    try {
+      // Online path: await the server and return the authoritative record
+      // (with the server-assigned id). Refresh the collection cache so the
+      // next query sees real data instead of a stale optimistic copy.
+      const raw = await this.request<Record<string, unknown>>(
+        'POST',
+        '/v1/sdk/db/insert',
+        { collection, data }
+      );
+      const record = recordFromWire(raw);
+      await invalidateCache(userId, collection);
+      return record;
+    } catch (e) {
+      // Server-reachable rejection: the server saw the request and refused.
+      // Surface to the caller without writing optimistic state or queuing —
+      // the server has already decided it will not accept this write, and
+      // queuing it would just spin SyncEngine until max retries.
+      if (e instanceof KoolbaseDataError) throw e;
 
-    // Write to local cache immediately
-    await optimisticallyInsert(userId, collection, optimisticRecord);
-
-    // Add to write queue
-    await addToWriteQueue(userId, {
-      id: generateId(),
-      type: 'insert',
-      collection,
-      data,
-    });
-
-    // Try network in background
-    this.request<KoolbaseRecord>('POST', '/v1/sdk/db/insert', {
-      collection,
-      data,
-    })
-      .then(async serverRecord => {
-        // Invalidate cache so next query gets real data
-        await invalidateCache(userId, collection);
-      })
-      .catch(() => {
-        // Will sync when online via SyncEngine
+      // Genuine network failure → offline path: save to local cache and
+      // queue for SyncEngine to retry when online. Return the optimistic
+      // record so the UI has something to render in the meantime.
+      const optimisticRecord: KoolbaseRecord = {
+        id: generateId(),
+        createdBy: userId,
+        data,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+      await optimisticallyInsert(userId, collection, optimisticRecord);
+      await addToWriteQueue(userId, {
+        id: generateId(),
+        type: 'insert',
+        collection,
+        data,
       });
-
-    return optimisticRecord;
+      return optimisticRecord;
+    }
   }
 
   // ─── Upsert (online-only) ─────────────────────────────────────────────────
@@ -201,7 +217,7 @@ export class KoolbaseDatabase {
   ): Promise<UpsertResult> {
     const res = await fetch(`${this.config.baseUrl}/v1/sdk/db/upsert`, {
       method: 'POST',
-     headers: await this.buildHeaders(),
+      headers: await this.buildHeaders(),
       body: JSON.stringify({ collection, match, data }),
     });
 
@@ -337,20 +353,26 @@ export class KoolbaseDatabase {
     return recordFromWire(raw);
   }
 
-  // ─── Update ─────────────────────────────────────────────────────────────────
+  // ─── Update (online-first with offline fallback) ───────────────────────────
 
+  /**
+   * Update a record's fields by id.
+   *
+   * Online-first: awaits the server so a server-side rejection (unique
+   * violation, not found, permission denial) surfaces as the typed
+   * `KoolbaseDataError` subclass. An update that would violate a unique
+   * constraint now throws `KoolbaseConflictError` with the offending field —
+   * same shape as `insert` and `upsert`.
+   *
+   * On genuine network failure the update is queued for sync and a partial
+   * optimistic record is returned so the UI can re-render the new fields
+   * immediately.
+   */
   async update(
     recordId: string,
     data: Record<string, unknown>
   ): Promise<KoolbaseRecord> {
     const userId = this.getUserId() ?? 'anonymous';
-
-    await addToWriteQueue(userId, {
-      id: generateId(),
-      type: 'update',
-      recordId,
-      data,
-    });
 
     try {
       const raw = await this.request<Record<string, unknown>>(
@@ -359,7 +381,19 @@ export class KoolbaseDatabase {
         { data }
       );
       return recordFromWire(raw);
-    } catch {
+    } catch (e) {
+      // Server-reachable rejection: surface to caller without queuing — the
+      // server already refused the write and will refuse it again on retry.
+      if (e instanceof KoolbaseDataError) throw e;
+
+      // Genuine network failure → queue for sync and return an optimistic
+      // partial record so the UI reflects the update immediately.
+      await addToWriteQueue(userId, {
+        id: generateId(),
+        type: 'update',
+        recordId,
+        data,
+      });
       return {
         id: recordId,
         data,
