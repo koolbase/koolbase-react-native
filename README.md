@@ -125,17 +125,17 @@ Configure Google Sign-In for your environment with the OAuth client IDs from Goo
 
 ```typescript
 // Send a one-time code
-await Koolbase.auth.sendOtp({ phoneE164: '+233200000000' });
+await Koolbase.auth.sendOtp({ phoneNumber: '+233200000000' });
 
 // Verify and sign in
 await Koolbase.auth.verifyOtp({
-  phoneE164: '+233200000000',
+  phoneNumber: '+233200000000',
   code: '123456',
 });
 
 // Or link a phone to an existing account
 await Koolbase.auth.linkPhone({
-  phoneE164: '+233200000000',
+  phoneNumber: '+233200000000',
   code: '123456',
 });
 ```
