@@ -16,24 +16,24 @@ Auth, database, storage, realtime, functions, feature flags, remote config, vers
 3. Add the SDK:
 
 ```bash
-npm install @techfinityedge/koolbase-react-native
-# or
-yarn add @techfinityedge/koolbase-react-native
-# or
-pnpm add @techfinityedge/koolbase-react-native
-# or
-bun add @techfinityedge/koolbase-react-native
+   npm install @techfinityedge/koolbase-react-native
+   # or
+   yarn add @techfinityedge/koolbase-react-native
+   # or
+   pnpm add @techfinityedge/koolbase-react-native
+   # or
+   bun add @techfinityedge/koolbase-react-native
 ```
 
-**4. Initialize at app startup:**
+4. Initialize at app startup:
 
 ```typescript
-import { Koolbase } from '@techfinityedge/koolbase-react-native';
+   import { Koolbase } from '@techfinityedge/koolbase-react-native';
 
-await Koolbase.initialize({
-  publicKey: 'pk_live_xxxx',
-  baseUrl: 'https://api.koolbase.com',
-});
+   await Koolbase.initialize({
+     publicKey: 'pk_live_xxxx',
+     baseUrl: 'https://api.koolbase.com',
+   });
 ```
 
 That's it. Every feature below is now available via `Koolbase.*`.
@@ -175,23 +175,23 @@ await Koolbase.db.delete('record-id');
 
 ### Handling unique-constraint conflicts
 
-  A write that would violate a unique constraint throws `KoolbaseConflictError`:
+A write that would violate a unique constraint throws `KoolbaseConflictError`:
 
-  \`\`\`ts
-  try {
-    await koolbase.db.upsert('users', { email }, { name });
-  } catch (e) {
-    if (e instanceof KoolbaseConflictError) {
-      showError('That email is already registered.');
-    }
+```ts
+try {
+  await Koolbase.db.upsert('users', { email }, { name });
+} catch (e) {
+  if (e instanceof KoolbaseConflictError) {
+    showError('That email is already registered.');
   }
-  \`\`\`
+}
+```
 
 ### Upsert
 
 Insert a record, or update the existing one matching a filter.
 
-\`\`\`ts
+```ts
 const result = await Koolbase.db.upsert(
   'profiles',
   { user_id: userId },
@@ -200,7 +200,7 @@ const result = await Koolbase.db.upsert(
 
 console.log(result.created); // true if inserted, false if updated
 console.log(result.record.id);
-\`\`\`
+```
 
 > Online-only: needs the server's view to decide insert vs update, so unlike
 > `insert` it isn't queued offline and throws on network failure.
@@ -209,12 +209,12 @@ console.log(result.record.id);
 
 Bulk-delete every record matching a filter. Returns the number deleted.
 
-\`\`\`ts
+```ts
 const deleted = await Koolbase.db.deleteWhere('sessions', {
   user_id: userId,
   status: 'expired',
 });
-\`\`\`
+```
 
 > A non-empty filter is required. The collection's delete rule applies; for
 > `owner`/`scoped` rules the delete is scoped to your own records. Online-only.
@@ -253,7 +253,7 @@ const results = await Koolbase.db.batch([
 //   - delete:          { type, deleted: true }
 ```
 
-**Online-only by design.** Atomicity needs the server's authoritative view, so `batch()` is never queued offline — it throws on network failure (like `upsert` and `deleteWhere`). A server-side rejection throws a `KoolbaseDataException` with the failing operation's details; nothing was persisted.
+**Online-only by design.** Atomicity needs the server's authoritative view, so `batch()` is never queued offline — it throws on network failure (like `upsert` and `deleteWhere`). A server-side rejection throws a `KoolbaseDataError` with the failing operation's details; nothing was persisted.
 
 ---
 
@@ -281,17 +281,65 @@ When the device is offline, these writes are queued and synced automatically whe
 
 ## Storage
 
+Upload and serve files via presigned URLs to Cloudflare R2. Uploads are
+**safe-by-default** (v5+) — uploading to a path that's already taken throws
+`KoolbaseStorageConflictError` instead of silently replacing the existing
+file. Pass `overwrite: true` for true upsert semantics.
+
 ```typescript
-const { url } = await Koolbase.storage.upload({
+// Upload — rejects if `user-${userId}.jpg` already exists
+const { object, downloadUrl } = await Koolbase.storage.upload({
   bucket: 'avatars',
   path: `user-${userId}.jpg`,
   file: { uri: imageUri, name: 'avatar.jpg', type: 'image/jpeg' },
 });
 
-const downloadUrl = await Koolbase.storage.getDownloadUrl('avatars', `user-${userId}.jpg`);
+// Upload — silently replaces any existing object at this path
+await Koolbase.storage.upload({
+  bucket: 'avatars',
+  path: `user-${userId}.jpg`,
+  file: { uri: imageUri, name: 'avatar.jpg', type: 'image/jpeg' },
+  overwrite: true,
+});
 
+// Get download URL
+const url = await Koolbase.storage.getDownloadUrl('avatars', `user-${userId}.jpg`);
+
+// Delete
 await Koolbase.storage.delete('avatars', `user-${userId}.jpg`);
 ```
+
+### Handling upload conflicts
+
+For user-supplied filenames, prompt the user before overwriting:
+
+```typescript
+import { KoolbaseStorageConflictError } from '@techfinityedge/koolbase-react-native';
+
+try {
+  await Koolbase.storage.upload({
+    bucket: 'documents',
+    path: filename,
+    file: { uri, name: filename, type: mimeType },
+  });
+} catch (e) {
+  if (e instanceof KoolbaseStorageConflictError) {
+    const ok = await confirm(`${e.path} already exists. Overwrite?`);
+    if (ok) {
+      await Koolbase.storage.upload({
+        bucket: 'documents',
+        path: filename,
+        file: { uri, name: filename, type: mimeType },
+        overwrite: true,
+      });
+    }
+  } else {
+    throw e;
+  }
+}
+```
+
+See [Error handling](#error-handling) for the full set of storage errors.
 
 ---
 
@@ -315,7 +363,7 @@ unsubscribe();
 ```
 
 The socket opens lazily, is shared, and reconnects automatically. The project is
-taken from the user's session..
+taken from the user's session.
 
 ---
 
@@ -518,7 +566,7 @@ All data-layer failures extend `KoolbaseDataError` (which extends `Error`):
 import { KoolbaseConflictError, KoolbaseDataError } from '@techfinityedge/koolbase-react-native';
 
 try {
-  await koolbase.db.upsert('users', { email }, { name });
+  await Koolbase.db.upsert('users', { email }, { name });
 } catch (e) {
   if (e instanceof KoolbaseConflictError) {
     showError(`That ${e.field ?? 'value'} is already taken.`);
@@ -533,13 +581,52 @@ try {
 > the background, so their conflicts surface via the sync engine, not as a
 > thrown error.
 
+### Storage errors
+
+All storage failures extend `KoolbaseStorageError` (which extends `Error`):
+
+| Error | When |
+|---|---|
+| `KoolbaseStorageConflictError` | An upload targets a path that's already taken and `overwrite: false` (409, code `PATH_CONFLICT`). Exposes `.path` — the colliding path. |
+| `KoolbaseStorageNotFoundError` | The bucket or object doesn't exist (404). |
+| `KoolbaseStorageValidationError` | The request was rejected as invalid — bad path, missing field (400). |
+| `KoolbaseStoragePermissionError` | The caller is not allowed to perform the operation (403). |
+
+```ts
+import {
+  KoolbaseStorageConflictError,
+  KoolbaseStorageError,
+  KoolbaseStoragePermissionError,
+} from '@techfinityedge/koolbase-react-native';
+
+try {
+  await Koolbase.storage.upload({
+    bucket: 'avatars',
+    path: 'me.png',
+    file: { uri, name: 'me.png', type: 'image/png' },
+  });
+} catch (e) {
+  if (e instanceof KoolbaseStorageConflictError) {
+    // Already exists — prompt user to confirm overwrite
+    promptOverwrite(e.path);
+  } else if (e instanceof KoolbaseStoragePermissionError) {
+    showError('You do not have permission to upload here.');
+  } else if (e instanceof KoolbaseStorageError) {
+    // Catch-all for any other storage error
+    showError(e.message);
+  } else {
+    throw e;
+  }
+}
+```
+
 ---
 
 ## What's included
 
 - Authentication: email + password, Apple Sign-In, Google Sign-In, phone + OTP
 - Database with offline-first cache, realtime subscriptions, and populate
-- Storage with download URLs
+- Storage with presigned uploads and downloads, safe-by-default conflict handling
 - Realtime subscriptions over WebSocket
 - Authenticated functions (`ctx.auth` exposes the caller automatically)
 - Feature flags and remote config
