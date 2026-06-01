@@ -183,7 +183,39 @@ export interface UploadOptions {
     name: string;
     type: string;
   };
+  /**
+   * If `false` (default in v5+), an upload to a path where an object
+   * already exists is rejected with `KoolbaseStorageConflictError`. Pass
+   * `true` to silently replace the existing object.
+   */
+  overwrite?: boolean;
   onProgress?: (percent: number) => void;
+}
+
+/**
+ * A stored object's server-side metadata. Field names are camelCase here
+ * even though the wire format is snake_case — the SDK maps for you.
+ */
+export interface KoolbaseObject {
+  id: string;
+  projectId: string;
+  bucketId: string;
+  userId: string | null;
+  path: string;
+  size: number;
+  contentType: string | null;
+  /** ISO 8601 timestamp from the server. */
+  createdAt: string;
+  /** ISO 8601 timestamp from the server. */
+  updatedAt: string;
+}
+
+/**
+ * Result of a successful `KoolbaseStorage.upload()` call.
+ */
+export interface UploadResult {
+  object: KoolbaseObject;
+  downloadUrl: string;
 }
 
 // ─── Realtime ──────────────────────────────────────────────────────────────

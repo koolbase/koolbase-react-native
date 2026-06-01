@@ -7,6 +7,145 @@ adheres to [Semantic Versioning][semver].
 [kac]: https://keepachangelog.com/en/1.1.0/
 [semver]: https://semver.org/
 
+## 5.0.0
+
+### Breaking — storage
+
+- **Storage URLs realigned to current server contract.** The v3.0.0 security
+  audit updated auth headers but left storage calling the old pre-refactor
+  endpoints (`/v1/sdk/storage/{bucket}/upload`, `/download`, `/delete`),
+  which the server no longer routes. **Storage uploads have been
+  non-functional since v3.0.0.** v5.0.0 realigns to the current contract:
+  `/v1/sdk/storage/upload-url`, `/confirm`, `/download-url`, `/object`.
+- **3-step upload flow.** `upload()` now does presign → R2 PUT (raw binary, not
+  multipart) → confirm, matching Koolbase Flutter SDK v6.0.0. Confirmation
+  records the object in `storage_objects`, populates `etag`/`size`, and
+  prevents the orphan reaper from deleting your file. Previous "uploads"
+  bypassed confirm entirely and would have been swept on the next reaper pass.
+- **`upload()` return shape changed.** Returns `UploadResult { object, downloadUrl }`
+  instead of `{ url }`. `object` is the full `KoolbaseObject` metadata
+  (id, size, content type, timestamps, etc.).
+- **Safe-by-default uploads.** `UploadOptions` now accepts an `overwrite?: boolean`
+  field, defaulting to `false`. Uploads to a path where an object already
+  exists are **rejected** with a new `KoolbaseStorageConflictError` instead
+  of silently overwriting. Pass `overwrite: true` to opt into the previous
+  replacing behavior.
+- **Storage operations now throw typed `KoolbaseStorageError` subtypes**
+  instead of generic `Error` — catching `Error` still works, but catching
+  the specific subclasses (or the `KoolbaseStorageError` base) gives you
+  cleaner branching.
+
+### Added
+
+- `KoolbaseStorageError` — base class for all storage failures, mirroring
+  the `KoolbaseDataError` pattern from the database layer.
+- `KoolbaseStorageConflictError` (`code: PATH_CONFLICT`) — thrown when an
+  upload would replace an existing object and `overwrite: false`. Exposes
+  the colliding `path` from the server response.
+- `KoolbaseStorageNotFoundError`, `KoolbaseStorageValidationError`,
+  `KoolbaseStoragePermissionError` — typed errors for the other storage
+  error classes (404, 400, 403). Storage operations now throw these
+  instead of a generic `Error`.
+- `koolbaseStorageError(status, body)` and
+  `koolbaseStorageErrorFromResponse(res)` — code-first response-to-error
+  mappers, matching the `database-errors` module pattern.
+- `KoolbaseObject` and `UploadResult` types in `types.ts` — full object
+  metadata is now part of the public surface.
+
+### Migration
+
+**If your app uploads to deterministic paths** (e.g. `avatars/${userId}.png`)
+**and relied on the upload silently replacing the previous file:**
+
+```typescript
+// Before — silent overwrite
+await Koolbase.storage.upload({
+  bucket: 'avatars',
+  path: 'me.png',
+  file: { uri, name, type: 'image/png' },
+});
+
+// After — explicit overwrite
+await Koolbase.storage.upload({
+  bucket: 'avatars',
+  path: 'me.png',
+  file: { uri, name, type: 'image/png' },
+  overwrite: true,
+});
+```
+
+**If you want a conflict prompt** (recommended for user-supplied filenames):
+
+```typescript
+try {
+  await Koolbase.storage.upload({
+    bucket: 'documents',
+    path: filename,
+    file: { uri, name, type },
+  });
+} catch (e) {
+  if (e instanceof KoolbaseStorageConflictError) {
+    const ok = await confirm(`${e.path} already exists. Overwrite?`);
+    if (ok) {
+      await Koolbase.storage.upload({
+        bucket: 'documents',
+        path: filename,
+        file: { uri, name, type },
+        overwrite: true,
+      });
+    }
+  } else {
+    throw e;
+  }
+}
+```
+
+**If you used `const { url } = await upload(...)`:**
+
+```typescript
+// Before
+const { url } = await Koolbase.storage.upload({ ... });
+
+// After
+const { object, downloadUrl } = await Koolbase.storage.upload({ ... });
+const url = downloadUrl;  // if you only want the download URL
+```
+
+**If you catch generic `Error` from storage operations**, consider catching
+`KoolbaseStorageError` (or specific subclasses) for cleaner branching:
+
+```typescript
+try {
+  await Koolbase.storage.upload({ ... });
+} catch (e) {
+  if (e instanceof KoolbaseStorageConflictError) {
+    // Path already exists — prompt user
+  } else if (e instanceof KoolbaseStorageNotFoundError) {
+    // Bucket missing or deleted
+  } else if (e instanceof KoolbaseStoragePermissionError) {
+    // Caller not authorized
+  } else if (e instanceof KoolbaseStorageError) {
+    // Any other storage error
+    showError(e.message);
+  } else {
+    throw e;
+  }
+}
+```
+
+### Server requirements
+
+- Requires a Koolbase server build with `PATH_CONFLICT` 409 support and the
+  `upload-url` / `confirm` / `download-url` / `object` routes (shipped
+  alongside this release).
+
+### Verification recommended
+
+Storage in v3.0.0–v4.2.1 was non-functional. v5.0.0 is the first working
+upload path since the security audit. **Test uploads end-to-end on a real
+iOS and Android device after upgrading** — RN's `fetch` Blob-PUT behavior
+can vary subtly by platform.
+
 ## 4.2.1
 
 ### Fixed

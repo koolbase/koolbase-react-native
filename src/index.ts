@@ -21,6 +21,7 @@ import { KoolbaseConfig, VersionCheckResult } from './types';
 export * from './types';
 export * from './auth-errors';
 export * from './database-errors';
+export * from './storage-errors';
 export { KoolbaseAuth, KoolbaseDatabase, KoolbaseFlags, KoolbaseFunctions, KoolbaseRealtime, KoolbaseStorage };
 
 let _auth: KoolbaseAuth | null = null;
