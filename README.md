@@ -322,24 +322,64 @@ try {
     path: filename,
     file: { uri, name: filename, type: mimeType },
   });
-} catch (e) {
-  if (e instanceof KoolbaseStorageConflictError) {
-    const ok = await confirm(`${e.path} already exists. Overwrite?`);
-    if (ok) {
-      await Koolbase.storage.upload({
-        bucket: 'documents',
-        path: filename,
-        file: { uri, name: filename, type: mimeType },
-        overwrite: true,
-      });
-    }
-  } else {
-    throw e;
-  }
+} catch (e) catch (e) {
+if (e instanceof KoolbaseStorageConflictError) {
+const ok = await confirm(${e.path} already exists. Overwrite?);
+if (ok) {
+await Koolbase.storage.upload({
+bucket: 'documents',
+path: filename,
+file: { uri, name: filename, type: mimeType },
+overwrite: true,
+});
+}
+} else {
+throw e;
+}
 }
 ```
 
 See [Error handling](#error-handling) for the full set of storage errors.
+
+---
+
+### Handling bucket limits
+
+Buckets can be configured at creation time with a total size cap
+(`max_size_bytes`), a per-file cap (`max_file_size_bytes`), and a
+content-type allowlist (`allowed_mime_types`, supports `image/*`-style
+wildcards). The server surfaces violations as typed errors:
+
+````typescript
+import {
+  KoolbaseStorageQuotaError,
+  KoolbaseStorageFileTooLargeError,
+  KoolbaseStorageMimeTypeError,
+} from '@techfinityedge/koolbase-react-native';
+
+try {
+  await Koolbase.storage.upload({
+    bucket: 'user-photos',
+    path: filename,
+    file: { uri, name: filename, type: mimeType },
+  });
+} catch (e) {
+  if (e instanceof KoolbaseStorageMimeTypeError) {
+    showError('That file type is not allowed in this bucket.');
+  } else if (e instanceof KoolbaseStorageFileTooLargeError) {
+    showError('That file is too big — pick a smaller one.');
+  } else if (e instanceof KoolbaseStorageQuotaError) {
+    showError('This bucket is full — delete some files and try again.');
+  } else {
+    throw e;
+  }
+}
+````
+
+MIME enforcement runs at presign time — no bytes are transferred before
+rejection. File-size and quota enforcement run at confirm time; the
+server cleans up the underlying R2 object before returning the error,
+so nothing leaks.
 
 ---
 
@@ -555,12 +595,13 @@ handling doesn't depend on message text.
 All data-layer failures extend `KoolbaseDataError` (which extends `Error`):
 
 | Error | When |
-|---|---|
-| `KoolbaseConflictError` | A write violates a unique constraint (409). Exposes `.field`. |
-| `KoolbaseNotFoundError` | The record or collection doesn't exist (404). |
-| `KoolbaseValidationError` | The request was rejected as invalid (400). |
-| `KoolbasePermissionError` | An access rule denied the operation (403). |
-| `KoolbaseRateLimitError` | The caller is being rate-limited (429). |
+| `KoolbaseStorageConflictError` | An upload targets a path that's already taken and `overwrite: false` (409, code `PATH_CONFLICT`). Exposes `.path` — the colliding path. |
+| `KoolbaseStorageNotFoundError` | The bucket or object doesn't exist (404). |
+| `KoolbaseStorageValidationError` | The request was rejected as invalid — bad path, missing field (400). |
+| `KoolbaseStoragePermissionError` | The caller is not allowed to perform the operation (403). |
+| `KoolbaseStorageQuotaError` | An upload would push the bucket past its `max_size_bytes` cap (409, code `QUOTA_EXCEEDED`). |
+| `KoolbaseStorageFileTooLargeError` | A single file exceeds the bucket's `max_file_size_bytes` cap (413, code `FILE_TOO_LARGE`). |
+| `KoolbaseStorageMimeTypeError` | The upload's content-type isn't in the bucket's `allowed_mime_types` allowlist (415, code `MIME_NOT_ALLOWED`). |
 
 ```ts
 import { KoolbaseConflictError, KoolbaseDataError } from '@techfinityedge/koolbase-react-native';

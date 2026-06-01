@@ -7,6 +7,35 @@ adheres to [Semantic Versioning][semver].
 [kac]: https://keepachangelog.com/en/1.1.0/
 [semver]: https://semver.org/
 
+## 5.1.0
+
+### Added — storage
+
+- Three new typed errors covering the bucket-limit failure modes
+  introduced server-side in Storage #2. All extend
+  `KoolbaseStorageError`, so existing `instanceof KoolbaseStorageError`
+  catch-all blocks continue to work; check the specific type to branch
+  on the kind of limit hit.
+  - `KoolbaseStorageQuotaError` — 409 + `QUOTA_EXCEEDED`, thrown when
+    an upload would push the bucket past its `max_size_bytes` cap.
+  - `KoolbaseStorageFileTooLargeError` — 413 + `FILE_TOO_LARGE`, thrown
+    when a single file exceeds the bucket's `max_file_size_bytes` cap.
+  - `KoolbaseStorageMimeTypeError` — 415 + `MIME_NOT_ALLOWED`, thrown
+    when an upload's content-type isn't in the bucket's
+    `allowed_mime_types` allowlist (supports `type/*` wildcards).
+- Mapper (`koolbaseStorageError` / `koolbaseStorageErrorFromResponse`)
+  recognizes the new codes via code-first lookup and the new HTTP
+  statuses (413, 415) via status fallback.
+
+### Notes
+
+- Backwards-compatible: pure additive surface. v5.0.0 → v5.1.0.
+- Status-fallback for 409 remains `KoolbaseStorageConflictError` (path
+  collisions are the more common case); modern servers always emit
+  `code`, so the ambiguity only affects very old API responses.
+- Pairs with `koolbase_flutter` v6.1.0 (published earlier today). Same
+  three error types, same code-first mapper extension.
+
 ## 5.0.0
 
 ### Breaking — storage
