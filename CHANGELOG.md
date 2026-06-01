@@ -7,6 +7,17 @@ adheres to [Semantic Versioning][semver].
 [kac]: https://keepachangelog.com/en/1.1.0/
 [semver]: https://semver.org/
 
+## 5.1.1
+
+### Fixed — storage
+
+- Storage error mapper now switches on lowercase wire codes
+  (`path_conflict`, `quota_exceeded`, `file_too_large`, `mime_not_allowed`)
+  after the server normalized storage codes to lowercase snake_case.
+  Without this patch, v5.1.0 customers see generic `KoolbaseStorageError`
+  instead of the typed subclass for storage limit errors. No semantic
+  changes beyond the case match. Pairs with `koolbase_flutter` v6.1.1.
+
 ## 5.1.0
 
 ### Added — storage
