@@ -17,7 +17,7 @@ export class KoolbaseStorageError extends Error {
 /**
  * Thrown when an upload is rejected because an object already exists at
  * the requested path — the server responds with 409 Conflict and code
- * `PATH_CONFLICT`. Catch it to give the user an "overwrite this file?"
+ * `path_conflict`. Catch it to give the user an "overwrite this file?"
  * prompt, then retry the upload with `overwrite: true`.
  *
  * `path` is the colliding path the server rejected, surfaced from the
@@ -48,7 +48,7 @@ export class KoolbaseStorageConflictError extends KoolbaseStorageError {
   path?: string;
 
   constructor(message?: string, path?: string) {
-    super(message ?? 'An object already exists at this path', 'PATH_CONFLICT');
+    super(message ?? 'An object already exists at this path', 'path_conflict');
     this.path = path;
     this.name = 'KoolbaseStorageConflictError';
     Object.setPrototypeOf(this, KoolbaseStorageConflictError.prototype);
@@ -99,7 +99,7 @@ export class KoolbaseStoragePermissionError extends KoolbaseStorageError {
 /**
  * Thrown when an upload would push the bucket past its configured
  * `max_size_bytes` quota — the server responds with 409 Conflict and code
- * `QUOTA_EXCEEDED`. The server cleans up the underlying R2 object before
+ * `quota_exceeded`. The server cleans up the underlying R2 object before
  * returning; nothing leaks. Catch this to surface a "bucket is full"
  * message or prompt the caller to delete older files. The per-bucket
  * quota is set at bucket creation time and is currently immutable.
@@ -110,7 +110,7 @@ export class KoolbaseStoragePermissionError extends KoolbaseStorageError {
  */
 export class KoolbaseStorageQuotaError extends KoolbaseStorageError {
   constructor(message?: string) {
-    super(message ?? 'Bucket quota exceeded', 'QUOTA_EXCEEDED');
+    super(message ?? 'Bucket quota exceeded', 'quota_exceeded');
     this.name = 'KoolbaseStorageQuotaError';
     Object.setPrototypeOf(this, KoolbaseStorageQuotaError.prototype);
   }
@@ -119,14 +119,14 @@ export class KoolbaseStorageQuotaError extends KoolbaseStorageError {
 /**
  * Thrown when a single file exceeds the bucket's configured
  * `max_file_size_bytes` — the server responds with 413 Payload Too Large
- * and code `FILE_TOO_LARGE`. The server cleans up the underlying R2
+ * and code `file_too_large`. The server cleans up the underlying R2
  * object before returning. The configured per-file limit lives on the
  * bucket record; check `Bucket.maxFileSizeBytes` to surface a clear
  * "files must be under X MB" message at the call site.
  */
 export class KoolbaseStorageFileTooLargeError extends KoolbaseStorageError {
   constructor(message?: string) {
-    super(message ?? 'File exceeds the bucket maximum file size', 'FILE_TOO_LARGE');
+    super(message ?? 'File exceeds the bucket maximum file size', 'file_too_large');
     this.name = 'KoolbaseStorageFileTooLargeError';
     Object.setPrototypeOf(this, KoolbaseStorageFileTooLargeError.prototype);
   }
@@ -135,7 +135,7 @@ export class KoolbaseStorageFileTooLargeError extends KoolbaseStorageError {
 /**
  * Thrown when an upload's content-type isn't in the bucket's configured
  * `allowed_mime_types` allowlist — the server responds with 415
- * Unsupported Media Type and code `MIME_NOT_ALLOWED`. The check runs at
+ * Unsupported Media Type and code `mime_not_allowed`. The check runs at
  * presign time, so no bytes are transferred before rejection.
  *
  * Allowlists support `type/*` wildcards (e.g. `image/*` matches every
@@ -144,7 +144,7 @@ export class KoolbaseStorageFileTooLargeError extends KoolbaseStorageError {
  */
 export class KoolbaseStorageMimeTypeError extends KoolbaseStorageError {
   constructor(message?: string) {
-    super(message ?? 'Content-type not allowed for this bucket', 'MIME_NOT_ALLOWED');
+    super(message ?? 'Content-type not allowed for this bucket', 'mime_not_allowed');
     this.name = 'KoolbaseStorageMimeTypeError';
     Object.setPrototypeOf(this, KoolbaseStorageMimeTypeError.prototype);
   }
@@ -156,8 +156,8 @@ export class KoolbaseStorageMimeTypeError extends KoolbaseStorageError {
  * falling back to the HTTP status for older or uncoded responses. Always
  * returns an error to throw.
  *
- * Status-fallback note: HTTP 409 covers both PATH_CONFLICT and
- * QUOTA_EXCEEDED. Without a `code` field, the mapper defaults 409 to
+ * Status-fallback note: HTTP 409 covers both path_conflict and
+ * quota_exceeded. Without a `code` field, the mapper defaults 409 to
  * {@link KoolbaseStorageConflictError} since path collisions are the more
  * common case. Modern Koolbase servers always emit `code`, so this only
  * matters for very old API responses or non-Koolbase 409s.
@@ -172,13 +172,13 @@ export function koolbaseStorageError(
 
   // ─── code-first ───
   switch (code) {
-    case 'PATH_CONFLICT':
+    case 'path_conflict':
       return new KoolbaseStorageConflictError(message, body?.path);
-    case 'QUOTA_EXCEEDED':
+    case 'quota_exceeded':
       return new KoolbaseStorageQuotaError(message);
-    case 'FILE_TOO_LARGE':
+    case 'file_too_large':
       return new KoolbaseStorageFileTooLargeError(message);
-    case 'MIME_NOT_ALLOWED':
+    case 'mime_not_allowed':
       return new KoolbaseStorageMimeTypeError(message);
   }
 
