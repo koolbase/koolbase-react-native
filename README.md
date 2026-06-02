@@ -73,6 +73,8 @@ const unsubscribe = Koolbase.auth.onAuthStateChange((user) => {
 });
 ```
 
+---
+
 ### OAuth — Apple
 
 Apple Sign-In uses the native authentication flow via `@invertase/react-native-apple-authentication` as a peer dependency:
@@ -100,6 +102,8 @@ const session = await Koolbase.auth.signInWithApple({
 
 Configure Apple Sign-In for your environment with your iOS app's Bundle ID. Full setup guide at [docs.koolbase.com/auth/oauth](https://docs.koolbase.com/auth/oauth).
 
+---
+
 ### OAuth — Google
 
 Google Sign-In uses the native authentication flow via `@react-native-google-signin/google-signin` as a peer dependency:
@@ -120,6 +124,8 @@ const session = await Koolbase.auth.signInWithGoogle({
 ```
 
 Configure Google Sign-In for your environment with the OAuth client IDs from Google Cloud Console (typically one each for iOS, Android, and web). Full setup guide at [docs.koolbase.com/auth/oauth](https://docs.koolbase.com/auth/oauth).
+
+---
 
 ### Phone + OTP
 
@@ -173,6 +179,8 @@ await Koolbase.db.update('record-id', { title: 'Updated' });
 await Koolbase.db.delete('record-id');
 ```
 
+---
+
 ### Handling unique-constraint conflicts
 
 A write that would violate a unique constraint throws `KoolbaseConflictError`:
@@ -186,6 +194,46 @@ try {
   }
 }
 ```
+
+---
+
+### Public bucket URLs
+
+For files in public buckets, you can construct the stable CDN URL directly — no
+network call, no expiry, embeddable anywhere a browser fetches a URL.
+
+```typescript
+import { KoolbaseStorage } from '@techfinityedge/koolbase-react-native';
+
+// From a KoolbaseObject you already have (e.g. from upload() or another read)
+const { object } = await Koolbase.storage.upload({
+  bucket: 'avatars',
+  path: `user-${userId}.jpg`,
+  file: { uri: imageUri, name: 'avatar.jpg', type: 'image/jpeg' },
+});
+
+const url = KoolbaseStorage.publicUrlForObject(object, 'avatars');
+// url is null for private-bucket objects; the CDN URL for public-bucket ones.
+
+if (url) {
+  // Safe to use — file lives in the public R2 bucket
+  return <Image source={{ uri: url }} />;
+}
+
+// For build-time URL construction (no Object on hand)
+const url = KoolbaseStorage.publicUrl({
+  projectId: 'proj_abc',
+  bucket: 'avatars',
+  path: 'user-123.jpg',
+});
+// Always returns the URL pattern; caller is responsible for knowing
+// the file lives in a public bucket. For files in private buckets,
+// the resulting URL will 404.
+```
+
+URLs follow the pattern `https://cdn.koolbase.com/{project_id}/{bucket}/{path}` — long-lived, edge-cached, no authentication. For files in private buckets, use `getDownloadUrl` instead, which returns a 1-hour presigned URL.
+
+---
 
 ### Upsert
 
@@ -229,6 +277,8 @@ if (isFromCache) console.log('Served from local cache');
 
 await Koolbase.db.syncPendingWrites();
 ```
+
+---
 
 ### Atomic batch writes
 
@@ -308,6 +358,8 @@ const url = await Koolbase.storage.getDownloadUrl('avatars', `user-${userId}.jpg
 // Delete
 await Koolbase.storage.delete('avatars', `user-${userId}.jpg`);
 ```
+
+---
 
 ### Handling upload conflicts
 
@@ -621,6 +673,8 @@ try {
 > `update`, and `delete` are optimistic/offline-first — they queue and sync in
 > the background, so their conflicts surface via the sync engine, not as a
 > thrown error.
+
+---
 
 ### Storage errors
 

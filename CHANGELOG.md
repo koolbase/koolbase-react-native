@@ -7,6 +7,44 @@ adheres to [Semantic Versioning][semver].
 [kac]: https://keepachangelog.com/en/1.1.0/
 [semver]: https://semver.org/
 
+# 5.3.0
+
+### Added — storage
+
+- Public bucket CDN URLs (Gap #2 SDK polish).
+  - `KoolbaseObject` gains an `r2Bucket: string` field identifying
+    which physical R2 bucket holds the object's bytes. Always
+    populated. `'koolbase-storage-public'` means the object has a
+    stable CDN URL; anything else (typically `'koolbase-storage'`)
+    means it's in private storage and reads go through a presigned
+    URL via `getDownloadUrl`.
+  - `KoolbaseStorage.publicUrl({ projectId, bucket, path })` — static
+    method that builds the CDN URL pattern unconditionally. Use for
+    build-time URL generation where you have the inputs but don't
+    need (or want) a check that the file is actually in a public
+    bucket.
+  - `KoolbaseStorage.publicUrlForObject(obj, bucket)` — static method
+    that returns the stable CDN URL when the object lives in the
+    public R2 bucket, `null` otherwise. Use this when you have a
+    `KoolbaseObject` instance and want a safe URL — returns `null`
+    rather than a URL that 404s for private or legacy public-bucket
+    files.
+
+### Internal
+
+- Storage object JSON mapper extended to surface the server's
+  `r2_bucket` field as `r2Bucket` on the typed `KoolbaseObject`.
+  Defaults to `'koolbase-storage'` when the field is absent (older
+  cached responses, non-Koolbase JSON) so existing code keeps
+  decoding without crashes.
+
+### Compatibility
+
+No breaking changes. `getDownloadUrl` already returns the CDN URL
+for objects in public buckets since the server-side Gap #2 deploy on
+Jun 2 2026 — this release just makes that URL constructible without
+a network round-trip.
+
 ## 5.2.0
 
 ### Added — storage

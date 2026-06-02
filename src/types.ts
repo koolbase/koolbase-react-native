@@ -214,6 +214,16 @@ export interface KoolbaseObject {
   id: string;
   projectId: string;
   bucketId: string;
+  /**
+   * Name of the physical R2 bucket holding this object's bytes
+   * (Gap #2). `'koolbase-storage-public'` means the object has a
+   * stable CDN URL — construct it with
+   * `KoolbaseStorage.publicUrlForObject(obj, bucket)`. Anything else
+   * (typically `'koolbase-storage'`) means the object is in private
+   * storage and reads go through {@link KoolbaseStorage.getDownloadUrl},
+   * which returns a 1-hour presigned URL.
+   */
+  r2Bucket: string;
   userId: string | null;
   path: string;
   size: number;

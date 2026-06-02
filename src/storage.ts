@@ -213,6 +213,46 @@ export class KoolbaseStorage {
   }
 
   /**
+   * Build the stable public CDN URL for a file in a public bucket.
+   *
+   * Returns the URL unconditionally — no check on whether the file
+   * exists or whether the bucket is actually public. Use when you
+   * know the file is in a public bucket and want the URL without a
+   * network round-trip (build-time URL generation, server-side
+   * rendering, batch image processing, etc.).
+   *
+   * For safer construction from an Object you already have, use
+   * {@link KoolbaseStorage.publicUrlForObject} — it checks the stored
+   * `r2Bucket` value and returns `null` when the object isn't in the
+   * public R2 bucket.
+   */
+  static publicUrl(args: { projectId: string; bucket: string; path: string }): string {
+    // Encode each path segment individually so slashes are preserved
+    // while spaces, parens, hashes, and query characters are escaped.
+    const encoded = args.path.split('/').map(encodeURIComponent).join('/');
+    return `https://cdn.koolbase.com/${args.projectId}/${args.bucket}/${encoded}`;
+  }
+
+  /**
+   * Returns the stable CDN URL for an object when its bytes physically
+   * live in the public R2 bucket, `null` otherwise.
+   *
+   * Returns `null` for:
+   * - Files in private buckets (no public URL ever)
+   * - Legacy files in public buckets whose bytes still live in the
+   *   private R2 bucket from before Gap #2 (no permanent URL until
+   *   they're re-uploaded)
+   *
+   * The bucket name must be supplied because {@link KoolbaseObject}
+   * carries only the bucket ID, not its name. Typically the caller
+   * already knows which bucket they queried.
+   */
+  static publicUrlForObject(obj: KoolbaseObject, bucket: string): string | null {
+    if (obj.r2Bucket !== 'koolbase-storage-public') return null;
+    return KoolbaseStorage.publicUrl({ projectId: obj.projectId, bucket, path: obj.path });
+  }
+
+  /**
    * Delete a file from a bucket.
    */
   async delete(bucket: string, path: string): Promise<void> {
@@ -247,6 +287,7 @@ function mapObjectFromServer(raw: any): KoolbaseObject {
     size: raw.size ?? 0,
     contentType: raw.content_type ?? null,
     metadata: (raw.metadata as Record<string, string> | undefined) ?? {},
+    r2Bucket: raw.r2_bucket ?? 'koolbase-storage',
     createdAt: raw.created_at,
     updatedAt: raw.updated_at,
   };
