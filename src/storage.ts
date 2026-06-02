@@ -40,6 +40,13 @@ export class KoolbaseStorage {
    * Set `overwrite: true` for true upsert semantics — silently replace any
    * existing object at this path.
    *
+   * Pass `options.metadata` to attach arbitrary user-defined key/value pairs
+   * to the object at confirm time. Subject to the limits documented on
+   * {@link KoolbaseObject.metadata}; violations throw
+   * `KoolbaseStorageMetadataInvalidError`. On the `overwrite: true` path the
+   * metadata REPLACES any prior metadata at this path (matches GCS semantics).
+   * Use {@link updateMetadata} for post-upload merge changes.
+   *
    * **Breaking change in v5.0.0**: the default flipped from silent overwrite
    * (legacy behavior) to safe-by-default. If you previously relied on uploads
    * overwriting silently, pass `overwrite: true` explicitly.
@@ -92,6 +99,22 @@ export class KoolbaseStorage {
     const etag = uploadRes.headers.get('etag') ?? '';
 
     // ─── Step 3: Confirm upload ───
+    // Build the body conditionally so the `metadata` field is only sent
+    // when the caller passed it — keeps the wire shape clean for callers
+    // that don't care, and lets the server's omitempty path treat absent
+    // as "no metadata."
+    const confirmBody: Record<string, unknown> = {
+      bucket: options.bucket,
+      path: options.path,
+      size: fileSize,
+      content_type: contentType,
+      etag,
+      overwrite,
+    };
+    if (options.metadata !== undefined) {
+      confirmBody.metadata = options.metadata;
+    }
+
     const confirmRes = await fetch(
       `${this.config.baseUrl}/v1/sdk/storage/confirm`,
       {
@@ -100,14 +123,7 @@ export class KoolbaseStorage {
           ...(await this.buildHeaders()),
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          bucket: options.bucket,
-          path: options.path,
-          size: fileSize,
-          content_type: contentType,
-          etag,
-          overwrite,
-        }),
+        body: JSON.stringify(confirmBody),
       }
     );
     if (!confirmRes.ok) {
@@ -123,6 +139,62 @@ export class KoolbaseStorage {
     const downloadUrl = await this.getDownloadUrl(options.bucket, options.path);
 
     return { object, downloadUrl };
+  }
+
+  /**
+   * Apply a partial metadata update to an existing object. Returns the
+   * post-update {@link KoolbaseObject} with the merged metadata.
+   *
+   * **Merge semantics** (mirrors the server's JSONB merge):
+   *
+   * - Keys with a non-null string value are SET — added if missing,
+   *   replacing any existing value at the key otherwise.
+   * - Keys with `null` are DELETED from the stored metadata.
+   * - Keys ABSENT from `metadata` are untouched — pre-existing entries
+   *   for those keys remain unchanged.
+   *
+   * Validation runs server-side against the same rules as upload-time
+   * metadata; violations throw `KoolbaseStorageMetadataInvalidError`,
+   * whose `detail` field names the failing key and rule. The check is
+   * performed against the projected post-merge state, so adding a key
+   * that would push the object past the 50-key or 8KB ceiling is
+   * rejected before the row is mutated.
+   *
+   * @example
+   * // Add a tag, update an existing key, and drop another in one call:
+   * const updated = await Koolbase.storage.updateMetadata(
+   *   'photos',
+   *   'sunset.jpg',
+   *   {
+   *     category: 'landscape',  // SET or UPDATE
+   *     tag:      'sunset',     // SET or UPDATE
+   *     owner:    null,         // DELETE
+   *   }
+   * );
+   * console.log(updated.metadata);
+   * // -> { category: 'landscape', tag: 'sunset' }
+   */
+  async updateMetadata(
+    bucket: string,
+    path: string,
+    metadata: Record<string, string | null>
+  ): Promise<KoolbaseObject> {
+    const res = await fetch(
+      `${this.config.baseUrl}/v1/sdk/storage/objects/metadata`,
+      {
+        method: 'PATCH',
+        headers: {
+          ...(await this.buildHeaders()),
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ bucket, path, metadata }),
+      }
+    );
+    if (!res.ok) {
+      throw await koolbaseStorageErrorFromResponse(res, 'Failed to update metadata');
+    }
+    const raw = await res.json();
+    return mapObjectFromServer(raw);
   }
 
   /**
@@ -161,6 +233,9 @@ export class KoolbaseStorage {
 
 /**
  * Maps the snake_case server JSON to the camelCase {@link KoolbaseObject}.
+ * Defensive: missing or null `metadata` (older / non-Koolbase responses)
+ * is coerced to an empty object so callers always see a typed
+ * `Record<string, string>` rather than null.
  */
 function mapObjectFromServer(raw: any): KoolbaseObject {
   return {
@@ -171,6 +246,7 @@ function mapObjectFromServer(raw: any): KoolbaseObject {
     path: raw.path,
     size: raw.size ?? 0,
     contentType: raw.content_type ?? null,
+    metadata: (raw.metadata as Record<string, string> | undefined) ?? {},
     createdAt: raw.created_at,
     updatedAt: raw.updated_at,
   };

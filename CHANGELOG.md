@@ -7,6 +7,50 @@ adheres to [Semantic Versioning][semver].
 [kac]: https://keepachangelog.com/en/1.1.0/
 [semver]: https://semver.org/
 
+## 5.2.0
+
+### Added — storage
+
+- Custom object metadata. Attach arbitrary key/value pairs to stored
+  objects at upload time, mutate via merge semantics post-upload, read
+  alongside any `KoolbaseObject`.
+  - `KoolbaseStorage.upload({ metadata })` accepts an optional
+    `metadata: Record<string, string>` field on `UploadOptions`. Set
+    at confirm time; REPLACES prior metadata on the `overwrite: true`
+    path (matches GCS semantics — a new upload at a path produces a
+    new object, not a patch of the old).
+  - New `KoolbaseStorage.updateMetadata(bucket, path, metadata)`
+    method with merge semantics: keys with a non-null string value
+    are set/updated, keys with `null` are deleted, keys absent from
+    the payload are untouched. One call handles add, update, and
+    delete atomically.
+  - `KoolbaseObject` gains a `metadata: Record<string, string>` field.
+    Always non-null — empty object `{}` when no metadata is set —
+    so callers can treat it as a guaranteed record without null
+    checks. Defensive decode handles missing/null `metadata` field
+    gracefully so older cached responses don't crash the mapper.
+- New `KoolbaseStorageMetadataInvalidError` (extends
+  `KoolbaseStorageError`) thrown for server-side validation
+  failures (HTTP 400, code `metadata_invalid`). Its `detail` field
+  names the failing key and rule (e.g. `key "bad key": must match
+  [a-z0-9_]+`, `exceeds 50 keys (got 53)`) so callers can surface
+  actionable errors without guessing what shape rule was violated.
+- Mapper recognizes `metadata_invalid` and extracts `detail` from the
+  response body.
+
+### Notes
+
+- Validation rules (enforced server-side): ≤50 keys per object, ≤8KB
+  total (sum of all key + value lengths), keys 1–64 chars matching
+  `[a-z0-9_]+`, values ≤1024 chars, leading underscore reserved for
+  system keys.
+- Backwards-compatible: pure additive surface. v5.1.1 → v5.2.0. Existing
+  `upload()` callers without `metadata` continue working unchanged;
+  catching `KoolbaseStorageError` still catches the new metadata error.
+- Pairs with `koolbase_flutter` v6.2.0 (published earlier today). Same
+  client surface (`upload({ metadata })`, `updateMetadata`), same error
+  type semantics, same merge contract.
+
 ## 5.1.1
 
 ### Fixed — storage

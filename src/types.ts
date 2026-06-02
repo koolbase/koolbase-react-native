@@ -189,6 +189,20 @@ export interface UploadOptions {
    * `true` to silently replace the existing object.
    */
   overwrite?: boolean;
+  /**
+   * User-defined key/value metadata to attach to the object at confirm
+   * time. Optional — when omitted, the object stores empty metadata `{}`.
+   *
+   * Subject to server-side validation (≤50 keys, ≤8KB total, keys 1–64
+   * chars matching `[a-z0-9_]+`, values ≤1024 chars, leading underscore
+   * reserved); violations throw `KoolbaseStorageMetadataInvalidError`.
+   *
+   * On the `overwrite: true` path, metadata REPLACES any prior metadata
+   * at this path (matches GCS semantics — a new upload at a path
+   * produces a new object, not a patch of the old). Use `updateMetadata`
+   * for post-upload merge changes.
+   */
+  metadata?: Record<string, string>;
   onProgress?: (percent: number) => void;
 }
 
@@ -204,6 +218,14 @@ export interface KoolbaseObject {
   path: string;
   size: number;
   contentType: string | null;
+  /**
+   * User-defined key/value metadata attached to this object. Always
+   * non-null — empty object when no metadata has been set (the server
+   * returns `{}` rather than `null` so callers can treat it as a
+   * guaranteed object without null checks). Set on upload via
+   * `upload({ metadata })` or mutated post-upload via `updateMetadata`.
+   */
+  metadata: Record<string, string>;
   /** ISO 8601 timestamp from the server. */
   createdAt: string;
   /** ISO 8601 timestamp from the server. */

@@ -151,6 +151,53 @@ export class KoolbaseStorageMimeTypeError extends KoolbaseStorageError {
 }
 
 /**
+ * Thrown when an object metadata payload (either at upload-confirm time
+ * or via `updateMetadata`) fails server-side validation — the server
+ * responds with 400 and code `metadata_invalid`.
+ *
+ * The `detail` field carries the specific reason from the server — e.g.
+ * `'key "foo bar": must match [a-z0-9_]+'`, `'exceeds 50 keys (got 53)'`,
+ * or `'exceeds 8192 bytes total (sum of all key + value lengths)'`. The
+ * detail names the failing key and rule so callers can fix the offending
+ * entry without guessing what shape rule was violated.
+ *
+ * Validation rules (enforced server-side):
+ * - At most 50 keys per object.
+ * - At most 8KB total (sum of byte lengths across all keys + values).
+ * - Keys: 1–64 chars, must match `[a-z0-9_]+`.
+ * - Keys with a leading underscore are reserved for system use.
+ * - Values: at most 1024 chars each.
+ *
+ * @example
+ * try {
+ *   await Koolbase.storage.updateMetadata('photos', 'sunset.jpg', {
+ *     tag: 'sunset',
+ *     'BAD KEY': 'oops',
+ *   });
+ * } catch (e) {
+ *   if (e instanceof KoolbaseStorageMetadataInvalidError) {
+ *     console.warn('Metadata rejected:', e.detail);
+ *     // -> 'Metadata rejected: key "BAD KEY": must match [a-z0-9_]+'
+ *   }
+ * }
+ */
+export class KoolbaseStorageMetadataInvalidError extends KoolbaseStorageError {
+  /**
+   * The specific validation failure reported by the server. Names the
+   * failing key (when applicable) and the rule that was violated.
+   * Surface this directly to developer logs or user-facing UI.
+   */
+  detail?: string;
+
+  constructor(message?: string, detail?: string) {
+    super(message ?? 'Metadata payload is invalid', 'metadata_invalid');
+    this.detail = detail;
+    this.name = 'KoolbaseStorageMetadataInvalidError';
+    Object.setPrototypeOf(this, KoolbaseStorageMetadataInvalidError.prototype);
+  }
+}
+
+/**
  * Maps a non-2xx storage-layer response to a typed
  * {@link KoolbaseStorageError}, preferring the server's stable `code` and
  * falling back to the HTTP status for older or uncoded responses. Always
@@ -180,6 +227,8 @@ export function koolbaseStorageError(
       return new KoolbaseStorageFileTooLargeError(message);
     case 'mime_not_allowed':
       return new KoolbaseStorageMimeTypeError(message);
+    case 'metadata_invalid':
+      return new KoolbaseStorageMetadataInvalidError(message, body?.detail);
   }
 
   // ─── status fallback (pre-code servers or uncoded paths) ───
