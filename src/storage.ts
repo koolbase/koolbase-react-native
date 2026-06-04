@@ -1,8 +1,40 @@
-import { KoolbaseConfig, UploadOptions, UploadResult, KoolbaseObject } from './types';
+import {
+  KoolbaseConfig,
+  UploadOptions,
+  UploadResult,
+  KoolbaseObject,
+  KoolbaseImageTransform,
+} from './types';
 import {
   KoolbaseStorageError,
   koolbaseStorageErrorFromResponse,
 } from './storage-errors';
+
+
+// --- Cloudflare image-transform URL helpers -------------------------------
+// Module-private — callers use KoolbaseStorage.publicUrl / publicUrlForObject.
+
+function clampInt(v: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, Math.floor(v)));
+}
+
+/**
+ * Serializes a transform spec to Cloudflare's comma-separated key=value
+ * options segment (e.g. `width=400,format=webp,quality=80`). Returns the
+ * empty string when no fields are set — callers can use that to skip the
+ * `/cdn-cgi/image/` URL prefix entirely.
+ */
+function serializeTransform(t: KoolbaseImageTransform): string {
+  const parts: string[] = [];
+  if (t.width != null) parts.push(`width=${clampInt(t.width, 1, 2000)}`);
+  if (t.height != null) parts.push(`height=${clampInt(t.height, 1, 2000)}`);
+  if (t.format) parts.push(`format=${t.format}`);
+  if (t.quality != null) parts.push(`quality=${clampInt(t.quality, 1, 100)}`);
+  if (t.fit) parts.push(`fit=${t.fit}`);
+  if (t.dpr != null) parts.push(`dpr=${clampInt(t.dpr, 1, 3)}`);
+  if (t.gravity) parts.push(`gravity=${t.gravity}`);
+  return parts.join(',');
+}
 
 /**
  * Koolbase storage client — uploads, downloads, and deletes via presigned
@@ -226,11 +258,26 @@ export class KoolbaseStorage {
    * `r2Bucket` value and returns `null` when the object isn't in the
    * public R2 bucket.
    */
-  static publicUrl(args: { projectId: string; bucket: string; path: string }): string {
+  static publicUrl(args: {
+    projectId: string;
+    bucket: string;
+    path: string;
+    /**
+     * Optional Cloudflare Image Transformations. Adds a `/cdn-cgi/image/`
+     * URL prefix; billed against the koolbase.com zone's free monthly
+     * allocation (5,000 unique transforms/month). Each unique combination
+     * of `path` + options is cached and billed only once per calendar month.
+     */
+    transform?: KoolbaseImageTransform;
+  }): string {
     // Encode each path segment individually so slashes are preserved
     // while spaces, parens, hashes, and query characters are escaped.
     const encoded = args.path.split('/').map(encodeURIComponent).join('/');
-    return `https://cdn.koolbase.com/${args.projectId}/${args.bucket}/${encoded}`;
+    const opts = args.transform ? serializeTransform(args.transform) : '';
+    if (!opts) {
+      return `https://cdn.koolbase.com/${args.projectId}/${args.bucket}/${encoded}`;
+    }
+    return `https://cdn.koolbase.com/cdn-cgi/image/${opts}/${args.projectId}/${args.bucket}/${encoded}`;
   }
 
   /**
@@ -247,9 +294,18 @@ export class KoolbaseStorage {
    * carries only the bucket ID, not its name. Typically the caller
    * already knows which bucket they queried.
    */
-  static publicUrlForObject(obj: KoolbaseObject, bucket: string): string | null {
+  static publicUrlForObject(
+    obj: KoolbaseObject,
+    bucket: string,
+    options?: { transform?: KoolbaseImageTransform },
+  ): string | null {
     if (obj.r2Bucket !== 'koolbase-storage-public') return null;
-    return KoolbaseStorage.publicUrl({ projectId: obj.projectId, bucket, path: obj.path });
+    return KoolbaseStorage.publicUrl({
+      projectId: obj.projectId,
+      bucket,
+      path: obj.path,
+      transform: options?.transform,
+    });
   }
 
   /**

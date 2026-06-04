@@ -400,3 +400,62 @@ export interface BatchResult {
   /** True for a successful delete. */
   deleted?: boolean;
 }
+
+
+// === Image Transformations ===============================================
+// Served via Cloudflare's /cdn-cgi/image/ URL prefix. The koolbase.com zone
+// gets 5,000 free unique transforms/month; beyond that, new transforms
+// return 9422 at the edge until the next billing cycle.
+
+export type KoolbaseImageFormat = 'auto' | 'webp' | 'avif' | 'jpeg' | 'png';
+
+export type KoolbaseImageFit =
+  | 'scale-down'
+  | 'contain'
+  | 'cover'
+  | 'crop'
+  | 'pad';
+
+export type KoolbaseImageGravity =
+  | 'auto'
+  | 'center'
+  | 'top'
+  | 'bottom'
+  | 'left'
+  | 'right'
+  | 'top-left'
+  | 'top-right'
+  | 'bottom-left'
+  | 'bottom-right';
+
+/**
+ * Image-transformation options for `KoolbaseStorage.publicUrl` and
+ * `KoolbaseStorage.publicUrlForObject`. Each field maps to one Cloudflare
+ * Image Transformations parameter; unset fields are omitted.
+ *
+ * All numeric inputs are clamped silently to Cloudflare-supported ranges
+ * (width/height 1-2000, quality 1-100, dpr 1-3) so a stray `width: 99999`
+ * can't trigger error 9422 at the edge.
+ *
+ * @example
+ * const url = KoolbaseStorage.publicUrl({
+ *   projectId: pid, bucket: 'avatars', path: 'user.jpg',
+ *   transform: { width: 400, height: 400, format: 'webp', quality: 80, fit: 'cover' },
+ * });
+ */
+export interface KoolbaseImageTransform {
+  /** Output width in pixels. Clamped to 1-2000. */
+  width?: number;
+  /** Output height in pixels. Clamped to 1-2000. */
+  height?: number;
+  /** Output format. `auto` negotiates based on the request's `Accept` header. */
+  format?: KoolbaseImageFormat;
+  /** Quality 1-100. Clamped. Has no effect on lossless formats (`png`). */
+  quality?: number;
+  /** Resize mode when both width and height are specified. */
+  fit?: KoolbaseImageFit;
+  /** Device pixel ratio multiplier. Clamped to 1-3. */
+  dpr?: number;
+  /** Crop anchor. Use with `fit: 'cover'` or `fit: 'crop'`. */
+  gravity?: KoolbaseImageGravity;
+}
