@@ -7,6 +7,44 @@ adheres to [Semantic Versioning][semver].
 [kac]: https://keepachangelog.com/en/1.1.0/
 [semver]: https://semver.org/
 
+# 5.4.0
+
+### Added — storage
+
+- Edge image transforms (Gap #8). Two complementary forms:
+  - `KoolbaseStorage.publicUrl({ ..., transform })` accepts an
+    optional `KoolbaseImageTransform` object — width, height,
+    format, quality, fit, dpr, gravity. The resulting URL hits
+    Cloudflare's image pipeline at
+    `cdn.koolbase.com/cdn-cgi/image/<opts>/...` and serves a
+    resized, re-encoded copy of the source.
+  - `KoolbaseStorage.publicUrlWithPreset({ projectId, presetName,
+    bucket, path })` resolves a named preset stored server-side
+    (managed via the dashboard or REST API) at
+    `cdn.koolbase.com/p/{project_id}/{preset_name}/{bucket}/{path}`.
+    Edit the preset once on the server and every URL using it
+    updates as the edge cache rolls over.
+  - `KoolbaseStorage.publicUrlForObjectWithPreset(obj, bucket,
+    presetName)` — instance-style variant when you already have a
+    `KoolbaseObject` in hand.
+- New typed exports: `KoolbaseImageTransform`, `KoolbaseImageFormat`
+  (`'auto' | 'webp' | 'avif' | 'jpeg' | 'png'`), `KoolbaseImageFit`
+  (`'scale-down' | 'contain' | 'cover' | 'crop' | 'pad'`),
+  `KoolbaseImageGravity` (10 anchor positions). Out-of-range numeric
+  values clamp silently to Cloudflare's valid ranges (width/height
+  1–2000, quality 1–100, dpr 1–3).
+
+### Notes
+
+Cloudflare bills unique transformations per calendar month; every
+Koolbase account includes 5,000 free. Transformed responses are
+edge-cached for 4 hours.
+
+### Compatibility
+
+No breaking changes. All new APIs are additive; existing `publicUrl`
+calls without `transform` produce the exact same URL they did in 5.3.0.
+
 # 5.3.0
 
 ### Added — storage

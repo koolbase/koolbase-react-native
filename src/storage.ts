@@ -309,6 +309,49 @@ export class KoolbaseStorage {
   }
 
   /**
+   * Builds a named-preset CDN URL. The preset is resolved at the Cloudflare
+   * edge by the koolbase-cdn-worker, which looks up
+   * `preset:{project_id}:{preset_name}` in Workers KV and applies the stored
+   * transformation options. Presets are managed in the dashboard under
+   * Storage → Presets.
+   *
+   * Unknown preset names yield a 404 at the edge — the URL itself always
+   * constructs successfully without a network round-trip.
+   *
+   * For safer construction from an Object you already have, use
+   * {@link KoolbaseStorage.publicUrlForObjectWithPreset} — it checks the
+   * stored `r2Bucket` value and returns `null` when the object isn't in the
+   * public R2 bucket.
+   */
+  static publicUrlWithPreset(args: {
+    projectId: string;
+    presetName: string;
+    bucket: string;
+    path: string;
+  }): string {
+    const encoded = args.path.split('/').map(encodeURIComponent).join('/');
+    return `https://cdn.koolbase.com/p/${args.projectId}/${args.presetName}/${args.bucket}/${encoded}`;
+  }
+
+  /**
+   * Returns the named-preset CDN URL for the given object, or `null` if the
+   * object isn't in the public R2 bucket.
+   */
+  static publicUrlForObjectWithPreset(
+    obj: KoolbaseObject,
+    bucket: string,
+    presetName: string,
+  ): string | null {
+    if (obj.r2Bucket !== 'koolbase-storage-public') return null;
+    return KoolbaseStorage.publicUrlWithPreset({
+      projectId: obj.projectId,
+      presetName,
+      bucket,
+      path: obj.path,
+    });
+  }
+
+  /**
    * Delete a file from a bucket.
    */
   async delete(bucket: string, path: string): Promise<void> {
