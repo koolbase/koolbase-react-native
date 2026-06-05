@@ -485,6 +485,64 @@ so nothing leaks.
 
 ---
 
+### Object versioning
+
+For buckets with versioning enabled, every overwrite preserves the prior
+content as a history version, and deletes are soft (recoverable until
+force-purged). Enable versioning on a bucket from the dashboard.
+
+```typescript
+// List all versions of a path, newest first
+const versions = await Koolbase.storage.listVersions('documents', 'contract.pdf');
+
+for (const v of versions) {
+  console.log(`${v.versionId}: size=${v.size} isCurrent=${v.isCurrent}`);
+}
+
+// Download a specific historical version
+const url = await Koolbase.storage.getDownloadUrl(
+  'documents',
+  'contract.pdf',
+  '019e98ed-eed6-7e71-...',
+);
+
+// Bring a history version back as current
+// (the existing current is snapshotted to history first)
+const restored = await Koolbase.storage.restoreVersion(
+  'documents',
+  'contract.pdf',
+  '019e98ed-eed6-7e71-...',
+);
+
+// Hard-remove a single history version (row + R2 bytes)
+await Koolbase.storage.purgeVersion(
+  'documents',
+  'contract.pdf',
+  'old-version-id',
+);
+
+// Wipe the entire timeline for a path - every version, every R2 key
+await Koolbase.storage.delete('documents', 'contract.pdf', true);
+```
+
+A few behaviors worth knowing:
+
+- **Overwrite snapshots automatically.** Upload to a path that already
+  exists in a versioned bucket and the prior bytes are preserved as
+  history; the upload becomes the new current.
+- **Delete is soft by default.** On a versioned bucket, `delete`
+  snapshots the current content and records a delete marker. The
+  content is still recoverable via `restoreVersion` until force-purged.
+- **Restore is itself a versioned event.** The previously-current row
+  gets snapshotted before the target's bytes overwrite canonical. The
+  restored row gets a fresh `versionId`; the target stays in history at
+  its original id - so you can always undo a restore.
+- **Delete markers can be listed but not downloaded.** A marker has
+  `size === 0`, `isDeleteMarker === true`, and no bytes. Calling
+  `getDownloadUrl` with a marker's `versionId` throws.
+
+---
+
 ## Realtime
 
 Subscribe to live changes on a collection. Uses the signed-in user's session, so
@@ -771,7 +829,7 @@ try {
 
 - Authentication: email + password, Apple Sign-In, Google Sign-In, phone + OTP
 - Database with offline-first cache, realtime subscriptions, and populate
-- Storage with presigned uploads and downloads, safe-by-default conflict handling
+- Storage with presigned uploads and downloads, safe-by-default conflict handling, image transforms, object versioning (history + restore + soft-delete)
 - Realtime subscriptions over WebSocket
 - Authenticated functions (`ctx.auth` exposes the caller automatically)
 - Feature flags and remote config

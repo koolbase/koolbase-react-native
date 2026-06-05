@@ -3,6 +3,7 @@ import {
   UploadOptions,
   UploadResult,
   KoolbaseObject,
+  KoolbaseObjectVersion,
   KoolbaseImageTransform,
 } from './types';
 import {
@@ -232,10 +233,13 @@ export class KoolbaseStorage {
   /**
    * Get a signed download URL for a file.
    */
-  async getDownloadUrl(bucket: string, path: string): Promise<string> {
-    const url =
+  async getDownloadUrl(bucket: string, path: string, versionId?: string): Promise<string> {
+    let url =
       `${this.config.baseUrl}/v1/sdk/storage/download-url` +
       `?bucket=${encodeURIComponent(bucket)}&path=${encodeURIComponent(path)}`;
+    if (versionId) {
+      url += `&version_id=${encodeURIComponent(versionId)}`;
+    }
     const res = await fetch(url, { headers: await this.buildHeaders() });
     if (!res.ok) {
       throw await koolbaseStorageErrorFromResponse(res, 'Failed to get download URL');
@@ -354,8 +358,11 @@ export class KoolbaseStorage {
   /**
    * Delete a file from a bucket.
    */
-  async delete(bucket: string, path: string): Promise<void> {
-    const res = await fetch(`${this.config.baseUrl}/v1/sdk/storage/object`, {
+  async delete(bucket: string, path: string, forcePurge?: boolean): Promise<void> {
+    const url = forcePurge
+      ? `${this.config.baseUrl}/v1/sdk/storage/object?force_purge=true`
+      : `${this.config.baseUrl}/v1/sdk/storage/object`;
+    const res = await fetch(url, {
       method: 'DELETE',
       headers: {
         ...(await this.buildHeaders()),
@@ -366,6 +373,97 @@ export class KoolbaseStorage {
     if (res.status === 204) return;
     if (!res.ok) {
       throw await koolbaseStorageErrorFromResponse(res, 'Failed to delete file');
+    }
+  }
+
+  /**
+   * List all versions of a file path, newest-first. Returns a flat list
+   * mixing the current row (with `isCurrent: true`) and all history
+   * rows. Delete markers are included so callers can render the full
+   * timeline; filter client-side to hide them if the UI only wants
+   * restorable versions.
+   *
+   * Returns an empty array (not an error) when the path has no history
+   * and no current row.
+   */
+  async listVersions(bucket: string, path: string): Promise<KoolbaseObjectVersion[]> {
+    const url =
+      `${this.config.baseUrl}/v1/sdk/storage/object-versions` +
+      `?bucket=${encodeURIComponent(bucket)}&path=${encodeURIComponent(path)}`;
+    const res = await fetch(url, { headers: await this.buildHeaders() });
+    if (!res.ok) {
+      throw await koolbaseStorageErrorFromResponse(res, 'Failed to list versions');
+    }
+    const data = (await res.json()) as { versions?: unknown[] };
+    const list = Array.isArray(data.versions) ? data.versions : [];
+    return list.map((v) => fromVersionJson(v as Record<string, unknown>));
+  }
+
+  /**
+   * Fetch metadata for a single version by id. Works against both the
+   * current row and any history row — the response's `isCurrent` tells
+   * you which.
+   */
+  async getVersion(
+    bucket: string,
+    path: string,
+    versionId: string,
+  ): Promise<KoolbaseObjectVersion> {
+    const url =
+      `${this.config.baseUrl}/v1/sdk/storage/object-versions/${encodeURIComponent(versionId)}` +
+      `?bucket=${encodeURIComponent(bucket)}&path=${encodeURIComponent(path)}`;
+    const res = await fetch(url, { headers: await this.buildHeaders() });
+    if (!res.ok) {
+      throw await koolbaseStorageErrorFromResponse(res, 'Failed to fetch version');
+    }
+    return fromVersionJson((await res.json()) as Record<string, unknown>);
+  }
+
+  /**
+   * Bring a history version back as the current version. The
+   * previously-current row (if any) is snapshotted into history first,
+   * so this operation is itself a versioned event you can undo. The
+   * restored row gets a freshly-minted version_id; the target stays in
+   * history at its original version_id.
+   *
+   * Throws if the bucket has versioning off, if the target is the
+   * already-current version, or if the target is a delete marker.
+   */
+  async restoreVersion(
+    bucket: string,
+    path: string,
+    versionId: string,
+  ): Promise<KoolbaseObject> {
+    const url =
+      `${this.config.baseUrl}/v1/sdk/storage/object-versions/${encodeURIComponent(versionId)}/restore` +
+      `?bucket=${encodeURIComponent(bucket)}&path=${encodeURIComponent(path)}`;
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: await this.buildHeaders(),
+    });
+    if (!res.ok) {
+      throw await koolbaseStorageErrorFromResponse(res, 'Failed to restore version');
+    }
+    return mapObjectFromServer(await res.json());
+  }
+
+  /**
+   * Hard-remove a single history version — both the metadata row and
+   * the .versions/ R2 bytes (or just the row, for delete markers).
+   * Refuses to operate on the current version; use {@link delete} with
+   * `forcePurge: true` to wipe everything for a path.
+   */
+  async purgeVersion(bucket: string, path: string, versionId: string): Promise<void> {
+    const url =
+      `${this.config.baseUrl}/v1/sdk/storage/object-versions/${encodeURIComponent(versionId)}` +
+      `?bucket=${encodeURIComponent(bucket)}&path=${encodeURIComponent(path)}`;
+    const res = await fetch(url, {
+      method: 'DELETE',
+      headers: await this.buildHeaders(),
+    });
+    if (res.status === 204) return;
+    if (!res.ok) {
+      throw await koolbaseStorageErrorFromResponse(res, 'Failed to purge version');
     }
   }
 }
@@ -389,5 +487,32 @@ function mapObjectFromServer(raw: any): KoolbaseObject {
     r2Bucket: raw.r2_bucket ?? 'koolbase-storage',
     createdAt: raw.created_at,
     updatedAt: raw.updated_at,
+  };
+}
+
+/**
+ * Maps the snake_case server JSON of a version row to the camelCase
+ * {@link KoolbaseObjectVersion}. Mirrors `fromObjectJson` shape.
+ */
+function fromVersionJson(j: Record<string, unknown>): KoolbaseObjectVersion {
+  const rawMeta = j.metadata;
+  const metadata: Record<string, string> = {};
+  if (rawMeta && typeof rawMeta === 'object') {
+    for (const [k, v] of Object.entries(rawMeta as Record<string, unknown>)) {
+      if (typeof v === 'string') metadata[k] = v;
+    }
+  }
+  return {
+    versionId: (j.version_id as string | null) ?? null,
+    path: j.path as string,
+    size: Number(j.size ?? 0),
+    contentType: (j.content_type as string | null) ?? null,
+    etag: (j.etag as string | null) ?? null,
+    metadata,
+    r2Bucket: (j.r2_bucket as string) ?? '',
+    userId: (j.user_id as string | null) ?? null,
+    isDeleteMarker: Boolean(j.is_delete_marker),
+    isCurrent: Boolean(j.is_current),
+    createdAt: j.created_at as string,
   };
 }

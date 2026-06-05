@@ -7,6 +7,63 @@ adheres to [Semantic Versioning][semver].
 [kac]: https://keepachangelog.com/en/1.1.0/
 [semver]: https://semver.org/
 
+# 5.5.0
+
+### Added — storage
+
+- Object versioning (Gap #6). When a bucket has versioning enabled (via
+  the dashboard or the buckets PATCH endpoint), every overwrite preserves
+  the prior bytes as a history version and deletes become soft —
+  recoverable until force-purged.
+  - `KoolbaseStorage.listVersions(bucket, path)` returns the full timeline
+    newest-first. Each `KoolbaseObjectVersion` carries `versionId`, `size`,
+    `etag`, `metadata`, `createdAt`, plus the flags `isCurrent` (the row
+    that lives in `storage_objects` right now) and `isDeleteMarker` (a
+    soft-delete tombstone with no fetchable bytes). Returns an empty array
+    for a path with no current row and no history.
+  - `KoolbaseStorage.getVersion(bucket, path, versionId)` fetches metadata
+    for a single version. Works against the current row or any history
+    row — check `isCurrent` to disambiguate.
+  - `KoolbaseStorage.getDownloadUrl(bucket, path, versionId?)` now accepts
+    an optional `versionId` argument. Omit to download the current bytes;
+    pass a `versionId` to download that historical version directly.
+    Throws for delete markers (no bytes exist).
+  - `KoolbaseStorage.restoreVersion(bucket, path, versionId)` brings a
+    history version back as the new current. The previously-current row
+    is snapshotted into history first, so restore is itself a versioned
+    event you can undo. The restored row gets a freshly-minted
+    `versionId`; the target stays in history at its original id.
+  - `KoolbaseStorage.purgeVersion(bucket, path, versionId)` hard-removes
+    a single history row plus its `.versions/` R2 bytes (or just the row,
+    for delete markers). Refuses the current version.
+  - `KoolbaseStorage.delete(bucket, path, forcePurge?)` now accepts an
+    optional `forcePurge` argument. With `forcePurge: true` against a
+    versioned bucket, wipes the entire timeline for a path — every row,
+    every R2 key. The default (`false`) is the soft-delete behavior:
+    snapshots current to history and records a delete marker.
+
+- New typed export: `KoolbaseObjectVersion`.
+
+### Notes
+
+- Versioning is opt-in per bucket. Buckets created before the feature
+  shipped — and any bucket with versioning off — keep the legacy
+  hard-overwrite, hard-delete semantics. No behavioral change for
+  non-versioned buckets.
+- Delete markers can appear in `listVersions` results. Filter
+  client-side (`v => !v.isDeleteMarker`) if your UI only wants
+  restorable versions.
+- `restoreVersion` against the already-current version, or against a
+  delete marker, throws. `getDownloadUrl` with a delete marker's
+  `versionId` throws.
+- Backwards-compatible: all new APIs are additive. Existing
+  `getDownloadUrl(bucket, path)` and `delete(bucket, path)` calls
+  produce identical wire requests as before.
+- Pairs with `koolbase_flutter` v6.5.0 (published earlier today). Same
+  client surface (`listVersions` / `getVersion` / `getDownloadUrl` with
+  `versionId` / `restoreVersion` / `purgeVersion` / `delete` with
+  `forcePurge`), same semantics.
+
 # 5.4.0
 
 ### Added — storage

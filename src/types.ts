@@ -243,6 +243,49 @@ export interface KoolbaseObject {
 }
 
 /**
+ * One entry in an object's version timeline. Covers both the current
+ * row (when {@link isCurrent} is true) and every history row, including
+ * soft-delete markers (when {@link isDeleteMarker} is true — size 0, no
+ * fetchable bytes). Returned from {@link KoolbaseStorage.listVersions}
+ * and {@link KoolbaseStorage.getVersion}; the underlying bytes are
+ * downloadable via {@link KoolbaseStorage.getDownloadUrl} with the
+ * `versionId` argument.
+ *
+ * `versionId` may be null only on legacy rows uploaded before versioning
+ * was enabled on the bucket — for those, {@link isCurrent} is true and
+ * the row carries no history identity yet (gets backfilled on the next
+ * overwrite).
+ */
+export interface KoolbaseObjectVersion {
+  versionId: string | null;
+  path: string;
+  size: number;
+  contentType: string | null;
+  etag: string | null;
+  metadata: Record<string, string>;
+  r2Bucket: string;
+  userId: string | null;
+  /**
+   * True for a tombstone row recording a soft-delete event. Size is 0
+   * and there are no R2 bytes — treat as "the path was deleted at this
+   * time" rather than fetchable content.
+   */
+  isDeleteMarker: boolean;
+  /**
+   * True for the row that currently lives in `storage_objects` (i.e.
+   * what a no-versionId download returns). False for everything in
+   * `storage_object_versions`.
+   */
+  isCurrent: boolean;
+  /**
+   * For the current row this is the time the current version became
+   * current (overwrite or upload time). For history rows it's the time
+   * the version was originally uploaded.
+   */
+  createdAt: string;
+}
+
+/**
  * Result of a successful `KoolbaseStorage.upload()` call.
  */
 export interface UploadResult {
