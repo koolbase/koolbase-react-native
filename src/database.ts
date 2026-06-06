@@ -6,6 +6,8 @@ import {
   UpsertResult,
   BatchOp,
   BatchResult,
+  KoolbaseVector,
+  SemanticSearchResult,
 } from './types';
 import {
   getCached,
@@ -423,6 +425,150 @@ export class KoolbaseDatabase {
     if (!res.ok && res.status !== 204) {
       // Queued for sync — will retry when online
     }
+  }
+
+  // ─── Vectors ────────────────────────────────────────────────────────────────
+
+  /**
+   * Write (or replace) a vector for a record on the named `field`.
+   *
+   * The field must already be declared on the collection via the dashboard
+   * or CLI. `vector.length` must match the field's declared dimension;
+   * otherwise throws `KoolbaseVectorDimensionMismatchError`.
+   *
+   * Online-only — vectors are not cached locally or queued offline because
+   * HNSW similarity search has no useful offline semantics.
+   *
+   * @example
+   * await Koolbase.db.setVector(
+   *   articleId,
+   *   'embedding',
+   *   await myEmbeddingModel.encode(article.content),
+   * );
+   */
+  async setVector(
+    recordId: string,
+    field: string,
+    vector: number[],
+  ): Promise<void> {
+    const res = await fetch(`${this.config.baseUrl}/v1/sdk/db/set-vector`, {
+      method: 'POST',
+      headers: await this.buildHeaders(),
+      body: JSON.stringify({ record_id: recordId, field, vector }),
+    });
+    if (res.status !== 204) {
+      const body = await res.json().catch(() => ({}));
+      throw koolbaseDataError(res.status, body, 'Set vector failed');
+    }
+  }
+
+  /**
+   * Read a record's stored vector on the named `field`.
+   *
+   * Throws `KoolbaseNotFoundError` if either the field is not declared or
+   * no vector has been set for this record on this field. Throws
+   * `KoolbasePermissionError` if the caller cannot read this record per
+   * the collection's read rule.
+   *
+   * Online-only.
+   *
+   * @example
+   * const v = await Koolbase.db.getVector(articleId, 'embedding');
+   * console.log(`${v.vector.length}-dim, updated ${v.updatedAt}`);
+   */
+  async getVector(recordId: string, field: string): Promise<KoolbaseVector> {
+    const raw = await this.request<{
+      record_id: string;
+      field_name: string;
+      vector: number[];
+      created_at: string;
+      updated_at: string;
+    }>('POST', '/v1/sdk/db/get-vector', { record_id: recordId, field });
+    return {
+      recordId: raw.record_id,
+      fieldName: raw.field_name,
+      vector: raw.vector,
+      createdAt: raw.created_at,
+      updatedAt: raw.updated_at,
+    };
+  }
+
+  /**
+   * Remove a record's stored vector on the named `field`.
+   *
+   * Online-only. Throws `KoolbaseNotFoundError` if no vector is set for
+   * `(recordId, field)`; throws `KoolbasePermissionError` if the caller
+   * cannot write this record per the collection's write rule.
+   *
+   * Note: this removes the vector from the dimension table but does NOT
+   * remove the field declaration itself — the field stays on the
+   * collection and is still settable on other records.
+   */
+  async deleteVector(recordId: string, field: string): Promise<void> {
+    const res = await fetch(`${this.config.baseUrl}/v1/sdk/db/delete-vector`, {
+      method: 'POST',
+      headers: await this.buildHeaders(),
+      body: JSON.stringify({ record_id: recordId, field }),
+    });
+    if (res.status !== 204) {
+      const body = await res.json().catch(() => ({}));
+      throw koolbaseDataError(res.status, body, 'Delete vector failed');
+    }
+  }
+
+  /**
+   * Semantic search via HNSW vector similarity.
+   *
+   * Ranks records in `collection` by cosine distance between the supplied
+   * `queryVector` and each record's stored vector on `field`. Returns up
+   * to `limit` (default 20) nearest hits, with the collection's read rule
+   * applied — owner/scoped/conditional records are filtered to the caller.
+   *
+   * `where` is an optional equality filter map on record `data` fields,
+   * applied AFTER the HNSW lookup, so very strict filters may return
+   * fewer than `limit` results.
+   *
+   * Online-only.
+   *
+   * @example
+   * const result = await Koolbase.db.searchSemantic({
+   *   collection: 'articles',
+   *   field: 'embedding',
+   *   queryVector: await myEmbeddingModel.encode(userQuery),
+   *   limit: 10,
+   *   where: { category: 'tech' },
+   * });
+   * for (const hit of result.hits) {
+   *   console.log(hit.record.data.title, hit.distance);
+   * }
+   */
+  async searchSemantic(opts: {
+    collection: string;
+    field: string;
+    queryVector: number[];
+    limit?: number;
+    where?: Record<string, unknown>;
+  }): Promise<SemanticSearchResult> {
+    const body: Record<string, unknown> = {
+      collection: opts.collection,
+      field: opts.field,
+      query_vector: opts.queryVector,
+      limit: opts.limit ?? 20,
+    };
+    if (opts.where && Object.keys(opts.where).length > 0) {
+      body.where = opts.where;
+    }
+    const raw = await this.request<{
+      results: Array<{ record: Record<string, unknown>; distance: number }>;
+      total: number;
+    }>('POST', '/v1/sdk/db/search-semantic', body);
+    return {
+      hits: (raw.results ?? []).map(r => ({
+        record: recordFromWire(r.record),
+        distance: r.distance,
+      })),
+      total: raw.total ?? (raw.results ?? []).length,
+    };
   }
 
   // ─── Manual sync ────────────────────────────────────────────────────────────

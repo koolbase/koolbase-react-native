@@ -379,6 +379,66 @@ When the device is offline, these writes are queued and synced automatically whe
 
 ---
 
+### Semantic search
+
+Find records by meaning, not just by field equality. Store an embedding
+vector on a record, then search the collection for nearest neighbors to a
+query vector — useful for similarity search over user-supplied embeddings.
+
+Declare a vector field on the collection from the dashboard or CLI first
+(picking a dimension; v1 supports 384, 768, 1024, and 1536). Then write
+and search from the SDK:
+
+```typescript
+// Set a vector for one record
+await Koolbase.db.setVector(
+  articleId,
+  'embedding',
+  await myEmbeddingModel.encode(article.content),
+);
+
+// Read it back
+const v = await Koolbase.db.getVector(articleId, 'embedding');
+console.log(`${v.vector.length}-dim, updated ${v.updatedAt}`);
+
+// Search the collection for nearest neighbors
+const result = await Koolbase.db.searchSemantic({
+  collection: 'articles',
+  field: 'embedding',
+  queryVector: await myEmbeddingModel.encode(userQuery),
+  limit: 10,
+});
+
+for (const hit of result.hits) {
+  // hit.distance is cosine distance: lower = more similar
+  // (0 = identical direction, 1 ≈ orthogonal, 2 = opposite)
+  console.log(hit.record.data.title, hit.distance.toFixed(3));
+}
+
+// Optionally scope the search with an equality filter
+const scoped = await Koolbase.db.searchSemantic({
+  collection: 'articles',
+  field: 'embedding',
+  queryVector: queryEmbedding,
+  limit: 10,
+  where: { category: 'tech' },
+});
+
+// Remove a record's vector when you no longer need it
+await Koolbase.db.deleteVector(articleId, 'embedding');
+```
+
+A few behaviors worth knowing:
+
+- **Vector length must match the declared dimension.** Mismatches throw `KoolbaseVectorDimensionMismatchError` with the expected and actual dimensions in the message.
+- **Online-only.** Vector operations are not cached locally or queued offline — HNSW similarity search has no useful offline semantics, so deferred writes could corrupt your view of what's stored.
+- **Read rule applies post-search.** Semantic search respects the collection's read rule the same way `query()` does: `owner`/`scoped`/`conditional` records are filtered to the caller after the HNSW lookup, so strict rules may return fewer than `limit` results.
+- **Higher dimensions coming.** OpenAI's `text-embedding-3-large` ships at 3072 dimensions, supported in a future release once pgvector is upgraded. In the meantime, use your model's `dimensions=1536` parameter (Matryoshka truncation) for full compatibility.
+
+See [Semantic search docs](https://docs.koolbase.com/database/vectors) for setup, dimension guidance, and embedding model recommendations.
+
+---
+
 ## Storage
 
 Upload and serve files via presigned URLs to Cloudflare R2. Uploads are
@@ -755,13 +815,13 @@ handling doesn't depend on message text.
 All data-layer failures extend `KoolbaseDataError` (which extends `Error`):
 
 | Error | When |
-| `KoolbaseStorageConflictError` | An upload targets a path that's already taken and `overwrite: false` (409, code `PATH_CONFLICT`). Exposes `.path` — the colliding path. |
-| `KoolbaseStorageNotFoundError` | The bucket or object doesn't exist (404). |
-| `KoolbaseStorageValidationError` | The request was rejected as invalid — bad path, missing field (400). |
-| `KoolbaseStoragePermissionError` | The caller is not allowed to perform the operation (403). |
-| `KoolbaseStorageQuotaError` | An upload would push the bucket past its `max_size_bytes` cap (409, code `QUOTA_EXCEEDED`). |
-| `KoolbaseStorageFileTooLargeError` | A single file exceeds the bucket's `max_file_size_bytes` cap (413, code `FILE_TOO_LARGE`). |
-| `KoolbaseStorageMimeTypeError` | The upload's content-type isn't in the bucket's `allowed_mime_types` allowlist (415, code `MIME_NOT_ALLOWED`). |
+|---|---|
+| `KoolbaseConflictError` | A write violates a unique constraint (409). Exposes `.field` — the field that collided, when the server reports it. |
+| `KoolbaseNotFoundError` | The record or collection doesn't exist (404). |
+| `KoolbaseValidationError` | The request was rejected as invalid (400). |
+| `KoolbasePermissionError` | An access rule denied the operation (403). |
+| `KoolbaseRateLimitError` | The caller is being rate-limited (429). |
+| `KoolbaseVectorDimensionMismatchError` | A vector's length doesn't match the field's declared dimension (400, code `vector_dimension_mismatch`). |
 
 ```ts
 import { KoolbaseConflictError, KoolbaseDataError } from '@techfinityedge/koolbase-react-native';
@@ -828,7 +888,7 @@ try {
 ## What's included
 
 - Authentication: email + password, Apple Sign-In, Google Sign-In, phone + OTP
-- Database with offline-first cache, realtime subscriptions, and populate
+- Database with offline-first cache, realtime subscriptions, populate for related records, semantic search over vectors
 - Storage with presigned uploads and downloads, safe-by-default conflict handling, image transforms, object versioning (history + restore + soft-delete)
 - Realtime subscriptions over WebSocket
 - Authenticated functions (`ctx.auth` exposes the caller automatically)

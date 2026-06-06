@@ -173,6 +173,48 @@ export interface PendingWrite {
   createdAt: string;
 }
 
+// ─── Vectors ───────────────────────────────────────────────────────────────
+
+/**
+ * A stored vector retrieved by `KoolbaseDatabase.getVector()`. The `vector`
+ * field carries the float values exactly as stored on the server; the
+ * `recordId` + `fieldName` pair identifies which slot they came from.
+ */
+export interface KoolbaseVector {
+  recordId: string;
+  fieldName: string;
+  vector: number[];
+  /** ISO 8601 timestamp from the server. */
+  createdAt: string;
+  /** ISO 8601 timestamp from the server. */
+  updatedAt: string;
+}
+
+/**
+ * One ranked hit from `KoolbaseDatabase.searchSemantic()`. `record` is
+ * the full record (same wire shape as a record returned by query/get).
+ * `distance` is the cosine distance between the query vector and the
+ * stored vector — lower means more similar. Range: 0 (identical
+ * direction) to 2 (opposite direction).
+ */
+export interface KoolbaseSemanticHit {
+  record: KoolbaseRecord;
+  distance: number;
+}
+
+/**
+ * Result of `KoolbaseDatabase.searchSemantic()`. `hits` is the ranked
+ * list of nearest neighbors (best match first); `total` is the count of
+ * hits returned (matches `hits.length` in v1 — preserved as a separate
+ * field for future pagination).
+ */
+export interface SemanticSearchResult {
+  hits: KoolbaseSemanticHit[];
+  total: number;
+}
+
+// ─── Storage ───────────────────────────────────────────────────────────────
+
 // ─── Storage ───────────────────────────────────────────────────────────────
 
 export interface UploadOptions {

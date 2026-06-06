@@ -107,6 +107,35 @@ export class KoolbaseRateLimitError extends KoolbaseDataError {
 }
 
 /**
+ * Thrown when the supplied vector's length does not match the dimension
+ * declared on the collection's vector field — the server responds with
+ * 400 and code `vector_dimension_mismatch`. The message includes both
+ * the expected and actual dimensions so you can surface a precise error.
+ *
+ * @example
+ * try {
+ *   await koolbase.db.setVector(id, 'embedding', [0.1, 0.2]); // 2 dims
+ * } catch (e) {
+ *   if (e instanceof KoolbaseVectorDimensionMismatchError) {
+ *     showError(e.message); // "expected 1536, got 2"
+ *   }
+ * }
+ */
+export class KoolbaseVectorDimensionMismatchError extends KoolbaseDataError {
+  constructor(message?: string) {
+    super(
+      message ?? 'Vector dimension does not match field declaration',
+      'vector_dimension_mismatch',
+    );
+    this.name = 'KoolbaseVectorDimensionMismatchError';
+    Object.setPrototypeOf(
+      this,
+      KoolbaseVectorDimensionMismatchError.prototype,
+    );
+  }
+}
+
+/**
  * Maps a non-2xx data-layer response to a typed {@link KoolbaseDataError},
  * preferring the server's stable `code` and falling back to the HTTP status
  * for older or uncoded responses. Always returns an error to throw.
@@ -127,13 +156,19 @@ export function koolbaseDataError(
     case 'not_found':
     case 'record_not_found':
     case 'collection_not_found':
+    case 'vector_not_found':
+    case 'vector_field_not_found':
       return new KoolbaseNotFoundError(message);
     case 'permission_denied':
       return new KoolbasePermissionError(message);
     case 'rate_limit':
       return new KoolbaseRateLimitError(message);
     case 'validation_error':
+    case 'vector_collection_mismatch':
+    case 'unsupported_dimension':
       return new KoolbaseValidationError(message);
+    case 'vector_dimension_mismatch':
+      return new KoolbaseVectorDimensionMismatchError(message);
   }
 
   // ─── status fallback (pre-code servers) ───

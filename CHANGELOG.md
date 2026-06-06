@@ -7,7 +7,63 @@ adheres to [Semantic Versioning][semver].
 [kac]: https://keepachangelog.com/en/1.1.0/
 [semver]: https://semver.org/
 
-# 5.5.0
+# 6.0.0
+
+### Added — database
+
+- **Semantic search via vector similarity.** Query records by meaning,
+  not just by field equality. Companion to the server-side vector
+  primitive shipped in Koolbase Phase 1 AI on June 6 2026.
+  - `KoolbaseDatabase.setVector(recordId, field, vector)` writes (or
+    replaces) a vector for a record on the named field. The field must
+    already be declared on the collection via the dashboard or CLI;
+    the vector's length must match the field's declared dimension.
+  - `KoolbaseDatabase.getVector(recordId, field)` reads a stored vector
+    back as `KoolbaseVector` — `{ recordId, fieldName, vector,
+    createdAt, updatedAt }`.
+  - `KoolbaseDatabase.deleteVector(recordId, field)` removes a record's
+    vector slot. Does NOT remove the field declaration itself — the
+    field stays settable on other records.
+  - `KoolbaseDatabase.searchSemantic({ collection, field, queryVector,
+    limit, where })` runs an HNSW similarity search ranking records by
+    cosine distance to the query vector. The collection's read rule is
+    applied after the lookup; `where` is an optional equality filter
+    map. Returns `SemanticSearchResult` — `{ hits, total }` where each
+    hit carries `record` and `distance`.
+
+- New typed exports: `KoolbaseVector`, `KoolbaseSemanticHit`,
+  `SemanticSearchResult`, `KoolbaseVectorDimensionMismatchError`.
+
+### Fixed — docs
+
+- Database errors table in `README.md` previously listed storage error
+  rows (copy-paste bug). Now lists the actual database error subclasses.
+
+### Notes
+
+- Vector fields must be declared ahead of time via the Koolbase
+  dashboard or CLI; the React Native SDK does not declare schema
+  (mirrors how collections and storage buckets are declared).
+- Supported dimensions in this release: 384, 768, 1024, 1536. Higher
+  dimensions (e.g. OpenAI text-embedding-3-large at 3072) will be
+  supported in a future release once pgvector is upgraded — in the
+  meantime, use the model's `dimensions=1536` parameter (Matryoshka
+  truncation) for full compatibility.
+- Vector operations are online-only. They're not cached locally or
+  queued offline because HNSW similarity search has no useful offline
+  semantics, so deferred writes could corrupt the user's view of what's
+  persisted.
+- Semantic search respects the collection's read rule the same way
+  `query()` does — `owner`/`scoped`/`conditional` records are filtered
+  to the caller after the HNSW lookup, so strict rules may return fewer
+  than `limit` results.
+
+### Migration
+
+Purely additive — no existing methods, types, or exports changed.
+Upgrading from 5.x requires only `yarn upgrade
+@techfinityedge/koolbase-react-native` (or the equivalent npm/pnpm/bun
+command) and rebuilding (`yarn build`).
 
 ### Added — storage
 
