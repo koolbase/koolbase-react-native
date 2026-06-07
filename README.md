@@ -381,16 +381,60 @@ When the device is offline, these writes are queued and synced automatically whe
 
 ### Semantic search
 
-Find records by meaning, not just by field equality. Store an embedding
-vector on a record, then search the collection for nearest neighbors to a
-query vector — useful for similarity search over user-supplied embeddings.
+Find records by meaning, not just field equality. Two paths: let Koolbase
+embed text for you on the server (recommended — no client-side model
+needed), or pass a precomputed vector.
 
 Declare a vector field on the collection from the dashboard or CLI first
-(picking a dimension; v1 supports 384, 768, 1024, and 1536). Then write
-and search from the SDK:
+(picking a dimension; v1 supports 384, 768, 1024, and 1536).
+
+**Server-side embedding (recommended).** Configure an AI provider on the
+project once (Gemini's free tier works; OpenAI also supported), tag the
+vector field with the provider/model/source_field, and Koolbase
+auto-embeds records as they're inserted or updated:
 
 ```typescript
-// Set a vector for one record
+// One-time setup via dashboard. Then just write records normally:
+await Koolbase.db.insert({
+  collection: 'articles',
+  data: {
+    title: 'How to ship faster',
+    content: 'Cut scope ruthlessly. Ship the smallest useful slice...',
+  },
+});
+
+// Query by text — server embeds inline using the configured provider:
+const result = await Koolbase.db.searchSemantic({
+  collection: 'articles',
+  field: 'content_embedding',
+  queryText: 'how do I move quicker?',
+  limit: 10,
+});
+for (const hit of result.hits) {
+  console.log(`${hit.record.data.title}  ${hit.distance.toFixed(3)}`);
+}
+
+// Backfill records that pre-date the auto-embed config:
+await Koolbase.db.embedText({
+  collection: 'articles',
+  recordId: article.$id,
+  vectorField: 'content_embedding',
+});
+
+// Or override the source — useful for combining fields:
+await Koolbase.db.embedText({
+  collection: 'articles',
+  recordId: article.$id,
+  vectorField: 'content_embedding',
+  text: `${article.title}\n\n${article.summary}`,
+});
+```
+
+**Client-side embedding (advanced).** If you'd rather control the
+embedding model yourself, pass a vector instead of text:
+
+```typescript
+// Set a vector you've encoded yourself
 await Koolbase.db.setVector(
   articleId,
   'embedding',
@@ -401,41 +445,38 @@ await Koolbase.db.setVector(
 const v = await Koolbase.db.getVector(articleId, 'embedding');
 console.log(`${v.vector.length}-dim, updated ${v.updatedAt}`);
 
-// Search the collection for nearest neighbors
+// Search with a precomputed vector
 const result = await Koolbase.db.searchSemantic({
   collection: 'articles',
   field: 'embedding',
   queryVector: await myEmbeddingModel.encode(userQuery),
   limit: 10,
-});
-
-for (const hit of result.hits) {
-  // hit.distance is cosine distance: lower = more similar
-  // (0 = identical direction, 1 ≈ orthogonal, 2 = opposite)
-  console.log(hit.record.data.title, hit.distance.toFixed(3));
-}
-
-// Optionally scope the search with an equality filter
-const scoped = await Koolbase.db.searchSemantic({
-  collection: 'articles',
-  field: 'embedding',
-  queryVector: queryEmbedding,
-  limit: 10,
   where: { category: 'tech' },
 });
 
-// Remove a record's vector when you no longer need it
+// Remove a record's vector when no longer needed
 await Koolbase.db.deleteVector(articleId, 'embedding');
 ```
 
 A few behaviors worth knowing:
 
-- **Vector length must match the declared dimension.** Mismatches throw `KoolbaseVectorDimensionMismatchError` with the expected and actual dimensions in the message.
-- **Online-only.** Vector operations are not cached locally or queued offline — HNSW similarity search has no useful offline semantics, so deferred writes could corrupt your view of what's stored.
-- **Read rule applies post-search.** Semantic search respects the collection's read rule the same way `query()` does: `owner`/`scoped`/`conditional` records are filtered to the caller after the HNSW lookup, so strict rules may return fewer than `limit` results.
-- **Higher dimensions coming.** OpenAI's `text-embedding-3-large` ships at 3072 dimensions, supported in a future release once pgvector is upgraded. In the meantime, use your model's `dimensions=1536` parameter (Matryoshka truncation) for full compatibility.
+- **Pass exactly one of `queryVector` or `queryText`.** Supplying both
+  or neither throws an `Error`.
+- **Vector length must match the declared dimension.** Mismatches throw
+  `KoolbaseVectorDimensionMismatchError`.
+- **Online-only.** Vector operations are not cached locally or queued
+  offline — HNSW similarity search has no useful offline semantics.
+- **Read rule applies post-search.** `owner`/`scoped`/`conditional`
+  records are filtered to the caller after the HNSW lookup, so strict
+  rules may return fewer than `limit` results.
+- **`embedText` is async.** Returns when the job is queued (~100ms).
+  The vector lands within 1 second once the worker picks it up.
+- **Higher dimensions coming.** `text-embedding-3-large` (3072 dim)
+  supported once pgvector is upgraded. Use `dimensions=1536` Matryoshka
+  truncation in the meantime.
 
-See [Semantic search docs](https://docs.koolbase.com/database/vectors) for setup, dimension guidance, and embedding model recommendations.
+See [Semantic search docs](https://docs.koolbase.com/database/vectors)
+for setup, provider configuration, and embedding model recommendations.
 
 ---
 

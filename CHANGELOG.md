@@ -7,7 +7,34 @@ adheres to [Semantic Versioning][semver].
 [kac]: https://keepachangelog.com/en/1.1.0/
 [semver]: https://semver.org/
 
-# 6.0.0
+## 7.0.0
+
+### Breaking changes
+
+- `KoolbaseDatabase.searchSemantic`: the `queryVector` parameter is now optional.
+  Existing callers continue to work unchanged — the breaking aspect is that
+  the SDK now validates that exactly one of `queryVector` / `queryText` is
+  supplied, and throws `Error` otherwise.
+
+### Added
+
+- `KoolbaseDatabase.searchSemantic` accepts a new `queryText` parameter. When
+  supplied, the server embeds it inline using the vector field's configured
+  provider (Gemini or OpenAI) before running HNSW lookup. No client-side
+  embedding model required for typical search use cases.
+- `KoolbaseDatabase.embedText` queues an embedding job for a specific record's
+  vector field. Used for backfilling vectors on records that pre-date the
+  auto-embed hook, or for embedding text other than the record's
+  configured source field.
+
+### Server requirements
+
+- Requires Koolbase API release `771728d` or later (Phase 2 Stage A3a).
+- Auto-embed on record write is automatic once a vector field has its
+  `embedding_provider`, `embedding_model`, and `source_field` configured
+  (see [docs](https://docs.koolbase.com/database/vectors)).
+
+## 6.0.0
 
 ### Added — database
 

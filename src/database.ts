@@ -517,44 +517,83 @@ export class KoolbaseDatabase {
   }
 
   /**
-   * Semantic search via HNSW vector similarity.
+   * Queue an embedding job for a record's vector field. The server's
+   * embedding worker picks it up within ~1 second.
    *
-   * Ranks records in `collection` by cosine distance between the supplied
-   * `queryVector` and each record's stored vector on `field`. Returns up
-   * to `limit` (default 20) nearest hits, with the collection's read rule
-   * applied — owner/scoped/conditional records are filtered to the caller.
-   *
-   * `where` is an optional equality filter map on record `data` fields,
-   * applied AFTER the HNSW lookup, so very strict filters may return
-   * fewer than `limit` results.
-   *
-   * Online-only.
+   * If `text` is omitted, the vector field's configured `source_field`
+   * value on the record is used.
    *
    * @example
+   * await Koolbase.db.embedText({
+   *   collection: 'articles',
+   *   recordId: article.$id,
+   *   vectorField: 'content_embedding',
+   * });
+   */
+  async embedText(opts: {
+    collection: string;
+    recordId: string;
+    vectorField: string;
+    text?: string;
+  }): Promise<void> {
+    const body: Record<string, unknown> = {
+      collection: opts.collection,
+      record_id: opts.recordId,
+      vector_field: opts.vectorField,
+    };
+    if (opts.text && opts.text.length > 0) {
+      body.text = opts.text;
+    }
+    await this.request<{ queued: boolean }>('POST', '/v1/sdk/db/embed-text', body);
+  }
+
+
+  /**
+   * Semantic search over a vector field. Supply EITHER `queryVector`
+   * (precomputed) OR `queryText` (the server embeds it inline using the
+   * vector field's configured provider).
+   *
+   * @example
+   * // Server-side embedding — most common:
    * const result = await Koolbase.db.searchSemantic({
    *   collection: 'articles',
-   *   field: 'embedding',
-   *   queryVector: await myEmbeddingModel.encode(userQuery),
+   *   field: 'content_embedding',
+   *   queryText: 'how do I configure CI/CD?',
    *   limit: 10,
-   *   where: { category: 'tech' },
    * });
-   * for (const hit of result.hits) {
-   *   console.log(hit.record.data.title, hit.distance);
-   * }
+   *
+   * // Client-side embedding:
+   * const result = await Koolbase.db.searchSemantic({
+   *   collection: 'articles',
+   *   field: 'content_embedding',
+   *   queryVector: precomputed,
+   *   limit: 10,
+   * });
    */
   async searchSemantic(opts: {
     collection: string;
     field: string;
-    queryVector: number[];
+    queryVector?: number[];
+    queryText?: string;
     limit?: number;
     where?: Record<string, unknown>;
   }): Promise<SemanticSearchResult> {
+    const hasVector = Array.isArray(opts.queryVector) && opts.queryVector.length > 0;
+    const hasText = typeof opts.queryText === 'string' && opts.queryText.trim().length > 0;
+    if (!hasVector && !hasText) {
+      throw new Error('searchSemantic: provide either queryVector or queryText.');
+    }
+    if (hasVector && hasText) {
+      throw new Error('searchSemantic: provide only one of queryVector or queryText.');
+    }
+
     const body: Record<string, unknown> = {
       collection: opts.collection,
       field: opts.field,
-      query_vector: opts.queryVector,
       limit: opts.limit ?? 20,
     };
+    if (hasVector) body.query_vector = opts.queryVector;
+    if (hasText) body.query_text = opts.queryText;
     if (opts.where && Object.keys(opts.where).length > 0) {
       body.where = opts.where;
     }
