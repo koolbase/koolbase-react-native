@@ -8,6 +8,7 @@ import {
   BatchResult,
   KoolbaseVector,
   SemanticSearchResult,
+  SearchMode,
 } from './types';
 import {
   getCached,
@@ -547,11 +548,8 @@ export class KoolbaseDatabase {
     await this.request<{ queued: boolean }>('POST', '/v1/sdk/db/embed-text', body);
   }
 
-
   /**
-   * Semantic search over a vector field. Supply EITHER `queryVector`
-   * (precomputed) OR `queryText` (the server embeds it inline using the
-   * vector field's configured provider).
+   * Search for records based on their semantic similarity to a query.
    *
    * @example
    * // Server-side embedding — most common:
@@ -569,6 +567,25 @@ export class KoolbaseDatabase {
    *   queryVector: precomputed,
    *   limit: 10,
    * });
+   *
+   * // Hybrid search (vector + BM25, RRF-fused):
+   * const result = await Koolbase.db.searchSemantic({
+   *   collection: 'articles',
+   *   field: 'content_embedding',
+   *   queryText: 'how do I configure CI/CD?',
+   *   mode: 'hybrid',
+   *   minSimilarity: 70,
+   * });
+   *
+   * `mode` selects the retrieval strategy:
+   * - `'semantic'` (default) — pure vector search via HNSW
+   * - `'lexical'` — pure BM25 over the field's source text
+   * - `'hybrid'` — vector + lexical, RRF-fused (k=60)
+   *
+   * `minSimilarity` (0..100, optional) filters out results below the
+   * given similarity percentage server-side. Saves bandwidth on weak
+   * matches. Only valid for semantic and hybrid; rejected by the
+   * server on lexical mode.
    */
   async searchSemantic(opts: {
     collection: string;
@@ -577,6 +594,8 @@ export class KoolbaseDatabase {
     queryText?: string;
     limit?: number;
     where?: Record<string, unknown>;
+    mode?: SearchMode;
+    minSimilarity?: number;
   }): Promise<SemanticSearchResult> {
     const hasVector = Array.isArray(opts.queryVector) && opts.queryVector.length > 0;
     const hasText = typeof opts.queryText === 'string' && opts.queryText.trim().length > 0;
@@ -586,16 +605,31 @@ export class KoolbaseDatabase {
     if (hasVector && hasText) {
       throw new Error('searchSemantic: provide only one of queryVector or queryText.');
     }
-
+    if (
+      opts.minSimilarity !== undefined &&
+      (opts.minSimilarity < 0 || opts.minSimilarity > 100)
+    ) {
+      throw new Error(
+        `searchSemantic: minSimilarity must be between 0 and 100, got ${opts.minSimilarity}.`,
+      );
+    }
     const body: Record<string, unknown> = {
       collection: opts.collection,
       field: opts.field,
       limit: opts.limit ?? 20,
+      // Always send mode so the server uses the SDK's intent rather
+      // than its own default. Omitting for 'semantic' would also work
+      // (server defaults to semantic) but explicit is safer if the
+      // server's default ever shifts.
+      mode: opts.mode ?? 'semantic',
     };
     if (hasVector) body.query_vector = opts.queryVector;
     if (hasText) body.query_text = opts.queryText;
     if (opts.where && Object.keys(opts.where).length > 0) {
       body.where = opts.where;
+    }
+    if (opts.minSimilarity !== undefined) {
+      body.min_similarity = opts.minSimilarity;
     }
     const raw = await this.request<{
       results: Array<{ record: Record<string, unknown>; distance: number }>;

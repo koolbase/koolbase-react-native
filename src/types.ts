@@ -191,6 +191,19 @@ export interface KoolbaseVector {
 }
 
 /**
+ * Retrieval strategy for `KoolbaseDatabase.searchSemantic()`.
+ *
+ * - `'semantic'` (default) — pure vector search via HNSW on cosine
+ *   distance. Best for fuzzy / conceptual queries where exact term
+ *   match isn't required.
+ * - `'lexical'` — pure BM25 over the field's source text (Postgres
+ *   `ts_rank_cd`). Best for exact terms, codes, names, acronyms.
+ * - `'hybrid'` — vector + lexical fused with reciprocal rank fusion
+ *   (k=60). Generally the strongest default for production search.
+ */
+export type SearchMode = 'semantic' | 'lexical' | 'hybrid';
+
+/**
  * One ranked hit from `KoolbaseDatabase.searchSemantic()`. `record` is
  * the full record (same wire shape as a record returned by query/get).
  * `distance` is the cosine distance between the query vector and the

@@ -379,22 +379,81 @@ When the device is offline, these writes are queued and synced automatically whe
 
 ---
 
-### Semantic search
+### Semantic, lexical, and hybrid search
 
-Find records by meaning, not just field equality. Two paths: let Koolbase
-embed text for you on the server (recommended — no client-side model
-needed), or pass a precomputed vector.
+Find records by meaning, exact terms, or both. Koolbase ships three
+retrieval modes from a single API — pick the one that matches your
+query characteristics, or use `'hybrid'` as a strong production default.
 
 Declare a vector field on the collection from the dashboard or CLI first
 (picking a dimension; v1 supports 384, 768, 1024, and 1536).
 
-**Server-side embedding (recommended).** Configure an AI provider on the
-project once (Gemini's free tier works; OpenAI also supported), tag the
-vector field with the provider/model/source_field, and Koolbase
-auto-embeds records as they're inserted or updated:
+#### The three search modes
 
 ```typescript
-// One-time setup via dashboard. Then just write records normally:
+// Semantic (default) — pure vector search via HNSW + cosine. Best for
+// fuzzy or conceptual queries where exact words don't have to match.
+const result = await Koolbase.db.searchSemantic({
+  collection: 'articles',
+  field: 'content_embedding',
+  queryText: 'how do I move quicker?',
+  limit: 10,
+});
+
+// Lexical — pure BM25 over the field's source text (Postgres
+// ts_rank_cd). Best for exact terms, product codes, names, acronyms.
+const result = await Koolbase.db.searchSemantic({
+  collection: 'articles',
+  field: 'content_embedding',
+  queryText: 'CVE-2024-1234',
+  mode: 'lexical',
+  limit: 10,
+});
+
+// Hybrid — vector + lexical fused with reciprocal rank fusion (k=60).
+// Generally the strongest default; both rankers vote and the fused
+// score promotes records that score well on either signal.
+const result = await Koolbase.db.searchSemantic({
+  collection: 'articles',
+  field: 'content_embedding',
+  queryText: 'production deploy pipeline',
+  mode: 'hybrid',
+  limit: 10,
+});
+```
+
+#### Filtering weak matches
+
+For `'semantic'` and `'hybrid'` modes, pass `minSimilarity` (0..100) to
+drop results below a similarity threshold server-side — saves bandwidth
+on weak matches:
+
+```typescript
+const result = await Koolbase.db.searchSemantic({
+  collection: 'articles',
+  field: 'content_embedding',
+  queryText: 'how do I move quicker?',
+  mode: 'hybrid',
+  minSimilarity: 70, // only matches at least 70% similar
+  limit: 10,
+});
+```
+
+`minSimilarity` is rejected by the server when used with `'lexical'` —
+BM25 rank scores aren't comparable to cosine similarity, and silently
+ignoring the parameter would produce confusing behavior.
+
+#### Server-side embedding (recommended)
+
+Configure an AI provider on the project once (Gemini's free tier works;
+OpenAI also supported), tag the vector field with the
+provider/model/source_field, and Koolbase auto-embeds records as
+they're inserted or updated. Lexical indexing happens automatically on
+the same write, so all three search modes work without extra setup:
+
+```typescript
+// One-time setup via dashboard. Then just write records normally —
+// vectors AND lexical rows land within ~1s.
 await Koolbase.db.insert({
   collection: 'articles',
   data: {
@@ -403,13 +462,7 @@ await Koolbase.db.insert({
   },
 });
 
-// Query by text — server embeds inline using the configured provider:
-const result = await Koolbase.db.searchSemantic({
-  collection: 'articles',
-  field: 'content_embedding',
-  queryText: 'how do I move quicker?',
-  limit: 10,
-});
+// Iterate over hits the same way regardless of mode:
 for (const hit of result.hits) {
   console.log(`${hit.record.data.title}  ${hit.distance.toFixed(3)}`);
 }
@@ -430,8 +483,11 @@ await Koolbase.db.embedText({
 });
 ```
 
-**Client-side embedding (advanced).** If you'd rather control the
-embedding model yourself, pass a vector instead of text:
+#### Client-side embedding (advanced)
+
+If you'd rather control the embedding model yourself, pass a vector
+instead of text. Note that lexical and hybrid modes require text, since
+BM25 has no notion of "vector queries":
 
 ```typescript
 // Set a vector you've encoded yourself
@@ -445,7 +501,7 @@ await Koolbase.db.setVector(
 const v = await Koolbase.db.getVector(articleId, 'embedding');
 console.log(`${v.vector.length}-dim, updated ${v.updatedAt}`);
 
-// Search with a precomputed vector
+// Search with a precomputed vector — semantic mode only.
 const result = await Koolbase.db.searchSemantic({
   collection: 'articles',
   field: 'embedding',
@@ -458,25 +514,32 @@ const result = await Koolbase.db.searchSemantic({
 await Koolbase.db.deleteVector(articleId, 'embedding');
 ```
 
-A few behaviors worth knowing:
+#### Behaviors worth knowing
 
 - **Pass exactly one of `queryVector` or `queryText`.** Supplying both
   or neither throws an `Error`.
+- **`queryVector` is for semantic mode only.** Lexical and hybrid need
+  raw text — the server uses it for BM25 ranking (and embeds it inline
+  for the vector half of hybrid).
 - **Vector length must match the declared dimension.** Mismatches throw
   `KoolbaseVectorDimensionMismatchError`.
+- **`minSimilarity` must be 0..100.** Values outside that range throw
+  an `Error` client-side before the request is sent.
 - **Online-only.** Vector operations are not cached locally or queued
-  offline — HNSW similarity search has no useful offline semantics.
+  offline — HNSW similarity and BM25 ranking have no useful offline
+  semantics.
 - **Read rule applies post-search.** `owner`/`scoped`/`conditional`
-  records are filtered to the caller after the HNSW lookup, so strict
-  rules may return fewer than `limit` results.
+  records are filtered to the caller after retrieval, so strict rules
+  may return fewer than `limit` results.
 - **`embedText` is async.** Returns when the job is queued (~100ms).
   The vector lands within 1 second once the worker picks it up.
 - **Higher dimensions coming.** `text-embedding-3-large` (3072 dim)
-  supported once pgvector is upgraded. Use `dimensions=1536` Matryoshka
-  truncation in the meantime.
+  supported once pgvector is upgraded. Use `dimensions=1536`
+  Matryoshka truncation in the meantime.
 
 See [Semantic search docs](https://docs.koolbase.com/database/vectors)
-for setup, provider configuration, and embedding model recommendations.
+for setup, provider configuration, embedding model recommendations,
+and when to pick each mode.
 
 ---
 
