@@ -1,11 +1,16 @@
 # Changelog
 
-All notable changes to `@techfinityedge/koolbase-react-native` are documented
+All notable changes to `@koolbase/react-native` are documented
 in this file. The format is based on [Keep a Changelog][kac], and this project
 adheres to [Semantic Versioning][semver].
 
 [kac]: https://keepachangelog.com/en/1.1.0/
 [semver]: https://semver.org/
+
+## 9.0.0
+### Breaking changes
+- **Package renamed** from `@techfinityedge/koolbase-react-native` to `@koolbase/react-native` for brand consistency with the rest of the Koolbase SDKs and tooling. This is the only change in this release — the API surface, behavior, and exports are identical to 8.0.0.
+- **Migration:** replace the dependency in `package.json` (`@techfinityedge/koolbase-react-native` → `@koolbase/react-native`) and update every import path accordingly. No code changes beyond the import specifier are required. The old package is deprecated on npm and will receive no further updates.
 
 ## 8.0.0
 
@@ -32,7 +37,7 @@ adheres to [Semantic Versioning][semver].
   Saves bandwidth on weak matches. Only valid for semantic and hybrid
   modes; the server rejects it on lexical mode (BM25 ranks aren't
   comparable to cosine similarity).
-- New `SearchMode` type exported from `@techfinityedge/koolbase-react-native`.
+- New `SearchMode` type exported from `@koolbase/react-native`.
 
 ### Server requirements
 
@@ -124,7 +129,7 @@ adheres to [Semantic Versioning][semver].
 
 Purely additive — no existing methods, types, or exports changed.
 Upgrading from 5.x requires only `yarn upgrade
-@techfinityedge/koolbase-react-native` (or the equivalent npm/pnpm/bun
+@koolbase/react-native` (or the equivalent npm/pnpm/bun
 command) and rebuilding (`yarn build`).
 
 ### Added — storage
