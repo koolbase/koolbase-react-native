@@ -1,6 +1,6 @@
-# @techfinityedge/koolbase-react-native
+# @koolbase/react-native
 
-[![npm](https://img.shields.io/npm/v/@techfinityedge/koolbase-react-native.svg)](https://www.npmjs.com/package/@techfinityedge/koolbase-react-native)
+[![npm](https://img.shields.io/npm/v/@koolbase/react-native.svg)](https://www.npmjs.com/package/@koolbase/react-native)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 
 React Native SDK for [Koolbase](https://koolbase.com) — Backend as a Service built for mobile developers.
@@ -16,19 +16,19 @@ Auth, database, storage, realtime, functions, feature flags, remote config, vers
 3. Add the SDK:
 
 ```bash
-   npm install @techfinityedge/koolbase-react-native
+   npm install @koolbase/react-native
    # or
-   yarn add @techfinityedge/koolbase-react-native
+   yarn add @koolbase/react-native
    # or
-   pnpm add @techfinityedge/koolbase-react-native
+   pnpm add @koolbase/react-native
    # or
-   bun add @techfinityedge/koolbase-react-native
+   bun add @koolbase/react-native
 ```
 
 4. Initialize at app startup:
 
 ```typescript
-   import { Koolbase } from '@techfinityedge/koolbase-react-native';
+   import { Koolbase } from '@koolbase/react-native';
 
    await Koolbase.initialize({
      publicKey: 'pk_live_xxxx',
@@ -81,7 +81,7 @@ Apple Sign-In uses the native authentication flow via `@invertase/react-native-a
 
 ```typescript
 import appleAuth from '@invertase/react-native-apple-authentication';
-import { Koolbase } from '@techfinityedge/koolbase-react-native';
+import { Koolbase } from '@koolbase/react-native';
 
 const response = await appleAuth.performRequest({
   requestedOperation: appleAuth.Operation.LOGIN,
@@ -110,7 +110,7 @@ Google Sign-In uses the native authentication flow via `@react-native-google-sig
 
 ```typescript
 import { GoogleSignin } from '@react-native-google-signin/google-signin';
-import { Koolbase } from '@techfinityedge/koolbase-react-native';
+import { Koolbase } from '@koolbase/react-native';
 
 GoogleSignin.configure({
   webClientId: '<your-web-client-id>.apps.googleusercontent.com',
@@ -203,7 +203,7 @@ For files in public buckets, you can construct the stable CDN URL directly — n
 network call, no expiry, embeddable anywhere a browser fetches a URL.
 
 ```typescript
-import { KoolbaseStorage } from '@techfinityedge/koolbase-react-native';
+import { KoolbaseStorage } from '@koolbase/react-native';
 
 // From a KoolbaseObject you already have (e.g. from upload() or another read)
 const { object } = await Koolbase.storage.upload({
@@ -335,7 +335,7 @@ await Koolbase.db.syncPendingWrites();
 Run multiple writes in a single server-side transaction. All operations commit together or none are applied — any failure rolls back the entire batch.
 
 ```ts
-import { Koolbase, BatchOp } from '@techfinityedge/koolbase-react-native';
+import { Koolbase, BatchOp } from '@koolbase/react-native';
 
 const results = await Koolbase.db.batch([
   BatchOp.insert('orders', { total: 50, customer_id: customerId }),
@@ -362,7 +362,7 @@ const results = await Koolbase.db.batch([
 `insert`, `update`, and `upsert` are online-first: when the server is reachable they throw a typed error on rejection. Catch `KoolbaseConflictError` to handle unique-constraint violations (e.g. a duplicate email):
 
 ```ts
-import { KoolbaseConflictError } from '@techfinityedge/koolbase-react-native';
+import { KoolbaseConflictError } from '@koolbase/react-native';
 
 try {
   await Koolbase.db.insert('users', { email, name });
@@ -580,7 +580,7 @@ await Koolbase.storage.delete('avatars', `user-${userId}.jpg`);
 For user-supplied filenames, prompt the user before overwriting:
 
 ```typescript
-import { KoolbaseStorageConflictError } from '@techfinityedge/koolbase-react-native';
+import { KoolbaseStorageConflictError } from '@koolbase/react-native';
 
 try {
   await Koolbase.storage.upload({
@@ -621,7 +621,7 @@ import {
   KoolbaseStorageQuotaError,
   KoolbaseStorageFileTooLargeError,
   KoolbaseStorageMimeTypeError,
-} from '@techfinityedge/koolbase-react-native';
+} from '@koolbase/react-native';
 
 try {
   await Koolbase.storage.upload({
@@ -928,7 +928,7 @@ All data-layer failures extend `KoolbaseDataError` (which extends `Error`):
 | `KoolbaseVectorDimensionMismatchError` | A vector's length doesn't match the field's declared dimension (400, code `vector_dimension_mismatch`). |
 
 ```ts
-import { KoolbaseConflictError, KoolbaseDataError } from '@techfinityedge/koolbase-react-native';
+import { KoolbaseConflictError, KoolbaseDataError } from '@koolbase/react-native';
 
 try {
   await Koolbase.db.upsert('users', { email }, { name });
@@ -964,7 +964,7 @@ import {
   KoolbaseStorageConflictError,
   KoolbaseStorageError,
   KoolbaseStoragePermissionError,
-} from '@techfinityedge/koolbase-react-native';
+} from '@koolbase/react-native';
 
 try {
   await Koolbase.storage.upload({
