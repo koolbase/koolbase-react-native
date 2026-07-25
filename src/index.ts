@@ -5,7 +5,7 @@ import { KoolbaseAnalytics } from './analytics';
 import { KoolbaseMessaging } from './messaging';
 export { KoolbaseMessaging } from './messaging';
 export { KoolbaseAppleAuth } from './apple-auth';
-export type { RegisterTokenOptions, SendOptions } from './messaging';
+export type { RegisterTokenOptions } from './messaging';
 import { KoolbaseLogicEngine, FlowResult } from './logic-engine';
 export { KoolbaseAnalytics } from './analytics';
 export type { FlowResult } from './logic-engine';
@@ -17,6 +17,7 @@ import { KoolbaseFunctions } from './functions';
 import { KoolbaseRealtime } from './realtime';
 import { KoolbaseStorage } from './storage';
 import { KoolbaseConfig, VersionCheckResult } from './types';
+import { getOrCreateDeviceId } from './device-id';
 
 export * from './types';
 export * from './auth-errors';
@@ -58,28 +59,28 @@ export const Koolbase = {
       () => _auth?.validAccessToken() ?? Promise.resolve(null),
     );
     _functions = new KoolbaseFunctions(config, () => _auth?.validAccessToken() ?? Promise.resolve(null));
-    _flags = new KoolbaseFlags(config, 'rn-device');
 
+    // One anonymous device id for the whole SDK — bucketing (flags), targeting
+    // (code push), and registration keying (messaging) must all agree on it.
+    const deviceId = await getOrCreateDeviceId();
+
+    _flags = new KoolbaseFlags(config, deviceId);
     _codePush = new KoolbaseCodePush(config, config.codePushChannel ?? 'stable');
-
     // Initialize code push — loads cached bundle then checks in background
     await _codePush.init({
       appVersion: '1.0.0', // override with your app version
       platform: 'react-native',
-      deviceId: 'rn-device',
+      deviceId,
     });
-
     // Initialize analytics
     if (config.analyticsEnabled !== false) {
       _analytics = new KoolbaseAnalytics(config);
       await _analytics.init(config.appVersion);
     }
-
     // Initialize messaging
     if (config.messagingEnabled !== false) {
       _messaging = new KoolbaseMessaging(config);
-      const storedDeviceId = await AsyncStorage.getItem('koolbase:device_id');
-      _messaging.setDeviceId(storedDeviceId ?? 'rn-device');
+      _messaging.setDeviceId(deviceId);
     }
 
     _initialized = true;

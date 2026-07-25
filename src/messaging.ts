@@ -8,13 +8,6 @@ export interface RegisterTokenOptions {
   userId?: string;
 }
 
-export interface SendOptions {
-  to: string;
-  title: string;
-  body: string;
-  data?: Record<string, unknown>;
-}
-
 // ─── KoolbaseMessaging ────────────────────────────────────────────────────────
 
 export class KoolbaseMessaging {
@@ -53,27 +46,10 @@ export class KoolbaseMessaging {
     }
   }
 
-  // ─── Send notification ────────────────────────────────────────────────────
+  // NOTE: no send() here — sending requires a secret kb_live_ key and is
+  // server-initiated only (backend or Koolbase Function). The publishable key
+  // this client holds ships in the app binary and must not be able to push to
+  // other devices; the API rejects publishable-key sends with 401.
+  // See docs: /sdk/messaging.
 
-  async send(options: SendOptions): Promise<boolean> {
-    try {
-      const response = await fetch(`${this.config.baseUrl}/v1/messaging/send`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-api-key': this.config.publicKey,
-        },
-        body: JSON.stringify({
-          token: options.to,
-          title: options.title,
-          body: options.body,
-          data: options.data ?? {},
-        }),
-      });
-
-      return response.ok;
-    } catch {
-      return false;
-    }
-  }
 }

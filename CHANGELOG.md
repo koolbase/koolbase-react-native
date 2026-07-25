@@ -7,8 +7,41 @@ adheres to [Semantic Versioning][semver].
 [kac]: https://keepachangelog.com/en/1.1.0/
 [semver]: https://semver.org/
 
+## 9.1.0
+
+### Fixed
+
+- **Device identity is now a single shared, persisted value across the SDK.**
+  Feature flags, code push, and messaging were each initialized with a
+  hardcoded `'rn-device'` string instead of a real device id. This silently
+  broke three things: every device collided on one messaging registration row
+  (only the last-registered device per project received push); every device
+  produced the same feature-flag rollout bucket (a 10% rollout was on for
+  everyone or no one, never 10%); and code-push targeting collided the same
+  way. A single `getOrCreateDeviceId()` now generates a persisted UUID v4 once
+  (crypto-backed where the runtime provides it) and all subsystems share it.
+
+  ### Removed
+
+- **`Koolbase.messaging.send()` and `SendOptions`.** Sending push notifications
+  is server-initiated only — it requires a secret `kb_live_` key and must run
+  on your backend or in a Koolbase Function, never in the app. The publishable
+  key the SDK holds ships in your bundle; a client that could send would let
+  anyone extracting it push to your users. The API already rejected
+  publishable-key sends with 401, so this method never delivered. Move sends to
+  your backend. `registerToken` is unchanged.
+
+### Note
+
+- On upgrade, devices are assigned a proper unique id and will re-register
+  with messaging once. No action needed. Feature-flag rollout buckets will
+  change (correctly) — a device that happened to fall in or out of a rollout
+  under the old constant behaviour may now flip, matching its true bucket.
+
 ## 9.0.0
+
 ### Breaking changes
+
 - **Package renamed** from `@techfinityedge/koolbase-react-native` to `@koolbase/react-native` for brand consistency with the rest of the Koolbase SDKs and tooling. This is the only change in this release — the API surface, behavior, and exports are identical to 8.0.0.
 - **Migration:** replace the dependency in `package.json` (`@techfinityedge/koolbase-react-native` → `@koolbase/react-native`) and update every import path accordingly. No code changes beyond the import specifier are required. The old package is deprecated on npm and will receive no further updates.
 

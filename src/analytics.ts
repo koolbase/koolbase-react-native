@@ -1,6 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { AppState, AppStateStatus, Platform } from 'react-native';
 import { KoolbaseConfig } from './types';
+import { getOrCreateDeviceId } from './device-id';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -46,7 +47,7 @@ export class KoolbaseAnalytics {
   async init(appVersion?: string): Promise<void> {
     if (this.initialized) return;
 
-    this.deviceId = await this.getOrCreateDeviceId();
+    this.deviceId = await getOrCreateDeviceId();
     this.sessionId = `${this.deviceId}-${Date.now()}`;
     this.appVersion = appVersion ?? '1.0.0';
 
@@ -150,27 +151,5 @@ export class KoolbaseAnalytics {
     if (this.flushTimer) clearInterval(this.flushTimer);
     this.track('session_end');
     await this.flush();
-  }
-
-  // ─── Device ID ────────────────────────────────────────────────────────────
-
-  private async getOrCreateDeviceId(): Promise<string> {
-    try {
-      const existing = await AsyncStorage.getItem(DEVICE_ID_KEY);
-      if (existing) return existing;
-      const newId = this.generateUUID();
-      await AsyncStorage.setItem(DEVICE_ID_KEY, newId);
-      return newId;
-    } catch {
-      return this.generateUUID();
-    }
-  }
-
-  private generateUUID(): string {
-    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
-      const r = (Math.random() * 16) | 0;
-      const v = c === 'x' ? r : (r & 0x3) | 0x8;
-      return v.toString(16);
-    });
   }
 }
