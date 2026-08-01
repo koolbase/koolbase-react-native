@@ -214,6 +214,23 @@ export class KoolbaseAuth {
     this.fireAuthStateChange();
   }
 
+  /**
+   * Discards the stored session without contacting the server.
+   *
+   * For when the session is already known to be unusable — the server rejected
+   * the token, or a build was pointed at a different project and the persisted
+   * session belongs to the old one. Unlike `logout()` there is no server call:
+   * the token has already been refused, and asking for it to be revoked would
+   * only add a round trip that cannot succeed.
+   *
+   * Safe in any state, including with no session at all. The SDK calls this
+   * itself when a request is rejected as unauthenticated, so most apps will not
+   * need to.
+   */
+  async clearStoredSession(): Promise<void> {
+    await this.clearSessionInternal();
+  }
+
   private async clearSessionInternal(): Promise<void> {
     this.session = null;
     if (this.storage) {

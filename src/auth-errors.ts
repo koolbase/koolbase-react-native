@@ -1,14 +1,12 @@
+import { KoolbaseError } from './errors';
 /**
  * Base error type for all Koolbase auth errors. Catchable via
  * `instanceof KoolbaseAuthError` to handle any auth-related failure
  * generically; subclasses let you handle specific cases.
  */
-export class KoolbaseAuthError extends Error {
-  code?: string;
-
+export class KoolbaseAuthError extends KoolbaseError {
   constructor(message: string, code?: string) {
-    super(message);
-    this.code = code;
+    super(message, code);
     this.name = 'KoolbaseAuthError';
     Object.setPrototypeOf(this, KoolbaseAuthError.prototype);
   }

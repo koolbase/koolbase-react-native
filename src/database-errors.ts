@@ -1,3 +1,4 @@
+import { KoolbaseError, KoolbaseUnauthenticatedError } from './errors';
 /**
  * Base class for errors surfaced by the Koolbase data layer (database reads
  * and writes). Every data error carries a `message` and, when the server
@@ -7,12 +8,9 @@
  * Catch this to handle any data-layer failure generically, or catch a
  * specific subclass to branch on the kind of failure.
  */
-export class KoolbaseDataError extends Error {
-  code?: string;
-
+export class KoolbaseDataError extends KoolbaseError {
   constructor(message: string, code?: string) {
-    super(message);
-    this.code = code;
+    super(message, code);
     this.name = 'KoolbaseDataError';
     Object.setPrototypeOf(this, KoolbaseDataError.prototype);
   }
@@ -144,7 +142,7 @@ export function koolbaseDataError(
   status: number,
   body: any,
   fallbackMessage = 'Request failed'
-): KoolbaseDataError {
+): KoolbaseError {
   const code: string | undefined = body?.code;
   const message: string = body?.error ?? fallbackMessage;
   const field: string | undefined = body?.details?.field;
@@ -159,6 +157,10 @@ export function koolbaseDataError(
     case 'vector_not_found':
     case 'vector_field_not_found':
       return new KoolbaseNotFoundError(message);
+    case 'unauthenticated':
+    case 'session_expired':
+    case 'invalid_token':
+      return new KoolbaseUnauthenticatedError(message);
     case 'permission_denied':
       return new KoolbasePermissionError(message);
     case 'rate_limit':
@@ -177,6 +179,13 @@ export function koolbaseDataError(
       return new KoolbaseConflictError(message);
     case 404:
       return new KoolbaseNotFoundError(message);
+    case 401:
+      // The status carries the meaning: every 401 from this server reports the
+      // same code, so it cannot say whether the session expired, the key was
+      // revoked, or the header was malformed. Safe to treat uniformly because a
+      // permission failure is 403 — a 401 means the credentials were not
+      // accepted, not that this caller may not proceed.
+      return new KoolbaseUnauthenticatedError(message);
     case 403:
       return new KoolbasePermissionError(message);
     case 429:

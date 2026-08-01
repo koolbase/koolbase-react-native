@@ -52,8 +52,16 @@ export const Koolbase = {
       config,
       () => _auth?.currentUser?.id ?? null,
       () => _auth?.validAccessToken() ?? Promise.resolve(null),
+      // A session the server refuses is not a session. Clearing it here means an
+      // app catching KoolbaseUnauthenticatedError is already signed out and can
+      // route to login, rather than looping on a dead token.
+      async () => { await _auth?.clearStoredSession(); },
     );
-    _storage = new KoolbaseStorage(config, () => _auth?.validAccessToken() ?? Promise.resolve(null));
+    _storage = new KoolbaseStorage(
+      config,
+      () => _auth?.validAccessToken() ?? Promise.resolve(null),
+      async () => { await _auth?.clearStoredSession(); },
+    );
     _realtime = new KoolbaseRealtime(
       config,
       () => _auth?.validAccessToken() ?? Promise.resolve(null),

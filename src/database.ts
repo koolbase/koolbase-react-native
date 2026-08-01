@@ -1,3 +1,4 @@
+import { KoolbaseError, KoolbaseUnauthenticatedError } from './errors';
 import {
   KoolbaseConfig,
   KoolbaseRecord,
@@ -48,16 +49,27 @@ export class KoolbaseDatabase {
   private config: KoolbaseConfig;
   private getUserId: () => string | null;
   private getToken: () => Promise<string | null>;
+  /**
+   * Called when the server rejects the caller's credentials.
+   *
+   * A session stops working for the whole SDK at once, so it is cleared before
+   * the error reaches the caller — otherwise the app keeps believing it is
+   * signed in and every subsequent call fails the same way, with no path back
+   * to login.
+   */
+  private onSessionExpired?: () => Promise<void>;
   private syncEngine: SyncEngine;
 
   constructor(
     config: KoolbaseConfig,
     getUserId: () => string | null,
     getToken: () => Promise<string | null>,
+    onSessionExpired?: () => Promise<void>,
   ) {
     this.config = config;
     this.getUserId = getUserId;
     this.getToken = getToken;
+    this.onSessionExpired = onSessionExpired;
     this.syncEngine = new SyncEngine(config, getUserId, getToken);
     this.syncEngine.start();
   }
@@ -98,11 +110,15 @@ export class KoolbaseDatabase {
       }
     }
     if (!res.ok) {
-      throw koolbaseDataError(
+      const err = koolbaseDataError(
         res.status,
         (data as Record<string, unknown>) ?? {},
         `Request failed: ${res.status}`
       );
+      if (err instanceof KoolbaseUnauthenticatedError) {
+        await this.onSessionExpired?.();
+      }
+      throw err;
     }
     return data as T;
   }
@@ -190,7 +206,11 @@ export class KoolbaseDatabase {
       // Surface to the caller without writing optimistic state or queuing —
       // the server has already decided it will not accept this write, and
       // queuing it would just spin SyncEngine until max retries.
-      if (e instanceof KoolbaseDataError) throw e;
+      // Anything the server answered with — a refusal, a conflict, a rejected
+      // credential — must not be queued: it will be refused again on every
+      // retry. Checked against the root rather than the data family, because a
+      // rejected credential belongs to no single surface.
+      if (e instanceof KoolbaseError) throw e;
 
       // Genuine network failure → offline path: save to local cache and
       // queue for SyncEngine to retry when online. Return the optimistic
@@ -404,7 +424,11 @@ export class KoolbaseDatabase {
     } catch (e) {
       // Server-reachable rejection: surface to caller without queuing — the
       // server already refused the write and will refuse it again on retry.
-      if (e instanceof KoolbaseDataError) throw e;
+      // Anything the server answered with — a refusal, a conflict, a rejected
+      // credential — must not be queued: it will be refused again on every
+      // retry. Checked against the root rather than the data family, because a
+      // rejected credential belongs to no single surface.
+      if (e instanceof KoolbaseError) throw e;
 
       // Genuine network failure → queue for sync and return an optimistic
       // partial record so the UI reflects the update immediately.
@@ -434,7 +458,11 @@ export class KoolbaseDatabase {
       // record will be refused again on every retry, so surface it rather than
       // queueing. An app told a delete succeeded when it did not has no way to
       // learn otherwise.
-      if (e instanceof KoolbaseDataError) throw e;
+      // Anything the server answered with — a refusal, a conflict, a rejected
+      // credential — must not be queued: it will be refused again on every
+      // retry. Checked against the root rather than the data family, because a
+      // rejected credential belongs to no single surface.
+      if (e instanceof KoolbaseError) throw e;
       // Genuine network failure. Queued here rather than before the request,
       // which would leave a successful delete in the queue to replay later
       // against a record that may since have been recreated under the same id.

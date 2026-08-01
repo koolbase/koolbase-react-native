@@ -1,14 +1,12 @@
+import { KoolbaseError, KoolbaseUnauthenticatedError } from './errors';
 /**
  * Base error type for all Koolbase storage errors. Catchable via
  * `instanceof KoolbaseStorageError` to handle any storage-related failure
  * generically; subclasses let you handle specific cases.
  */
-export class KoolbaseStorageError extends Error {
-  code?: string;
-
+export class KoolbaseStorageError extends KoolbaseError {
   constructor(message: string, code?: string) {
-    super(message);
-    this.code = code;
+    super(message, code);
     this.name = 'KoolbaseStorageError';
     Object.setPrototypeOf(this, KoolbaseStorageError.prototype);
   }
@@ -241,6 +239,10 @@ export function koolbaseStorageError(
       return new KoolbaseStorageMimeTypeError(message);
     case 404:
       return new KoolbaseStorageNotFoundError(message);
+    case 401:
+      // A rejected credential is not a storage problem: a session stops
+      // working for the whole SDK at once, so it raises the shared type.
+      return new KoolbaseUnauthenticatedError(message);
     case 403:
       return new KoolbaseStoragePermissionError(message);
     case 400:

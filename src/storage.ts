@@ -1,3 +1,4 @@
+import { KoolbaseError, KoolbaseUnauthenticatedError } from './errors';
 import {
   KoolbaseConfig,
   UploadOptions,
@@ -49,9 +50,36 @@ export class KoolbaseStorage {
   private config: KoolbaseConfig;
   private getToken: () => Promise<string | null>;
 
-  constructor(config: KoolbaseConfig, getToken: () => Promise<string | null>) {
+  /**
+   * Called when the server rejects the caller's credentials.
+   *
+   * A session stops working for the whole SDK at once, not one subsystem at a
+   * time, so a 401 met during an upload has to clear it just as one met during a
+   * query does. Otherwise an app whose failing call happens to be a file upload
+   * keeps believing it is signed in.
+   */
+  private onSessionExpired?: () => Promise<void>;
+
+  constructor(
+    config: KoolbaseConfig,
+    getToken: () => Promise<string | null>,
+    onSessionExpired?: () => Promise<void>,
+  ) {
     this.config = config;
     this.getToken = getToken;
+    this.onSessionExpired = onSessionExpired;
+  }
+
+  /**
+   * Builds the error for a failed response and clears the session when the
+   * credentials were refused, before the error reaches the caller.
+   */
+  private async error(res: Response, fallback?: string): Promise<KoolbaseError> {
+    const err = await koolbaseStorageErrorFromResponse(res, fallback);
+    if (err instanceof KoolbaseUnauthenticatedError) {
+      await this.onSessionExpired?.();
+    }
+    return err;
   }
 
   private async buildHeaders(): Promise<Record<string, string>> {
@@ -106,7 +134,7 @@ export class KoolbaseStorage {
       }
     );
     if (!urlRes.ok) {
-      throw await koolbaseStorageErrorFromResponse(urlRes, 'Failed to get upload URL');
+      throw await this.error(urlRes, 'Failed to get upload URL');
     }
     const { upload_url } = (await urlRes.json()) as { upload_url: string };
 
@@ -160,7 +188,7 @@ export class KoolbaseStorage {
       }
     );
     if (!confirmRes.ok) {
-      throw await koolbaseStorageErrorFromResponse(
+      throw await this.error(
         confirmRes,
         'Failed to confirm upload'
       );
@@ -224,7 +252,7 @@ export class KoolbaseStorage {
       }
     );
     if (!res.ok) {
-      throw await koolbaseStorageErrorFromResponse(res, 'Failed to update metadata');
+      throw await this.error(res, 'Failed to update metadata');
     }
     const raw = await res.json();
     return mapObjectFromServer(raw);
@@ -242,7 +270,7 @@ export class KoolbaseStorage {
     }
     const res = await fetch(url, { headers: await this.buildHeaders() });
     if (!res.ok) {
-      throw await koolbaseStorageErrorFromResponse(res, 'Failed to get download URL');
+      throw await this.error(res, 'Failed to get download URL');
     }
     const data = (await res.json()) as { url: string };
     return data.url;
@@ -372,7 +400,7 @@ export class KoolbaseStorage {
     });
     if (res.status === 204) return;
     if (!res.ok) {
-      throw await koolbaseStorageErrorFromResponse(res, 'Failed to delete file');
+      throw await this.error(res, 'Failed to delete file');
     }
   }
 
@@ -392,7 +420,7 @@ export class KoolbaseStorage {
       `?bucket=${encodeURIComponent(bucket)}&path=${encodeURIComponent(path)}`;
     const res = await fetch(url, { headers: await this.buildHeaders() });
     if (!res.ok) {
-      throw await koolbaseStorageErrorFromResponse(res, 'Failed to list versions');
+      throw await this.error(res, 'Failed to list versions');
     }
     const data = (await res.json()) as { versions?: unknown[] };
     const list = Array.isArray(data.versions) ? data.versions : [];
@@ -414,7 +442,7 @@ export class KoolbaseStorage {
       `?bucket=${encodeURIComponent(bucket)}&path=${encodeURIComponent(path)}`;
     const res = await fetch(url, { headers: await this.buildHeaders() });
     if (!res.ok) {
-      throw await koolbaseStorageErrorFromResponse(res, 'Failed to fetch version');
+      throw await this.error(res, 'Failed to fetch version');
     }
     return fromVersionJson((await res.json()) as Record<string, unknown>);
   }
@@ -442,7 +470,7 @@ export class KoolbaseStorage {
       headers: await this.buildHeaders(),
     });
     if (!res.ok) {
-      throw await koolbaseStorageErrorFromResponse(res, 'Failed to restore version');
+      throw await this.error(res, 'Failed to restore version');
     }
     return mapObjectFromServer(await res.json());
   }
@@ -463,7 +491,7 @@ export class KoolbaseStorage {
     });
     if (res.status === 204) return;
     if (!res.ok) {
-      throw await koolbaseStorageErrorFromResponse(res, 'Failed to purge version');
+      throw await this.error(res, 'Failed to purge version');
     }
   }
 }
