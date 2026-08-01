@@ -70,6 +70,7 @@ export const Koolbase = {
     _realtime = new KoolbaseRealtime(
       config,
       () => _auth?.validAccessToken() ?? Promise.resolve(null),
+      () => _auth?.currentUser?.id ?? null,
     );
     _functions = new KoolbaseFunctions(
       config,

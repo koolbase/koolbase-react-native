@@ -85,6 +85,89 @@ export async function clearUserCache(userId: string): Promise<void> {
   }
 }
 
+// ─── Records ────────────────────────────────────────────────────────────────
+
+/**
+ * A record as the SDK last saw it, with the revision it was read at.
+ *
+ * Separate from the query cache, which answers "what did this query return".
+ * This answers "what is the latest copy of this record" — and an offline
+ * mutation composes against the second. Scanning query blobs for one would mean
+ * the same record appearing in several snapshots at different revisions, with no
+ * principled way to choose.
+ *
+ * Keyed with `record` where a collection name would sit, so invalidateCache —
+ * which scopes to a collection and runs after every write — cannot reach these.
+ * A user's own edit must not remove the baseline they need for the next one.
+ */
+export interface CachedRecord {
+  collection: string;
+  data: Record<string, unknown>;
+  revision?: number;
+  cachedAt: string;
+}
+
+function recordCacheKey(userId: string, recordId: string): string {
+  return `koolbase:${CACHE_VERSION}:${userId}:record:${recordId}`;
+}
+
+export async function getCachedRecord(
+  userId: string,
+  recordId: string
+): Promise<CachedRecord | null> {
+  try {
+    const raw = await AsyncStorage.getItem(recordCacheKey(userId, recordId));
+    return raw ? (JSON.parse(raw) as CachedRecord) : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Stores a record, refusing to move it backwards.
+ *
+ * Query responses can arrive out of order — a slow request from an earlier
+ * screen resolving after a fresh one — and an older copy overwriting a newer
+ * would compose the next mutation against a stale revision, producing a conflict
+ * the user never caused. False conflicts teach people to force-overwrite, which
+ * is worse than none.
+ */
+export async function cacheRecord(
+  userId: string,
+  collection: string,
+  recordId: string,
+  data: Record<string, unknown>,
+  revision?: number
+): Promise<void> {
+  try {
+    const existing = await getCachedRecord(userId, recordId);
+    if (
+      existing?.revision !== undefined &&
+      revision !== undefined &&
+      revision < existing.revision
+    ) {
+      return;
+    }
+    const entry: CachedRecord = {
+      collection,
+      data,
+      revision,
+      cachedAt: new Date().toISOString(),
+    };
+    await AsyncStorage.setItem(recordCacheKey(userId, recordId), JSON.stringify(entry));
+  } catch {
+    // ignore
+  }
+}
+
+export async function removeCachedRecord(userId: string, recordId: string): Promise<void> {
+  try {
+    await AsyncStorage.removeItem(recordCacheKey(userId, recordId));
+  } catch {
+    // ignore
+  }
+}
+
 // ─── Write Queue ────────────────────────────────────────────────────────────
 
 export async function getWriteQueue(userId: string): Promise<PendingWrite[]> {

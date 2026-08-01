@@ -141,6 +141,18 @@ export interface KoolbaseRecord {
   data: Record<string, unknown>;
   createdAt: string;
   updatedAt: string;
+
+  /**
+   * Advanced by the server on every write.
+   *
+   * Pass it back on an update or delete to apply the change only if nothing
+   * else has touched the record since — the difference between overwriting
+   * someone else's change and being told about it.
+   *
+   * Undefined for records from a server that predates revisions, and for
+   * records cached by an earlier version of this SDK.
+   */
+  revision?: number;
 }
 
 export interface QueryOptions {

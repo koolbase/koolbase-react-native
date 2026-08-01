@@ -14,5 +14,8 @@ export function recordFromWire(raw: Record<string, unknown>): KoolbaseRecord {
     data,
     createdAt: raw['$createdAt'] as string,
     updatedAt: raw['$updatedAt'] as string,
+    revision: typeof raw['$revision'] === 'number'
+      ? (raw['$revision'] as number)
+      : undefined,
   };
 }

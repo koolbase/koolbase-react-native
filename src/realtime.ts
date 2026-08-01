@@ -1,3 +1,4 @@
+import { cacheRecord, removeCachedRecord } from './cache-store';
 import { KoolbaseConfig, RealtimeCallback, RealtimeEvent } from './types';
 import { recordFromWire } from './record';
 
@@ -42,9 +43,39 @@ export class KoolbaseRealtime {
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private connecting = false;
 
-  constructor(config: KoolbaseConfig, getToken: TokenProvider) {
+  /**
+   * Identifies whose cache a seen record belongs in.
+   *
+   * The record cache is keyed by user, so without this a watched record would
+   * be filed under the wrong key — or under 'anonymous', which is worse than
+   * not caching at all: a baseline stored where it will never be read.
+   */
+  private getUserId?: () => string | null;
+
+  constructor(
+    config: KoolbaseConfig,
+    getToken: TokenProvider,
+    getUserId?: () => string | null,
+  ) {
     this.config = config;
     this.getToken = getToken;
+    this.getUserId = getUserId;
+  }
+
+  /** Files a record seen over the socket, if we know whose it is. */
+  private async cacheSeenRecord(
+    collection: string,
+    record: { id: string; data: Record<string, unknown>; revision?: number },
+  ): Promise<void> {
+    const userId = this.getUserId?.();
+    if (!userId) return;
+    await cacheRecord(userId, collection, record.id, record.data, record.revision);
+  }
+
+  private async forgetSeenRecord(recordId: string): Promise<void> {
+    const userId = this.getUserId?.();
+    if (!userId) return;
+    await removeCachedRecord(userId, recordId);
   }
 
   subscribe(collection: string, callback: RealtimeCallback): () => void {
@@ -104,8 +135,20 @@ export class KoolbaseRealtime {
       let msg: RealtimeEvent;
       if (mapped === 'deleted') {
         msg = { type: 'deleted', collection: payload.collection, recordId: payload.record_id };
+        // Gone for everyone, so the cached copy is no longer a baseline for
+        // anything. An edit composed against it would be refused at replay
+        // regardless; removing it makes that a local refusal rather than a
+        // round trip.
+        void this.forgetSeenRecord(payload.record_id);
       } else if (payload.record) {
-        msg = { type: mapped, collection: payload.collection, record: recordFromWire(payload.record) };
+        const record = recordFromWire(payload.record);
+        msg = { type: mapped, collection: payload.collection, record };
+        // A record seen over the socket is as freshly seen as one fetched, and
+        // a client watching a collection would otherwise hold a stale baseline
+        // while looking at the change. Writes already queued are unaffected:
+        // their baseline was copied in when they were made, so this cannot move
+        // ground beneath them.
+        void this.cacheSeenRecord(payload.collection, record);
       } else {
         return;
       }

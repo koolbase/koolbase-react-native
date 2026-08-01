@@ -1,4 +1,5 @@
 import { KoolbaseError, KoolbaseUnauthenticatedError } from './errors';
+import { cacheRecord } from './cache-store';
 import {
   KoolbaseConfig,
   KoolbaseRecord,
@@ -184,7 +185,25 @@ export class KoolbaseDatabase {
         populate: options.populate ?? [],
       }
     );
-    return { records: raw.records.map(recordFromWire), total: raw.total };
+    const records = raw.records.map(recordFromWire);
+    // Individually, as well as under the query key. The query cache answers
+    // "what did this query return"; the record cache answers "what is the
+    // latest copy of this record" — and an offline mutation composes against
+    // the second. Without this, listing records and editing one, the most
+    // ordinary flow there is, would have no baseline and be refused.
+    //
+    // Only the top-level records. Populated relations arrive embedded rather
+    // than fetched in their own right, and caching them as if they were would
+    // risk storing a shape that is not the whole record.
+    const userId = this.getUserId() ?? 'anonymous';
+    await Promise.all(
+      records.map((r) =>
+        r.collection
+          ? cacheRecord(userId, r.collection, r.id, r.data, r.revision)
+          : Promise.resolve()
+      )
+    );
+    return { records, total: raw.total };
   }
 
   async query(
@@ -242,6 +261,9 @@ export class KoolbaseDatabase {
       );
       const record = recordFromWire(raw);
       await invalidateCache(userId, collection);
+      // The response carries a fresh revision, so caching it keeps the
+      // baseline current for whatever edits this record next.
+      await cacheRecord(userId, collection, record.id, record.data, record.revision);
       return record;
     } catch (e) {
       // Server-reachable rejection: the server saw the request and refused.
@@ -309,6 +331,7 @@ export class KoolbaseDatabase {
     // Keep the cache fresh, same intent as insert's post-success invalidate.
     const userId = this.getUserId() ?? 'anonymous';
     await invalidateCache(userId, collection);
+    await cacheRecord(userId, collection, record.id, record.data, record.revision);
 
     return { record, created };
   }
@@ -392,6 +415,23 @@ export class KoolbaseDatabase {
     // don't know the collection at this layer — those refresh naturally on
     // the next query for the affected collection.
     const userId = this.getUserId() ?? 'anonymous';
+
+    // Records returned by a batch carry their own collection on the wire, so
+    // they can be cached even where the input op did not name one — which is
+    // what the invalidation below cannot do. A batch commits transactionally, so
+    // every record here landed together and carries a fresh revision.
+    for (const r of results) {
+      if (r.record?.collection) {
+        await cacheRecord(
+          userId,
+          r.record.collection,
+          r.record.id,
+          r.record.data,
+          r.record.revision
+        );
+      }
+    }
+
     const touched = new Set<string>();
     for (const op of operations) {
       if (op.type === 'insert' || op.type === 'upsert') {
@@ -414,7 +454,19 @@ export class KoolbaseDatabase {
       'GET',
       `/v1/sdk/db/records/${recordId}`
     );
-    return recordFromWire(raw);
+    const record = recordFromWire(raw);
+    // Opening a record then editing it is the other ordinary flow, and a deep
+    // link reaches it without a query ever having run.
+    if (record.collection) {
+      await cacheRecord(
+        this.getUserId() ?? 'anonymous',
+        record.collection,
+        record.id,
+        record.data,
+        record.revision
+      );
+    }
+    return record;
   }
 
   // ─── Update (online-first with offline fallback) ───────────────────────────
@@ -444,7 +496,17 @@ export class KoolbaseDatabase {
         `/v1/sdk/db/records/${recordId}`,
         { data }
       );
-      return recordFromWire(raw);
+      const updated = recordFromWire(raw);
+      if (updated.collection) {
+        await cacheRecord(
+          userId,
+          updated.collection,
+          updated.id,
+          updated.data,
+          updated.revision
+        );
+      }
+      return updated;
     } catch (e) {
       // Server-reachable rejection: surface to caller without queuing — the
       // server already refused the write and will refuse it again on retry.
@@ -697,11 +759,31 @@ export class KoolbaseDatabase {
       results: Array<{ record: Record<string, unknown>; distance: number }>;
       total: number;
     }>('POST', '/v1/sdk/db/search-semantic', body);
+    // A hit carries the complete public record, not a projection, so these are
+    // safe to cache as baselines. A trimmed record would be worse than none: an
+    // offline edit would compose against an incomplete picture and conflict
+    // detection would compare against fields that were never there.
+    const hits = (raw.results ?? []).map((r: any) => ({
+      record: recordFromWire(r.record),
+      distance: r.distance,
+    }));
+    const searchUserId = this.getUserId() ?? 'anonymous';
+    await Promise.all(
+      hits.map((h: any) =>
+        h.record.collection
+          ? cacheRecord(
+              searchUserId,
+              h.record.collection,
+              h.record.id,
+              h.record.data,
+              h.record.revision
+            )
+          : Promise.resolve()
+      )
+    );
+
     return {
-      hits: (raw.results ?? []).map(r => ({
-        record: recordFromWire(r.record),
-        distance: r.distance,
-      })),
+      hits: hits,
       total: raw.total ?? (raw.results ?? []).length,
     };
   }
