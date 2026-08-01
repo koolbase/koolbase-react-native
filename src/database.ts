@@ -83,9 +83,26 @@ export class KoolbaseDatabase {
       headers: await this.buildHeaders(),
       body: body ? JSON.stringify(body) : undefined,
     });
-    const data = await res.json();
+    // A 204 carries no body, and some error responses carry none either.
+    // Parsing unconditionally would throw before the status was ever checked,
+    // which is why delete was written to bypass this path — and why its errors
+    // went unreported.
+    const text = await res.text();
+    let data: unknown = null;
+    if (text.length > 0) {
+      try {
+        data = JSON.parse(text);
+      } catch {
+        // Leave data null: a body that is not JSON is not more informative than
+        // the status, and failing to parse it must not mask the status.
+      }
+    }
     if (!res.ok) {
-      throw koolbaseDataError(res.status, data, `Request failed: ${res.status}`);
+      throw koolbaseDataError(
+        res.status,
+        (data as Record<string, unknown>) ?? {},
+        `Request failed: ${res.status}`
+      );
     }
     return data as T;
   }
@@ -410,23 +427,25 @@ export class KoolbaseDatabase {
 
   async delete(recordId: string): Promise<void> {
     const userId = this.getUserId() ?? 'anonymous';
-
-    // Add to write queue
-    await addToWriteQueue(userId, {
-      id: generateId(),
-      type: 'delete',
-      recordId,
-    });
-
-    // Try network
-    const res = await fetch(
-      `${this.config.baseUrl}/v1/sdk/db/records/${recordId}`,
-      { method: 'DELETE', headers: await this.buildHeaders(), }
-    );
-    if (!res.ok && res.status !== 204) {
-      // Queued for sync — will retry when online
+    try {
+      await this.request<null>('DELETE', `/v1/sdk/db/records/${recordId}`);
+    } catch (e) {
+      // A server that answered has refused: a permission denial or a missing
+      // record will be refused again on every retry, so surface it rather than
+      // queueing. An app told a delete succeeded when it did not has no way to
+      // learn otherwise.
+      if (e instanceof KoolbaseDataError) throw e;
+      // Genuine network failure. Queued here rather than before the request,
+      // which would leave a successful delete in the queue to replay later
+      // against a record that may since have been recreated under the same id.
+      await addToWriteQueue(userId, {
+        id: generateId(),
+        type: 'delete',
+        recordId,
+      });
     }
   }
+
 
   // ─── Vectors ────────────────────────────────────────────────────────────────
 
