@@ -38,6 +38,7 @@ export class KoolbaseRealtime {
   private ws: WebSocket | null = null;
   private projectId: string | null = null;
   private listeners: Map<string, RealtimeCallback[]> = new Map();
+  private reconnectAttempts = 0;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private connecting = false;
 
@@ -85,6 +86,10 @@ export class KoolbaseRealtime {
 
     ws.onopen = () => {
       this.connecting = false;
+      // A connection that opened is the only proof the endpoint and the
+      // credentials are usable, so the backoff resets here rather than on a
+      // close — a flaky link should not accumulate delay.
+      this.reconnectAttempts = 0;
       for (const collection of this.listeners.keys()) this.sendSubscribe(collection); // (re)subscribe all
     };
 
@@ -126,12 +131,27 @@ export class KoolbaseRealtime {
     this.ws.send(JSON.stringify({ action: 'unsubscribe', project_id: this.projectId, collection }));
   }
 
+  /**
+   * Reconnects with backoff, rather than every three seconds forever.
+   *
+   * A fixed interval is fine while a connection is merely interrupted and
+   * costly when it is not: a device with no network, a wrong URL, or a session
+   * the server will not accept retried indefinitely, draining battery and data
+   * the user cannot see or stop.
+   *
+   * Doubling from three seconds to a minute keeps a brief interruption
+   * recovering quickly while a lasting one settles into an interval that costs
+   * almost nothing. The counter resets when a connection opens, so a flaky link
+   * does not accumulate delay.
+   */
   private scheduleReconnect(): void {
     if (this.listeners.size === 0 || this.reconnectTimer) return;
+    const delay = Math.min(3000 * Math.pow(2, this.reconnectAttempts), 60000);
+    this.reconnectAttempts += 1;
     this.reconnectTimer = setTimeout(() => {
       this.reconnectTimer = null;
       void this.connect();
-    }, 3000);
+    }, delay);
   }
 
   disconnect(): void {
