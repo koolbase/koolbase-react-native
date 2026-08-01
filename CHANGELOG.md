@@ -54,12 +54,43 @@ catching `KoolbaseDataError` to handle a dead session will stop matching.
 
 - The package's first tests: 19, covering the paths above.
 
-## Still missing
+## Added — offline editing that cannot overwrite silently
 
-Offline `update` and `delete` are queued without recording what the change was
-based on, so replay applies them blindly and overwrites anything that changed
-meanwhile. The Flutter SDK addresses this in 9.8.0; the equivalent here needs a
-different design, because the local store is key-value rather than SQL.
+Offline `update` and `delete` used to be queued without recording what the change
+was based on, so replay applied them blindly and overwrote anything that had
+changed meanwhile. Now:
+
+- A write is queued only when the SDK knows what the record looked like at the
+  time — from a query, a read, a realtime event, or a still-queued insert.
+  Otherwise it throws `KoolbaseOfflineBaselineUnavailableError` rather than
+  queueing something that cannot be replayed safely.
+
+- Replay sends the revision the change was based on, so the server applies it
+  only if the record still carries that revision. Nothing can land between the
+  client deciding a write is safe and the server applying it.
+
+- A refused write becomes a durable conflict rather than a retry, readable from
+  `Koolbase.db.conflicts()` and resolvable four ways. Conflicts survive
+  restarts, and do not expire: an app that never reads them accumulates them
+  invisibly, so surface them if you support offline editing.
+
+- Writes queued by an earlier version are migrated on first sync. Inserts replay
+  normally; updates and deletes have no baseline, so they are preserved as
+  conflicts marked `baseline_unavailable` rather than replayed blindly or
+  dropped. The migration never touches the network, so its outcome does not
+  depend on whether the device happened to be online at startup.
+
+- Records reach a per-record cache from every path that returns one — queries,
+  reads, writes, batch results, search hits, and realtime events — so anything
+  the SDK has fully seen can be edited offline.
+
+## Also fixed
+
+- `clearUserCache` deleted the write queue along with the cache. Nothing called
+  it, which is the only reason it had not lost anyone's work.
+
+- Realtime reconnected every three seconds indefinitely. It now backs off to a
+  minute and resets when a connection opens.
 
 # Changelog
 

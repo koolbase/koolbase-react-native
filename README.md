@@ -321,14 +321,91 @@ const deleted = await Koolbase.db.deleteWhere('sessions', {
 
 ### Offline-first
 
+Reads come from a local cache when the network is unavailable, and `insert`,
+`update`, and `delete` are queued and sent when it returns.
+
 ```typescript
 const { records, isFromCache } = await Koolbase.db.query('posts', { limit: 20 });
 if (isFromCache) console.log('Served from local cache');
 
+// Queued offline, applied on reconnect
+await Koolbase.db.update(id, { title: 'Corrected' });
+await Koolbase.db.delete(id);
+
+// Sync happens on reconnect. To force it:
 await Koolbase.db.syncPendingWrites();
 ```
 
+A server-side rejection is never queued. A unique-constraint violation, a
+validation failure, or a permission denial surfaces immediately — only a genuine
+network failure defers.
+
+#### Editing offline requires having read the record
+
+An update or delete is queued only if the SDK knows what the record looked like
+when the change was made. Replaying a change without that means applying it
+blindly: whatever else happened to the record in the meantime is overwritten,
+silently, with nobody able to tell.
+
+The SDK has that state if the record has been seen on this device — through a
+query, a single read, a realtime event, or because it was created here and is
+still queued. If it has not, the write is refused rather than queued:
+
+```typescript
+try {
+  await Koolbase.db.update(id, { title: 'Corrected' });
+} catch (e) {
+  if (e instanceof KoolbaseOfflineBaselineUnavailableError) {
+    // Never seen on this device. Read it, or make the change while online.
+  }
+}
+```
+
+That is deliberate rather than lenient. Queueing it anyway would mean most
+offline updates are conflict-safe and some quietly are not, which is a worse
+guarantee than a clear refusal.
+
+#### When a queued write cannot be applied
+
+On replay the server applies a queued write only if the record still carries the
+revision the change was based on. If something changed it meanwhile — another
+device, another user, a Function — the write is refused and held for a decision.
+It is not lost, and not applied, and it survives restarts.
+
+```typescript
+const conflicts = await Koolbase.db.conflicts();
+
+for (const c of conflicts) {
+  c.local;             // the change the user made
+  c.server;            // the record as the server holds it now
+  c.divergentFields;   // where they disagree
+  c.reason;            // why it is waiting
+
+  await c.resolveWithLocal();       // reapply the user's change
+  await c.resolveWithServer();      // keep the server's version
+  await c.resolveWithMerge({ ... }); // something composed from both
+  await c.abandon();                // drop it, neither side wins
+}
+```
+
+`reason` distinguishes two situations. `concurrent_modification` means the record
+moved while the change was queued. `baseline_unavailable` means the change was
+queued by a version of this SDK that did not record what it was based on — those
+are migrated on upgrade rather than replayed, since there is nothing to check
+them against.
+
+Resolving is itself conditional: if the record has moved again while someone was
+deciding, resolution produces a new conflict rather than overwriting a change
+nobody has seen.
+
+> **These do not expire.** An app that never reads `conflicts()` accumulates
+> them in local storage indefinitely, invisible to the user, with the changes
+> they hold never applied. If you support offline editing, surface them
+> somewhere. Automatic expiry would hide the problem while quietly losing the
+> work.
+
 ---
+
 
 ### Atomic batch writes
 
@@ -375,7 +452,10 @@ try {
 }
 ```
 
-When the device is offline, these writes are queued and synced automatically when connectivity returns.
+When the device is offline, `insert`, `update`, and `delete` are queued and sent
+when connectivity returns — an update or delete only if the record has been read
+on this device, so the change has something to be applied against. See
+[Offline-first](#offline-first).
 
 ---
 
@@ -921,6 +1001,22 @@ handling doesn't depend on message text.
 
 All data-layer failures extend `KoolbaseDataError` (which extends `Error`):
 
+Two errors are raised by any subsystem, because they are not about any one of
+them:
+
+| Error | When |
+|---|---|
+| `KoolbaseUnauthenticatedError` | The server would not accept the caller's credentials (401) — an expired session, a revoked key, or none at all; it does not distinguish. Raised by database, storage, Functions, and background sync alike, since a session stops working for the whole SDK at once. **The SDK has already signed the user out by the time you catch this** — route to login rather than retrying. |
+| `KoolbaseOfflineBaselineUnavailableError` | An offline update or delete could not be queued: the record has never been seen on this device, so there is nothing to apply the change against. Read it first, or make the change online. |
+
+Note the difference from `KoolbasePermissionError` (403), which means the
+credentials *were* accepted and this caller may not proceed. It does not sign
+anyone out, and signing someone out for opening the wrong record would be worse
+than the failure itself.
+
+All errors extend `KoolbaseError`, so `e instanceof KoolbaseError` catches
+anything the SDK raises.
+
 | Error | When |
 |---|---|
 | `KoolbaseConflictError` | A write violates a unique constraint (409). Exposes `.field` — the field that collided, when the server reports it. |
@@ -931,12 +1027,19 @@ All data-layer failures extend `KoolbaseDataError` (which extends `Error`):
 | `KoolbaseVectorDimensionMismatchError` | A vector's length doesn't match the field's declared dimension (400, code `vector_dimension_mismatch`). |
 
 ```ts
-import { KoolbaseConflictError, KoolbaseDataError } from '@koolbase/react-native';
+import {
+  KoolbaseConflictError,
+  KoolbaseDataError,
+  KoolbaseUnauthenticatedError,
+} from '@koolbase/react-native';
 
 try {
   await Koolbase.db.upsert('users', { email }, { name });
 } catch (e) {
-  if (e instanceof KoolbaseConflictError) {
+  if (e instanceof KoolbaseUnauthenticatedError) {
+    // Already signed out — the session was cleared before this threw.
+    goToLogin();
+  } else if (e instanceof KoolbaseConflictError) {
     showError(`That ${e.field ?? 'value'} is already taken.`);
   } else if (e instanceof KoolbaseDataError) {
     showError(e.message);
@@ -944,10 +1047,16 @@ try {
 }
 ```
 
-> `query`, `get`, `upsert`, and `deleteWhere` throw these typed errors. `insert`,
-> `update`, and `delete` are optimistic/offline-first — they queue and sync in
-> the background, so their conflicts surface via the sync engine, not as a
-> thrown error.
+> `insert`, `update`, and `delete` queue when the network is unreachable, but
+> they still throw. A server that answered has refused — a permission denial, a
+> unique-constraint violation, a rejected credential — and that is surfaced
+> rather than queued, since it would be refused again on every retry. An update
+> or delete also throws `KoolbaseOfflineBaselineUnavailableError` when the record
+> has never been seen on this device.
+>
+> What does not throw is a write refused during replay, hours after it was made:
+> nobody is waiting on it, so it becomes a conflict you read from
+> `Koolbase.db.conflicts()`.
 
 ---
 
