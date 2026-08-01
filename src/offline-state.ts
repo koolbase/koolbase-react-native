@@ -171,3 +171,17 @@ export async function mutateOfflineState(
     await AsyncStorage.setItem(stateKey(userId), serialised);
   });
 }
+
+/** Adds a write to the queue, under the user's lock. */
+export async function queueWrite(
+  userId: string,
+  write: Omit<QueuedWrite, 'retries' | 'enqueuedAt'>
+): Promise<void> {
+  await mutateOfflineState(userId, (state) => {
+    state.pending.push({
+      ...write,
+      retries: 0,
+      enqueuedAt: new Date().toISOString(),
+    });
+  });
+}

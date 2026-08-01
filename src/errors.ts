@@ -55,3 +55,29 @@ export class KoolbaseUnauthenticatedError extends KoolbaseError {
     Object.setPrototypeOf(this, new.target.prototype);
   }
 }
+
+/**
+ * An offline update or delete could not be queued, because the SDK has no
+ * record of what the change was composed against.
+ *
+ * Replaying a mutation without knowing the state it was based on means applying
+ * it blindly: whatever changed on the server in the meantime is overwritten,
+ * silently, with nobody able to tell it happened.
+ *
+ * A baseline is available when the record is in the local cache — read through
+ * a query, a single fetch, or seen over the socket — or when it was created
+ * offline and its insert is still queued. It is unavailable when the record has
+ * never been seen on this device, so read it first, or make the change while
+ * online where the server arbitrates directly.
+ *
+ * Deliberate rather than lenient. Queueing these anyway would mean most offline
+ * updates are conflict-safe and some quietly are not, which is a worse guarantee
+ * than a clear refusal.
+ */
+export class KoolbaseOfflineBaselineUnavailableError extends KoolbaseError {
+  constructor(message: string) {
+    super(message, 'offline_baseline_unavailable');
+    this.name = 'KoolbaseOfflineBaselineUnavailableError';
+    Object.setPrototypeOf(this, new.target.prototype);
+  }
+}

@@ -1,5 +1,10 @@
-import { KoolbaseError, KoolbaseUnauthenticatedError } from './errors';
-import { cacheRecord } from './cache-store';
+import {
+  KoolbaseError,
+  KoolbaseOfflineBaselineUnavailableError,
+  KoolbaseUnauthenticatedError,
+} from './errors';
+import { cacheRecord, getCachedRecord, removeCachedRecord } from './cache-store';
+import { readOfflineState, queueWrite } from './offline-state';
 import {
   KoolbaseConfig,
   KoolbaseRecord,
@@ -484,11 +489,53 @@ export class KoolbaseDatabase {
    * optimistic record is returned so the UI can re-render the new fields
    * immediately.
    */
+  /**
+   * The record's state as the SDK last knew it, for composing an offline
+   * mutation against.
+   *
+   * Two sources, in order. A record created offline is not in the cache as a
+   * server record, but its queued insert holds the state a later edit builds on
+   * — insert-then-correct is the ordinary offline sequence. Otherwise the cached
+   * copy, with the revision it was read at.
+   *
+   * Null when neither exists: never seen on this device, or a queued delete has
+   * already removed it locally.
+   */
+  private async resolveBaseline(
+    userId: string,
+    recordId: string
+  ): Promise<{ baseline: Record<string, unknown>; revision?: number; collection: string } | null> {
+    const state = await readOfflineState(userId);
+    const queued = state.pending.filter((w: { recordId?: string }) => w.recordId === recordId);
+    if (queued.length > 0) {
+      let projected: Record<string, unknown> | null = null;
+      for (const w of queued) {
+        if (w.operation === 'insert') projected = { ...(w.data ?? {}) };
+        else if (w.operation === 'update') projected = { ...(projected ?? {}), ...(w.data ?? {}) };
+        else if (w.operation === 'delete') projected = null;
+      }
+      // A chain ending in a delete leaves nothing to build on: editing a record
+      // already removed locally is a contradiction in the SDK's own state, not
+      // a conflict to resolve against the server.
+      if (projected === null) return null;
+      return {
+        baseline: projected,
+        revision: queued[queued.length - 1].baseRevision,
+        collection: queued[0].collection,
+      };
+    }
+    const cached = await getCachedRecord(userId, recordId);
+    if (!cached) return null;
+    return { baseline: cached.data, revision: cached.revision, collection: cached.collection };
+  }
+
   async update(
     recordId: string,
     data: Record<string, unknown>
   ): Promise<KoolbaseRecord> {
     const userId = this.getUserId() ?? 'anonymous';
+    // Resolved before the request, so a network failure has somewhere to go.
+    const base = await this.resolveBaseline(userId, recordId);
 
     try {
       const raw = await this.request<Record<string, unknown>>(
@@ -516,19 +563,33 @@ export class KoolbaseDatabase {
       // rejected credential belongs to no single surface.
       if (e instanceof KoolbaseError) throw e;
 
-      // Genuine network failure → queue for sync and return an optimistic
-      // partial record so the UI reflects the update immediately.
-      await addToWriteQueue(userId, {
+      // Genuine network failure. Queueable only if the SDK knows what the
+      // change was composed against — without that, replay would apply it
+      // blindly and overwrite whatever happened while the device was away.
+      if (!base) {
+        throw new KoolbaseOfflineBaselineUnavailableError(
+          'This record must be read at least once before it can be updated offline.'
+        );
+      }
+      await queueWrite(userId, {
         id: generateId(),
-        type: 'update',
+        operation: 'update',
+        collection: base.collection,
         recordId,
         data,
+        baseline: base.baseline,
+        baseRevision: base.revision,
       });
+      const merged = { ...base.baseline, ...data };
+      await cacheRecord(userId, base.collection, recordId, merged, base.revision);
+      // Optimistic: durable locally and queued to send, not yet accepted.
       return {
         id: recordId,
-        data,
+        collection: base.collection,
+        data: merged,
         createdAt: '',
         updatedAt: new Date().toISOString(),
+        revision: base.revision,
       };
     }
   }
@@ -537,8 +598,10 @@ export class KoolbaseDatabase {
 
   async delete(recordId: string): Promise<void> {
     const userId = this.getUserId() ?? 'anonymous';
+    const base = await this.resolveBaseline(userId, recordId);
     try {
       await this.request<null>('DELETE', `/v1/sdk/db/records/${recordId}`);
+      await removeCachedRecord(userId, recordId);
     } catch (e) {
       // A server that answered has refused: a permission denial or a missing
       // record will be refused again on every retry, so surface it rather than
@@ -552,11 +615,26 @@ export class KoolbaseDatabase {
       // Genuine network failure. Queued here rather than before the request,
       // which would leave a successful delete in the queue to replay later
       // against a record that may since have been recreated under the same id.
-      await addToWriteQueue(userId, {
+      // A delete replayed without knowing what the record was would remove
+      // something the user last saw hours earlier and which may have changed
+      // since — the more destructive kind of stale write.
+      if (!base) {
+        throw new KoolbaseOfflineBaselineUnavailableError(
+          'This record must be read at least once before it can be deleted offline.'
+        );
+      }
+      await queueWrite(userId, {
         id: generateId(),
-        type: 'delete',
+        operation: 'delete',
+        collection: base.collection,
         recordId,
+        baseline: base.baseline,
+        baseRevision: base.revision,
       });
+      // The queued write holds its own copy of the baseline, so removing the
+      // cached record costs nothing and keeps local reads consistent with what
+      // the user just did.
+      await removeCachedRecord(userId, recordId);
     }
   }
 
