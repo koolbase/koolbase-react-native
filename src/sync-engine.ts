@@ -237,7 +237,14 @@ export class SyncEngine {
       res = await fetch(url, {
         method: 'POST',
         headers,
-        body: JSON.stringify({ collection: write.collection, data: write.data }),
+        // The write's own id: generated at enqueue, identical on every retry.
+        // Without it, an insert whose response was lost duplicated on replay —
+        // the server had no way to recognise the repeat.
+        body: JSON.stringify({
+          collection: write.collection,
+          data: write.data,
+          idempotency_key: write.id,
+        }),
       });
     } else if (write.operation === 'update') {
       res = await fetch(url, {
