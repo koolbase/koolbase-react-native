@@ -98,3 +98,95 @@ describe('conflicts', () => {
     });
   });
 });
+
+/**
+ * A write can fail three ways, and they need different answers:
+ *
+ *   the record moved       → held, resolvable against the server's version
+ *   the server refused     → held, with what it said; retrying cannot change it
+ *   the network is down    → stays pending, retried later
+ *
+ * Before this, the second and third were the same: retried indefinitely in one
+ * SDK, dropped after three attempts in the other. Both silent.
+ */
+describe('a write the server refuses outright', () => {
+  const config = { baseUrl: 'https://api.test', publicKey: 'pk' } as any;
+
+  beforeEach(async () => {
+    const store = await import('./mocks/async-storage');
+    (store.default as any).__reset();
+  });
+
+  const queueUpdate = () =>
+    mutateOfflineState('user-1', (s) => {
+      s.pending.push({
+        id: 'w1',
+        operation: 'update',
+        collection: 'things',
+        recordId: 'rec-1',
+        data: { label: 'mine' },
+        baseline: { label: 'was' },
+        baseRevision: 2,
+        retries: 0,
+        enqueuedAt: new Date().toISOString(),
+      });
+    });
+
+  const engine = () =>
+    new (require('../src/sync-engine').SyncEngine)(
+      config,
+      () => 'user-1',
+      async () => 'token',
+    );
+
+  it('is held with what the server said, not retried', async () => {
+    await queueUpdate();
+    global.fetch = jest.fn(async () =>
+      new Response(JSON.stringify({ error: 'title must not be empty' }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json' },
+      })
+    ) as unknown as typeof fetch;
+
+    await engine().flush();
+
+    const { pending, conflicts } = await readOfflineState('user-1');
+    expect(pending).toHaveLength(0);
+    expect(conflicts).toHaveLength(1);
+    expect(conflicts[0].reason).toBe('rejected');
+    expect(conflicts[0].message).toBe('title must not be empty');
+    expect(conflicts[0].local).toEqual({ label: 'mine' });
+  });
+
+  // A role change could later permit it, but a queue holding writes against a
+  // maybe is how a retry loop becomes invisible.
+  it('treats a permission denial as terminal', async () => {
+    await queueUpdate();
+    global.fetch = jest.fn(async () =>
+      new Response(JSON.stringify({ error: 'not allowed' }), { status: 403 })
+    ) as unknown as typeof fetch;
+
+    await engine().flush();
+
+    const { conflicts } = await readOfflineState('user-1');
+    expect(conflicts[0]?.reason).toBe('rejected');
+  });
+
+  it('leaves a network failure pending, and drops nothing', async () => {
+    await queueUpdate();
+    global.fetch = jest.fn(async () => {
+      throw new TypeError('Network request failed');
+    }) as unknown as typeof fetch;
+
+    await engine().flush();
+    await engine().flush();
+    await engine().flush();
+    await engine().flush();
+
+    const { pending, conflicts } = await readOfflineState('user-1');
+    expect(pending).toHaveLength(1);
+    expect(pending[0].retries).toBeGreaterThan(0);
+    expect(conflicts).toHaveLength(0);
+    // Four attempts. The old contract dropped it after three, silently.
+  });
+});

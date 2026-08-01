@@ -65,7 +65,17 @@ export type ConflictReason =
    * composed against. It cannot be replayed safely — there is nothing to check
    * it against — so it waits rather than overwriting whatever is there now.
    */
-  | 'baseline_unavailable';
+  | 'baseline_unavailable'
+  /**
+   * The server refused the write for a reason retrying cannot change — the data
+   * no longer satisfies the collection's rules, the record is gone, the caller
+   * is not permitted, a unique value is taken.
+   *
+   * Held rather than retried or dropped. Retrying sends identical bytes to
+   * identical rules; dropping loses a change the user believes is saved. Neither
+   * tells them anything.
+   */
+  | 'rejected';
 
 /** A write the server would not apply, held until someone decides. */
 export interface QueuedConflict {
@@ -79,6 +89,10 @@ export interface QueuedConflict {
   server?: Record<string, unknown>;
   baseRevision?: number;
   serverRevision?: number;
+
+  /** What the server said, when it refused for a terminal reason. */
+  message?: string;
+
   createdAt: string;
 }
 
