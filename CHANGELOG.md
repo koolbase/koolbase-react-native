@@ -1,3 +1,66 @@
+# 9.2.0
+
+## Read before upgrading
+
+**`delete()` can now fail.** It previously returned `Promise<void>` with no throw
+path: a delete the server refused — no permission, wrong project, record already
+gone — reported success to the caller, and nothing anywhere reported otherwise.
+It now throws. Code that called it without a `catch` will surface an error where
+it never did before, which is the point, and still a change.
+
+**A rejected credential is no longer a `KoolbaseDataError`.** It is
+`KoolbaseUnauthenticatedError`, a sibling under the new shared root. Code
+catching `KoolbaseDataError` to handle a dead session will stop matching.
+
+## Fixed
+
+- **`delete()` queued the write before attempting it, and never removed it.** A
+  delete that succeeded stayed in the queue and replayed later — against a
+  record that may since have been recreated under the same id.
+
+- **Five data methods could not clear a rejected session.** `upsert`,
+  `deleteWhere`, `batch`, `setVector`, and `deleteVector` each built their own
+  request, so whether a 401 signed you out depended on which method you called.
+  All now go through one path.
+
+- **A 401 was treated as an unreachable network** by `update`, `delete`, and
+  `upsert`, so the write was queued and an optimistic record returned — telling
+  the app the change had succeeded. Anything the server answered with is now
+  surfaced, because it will be refused again on every retry.
+
+- **Realtime reconnected every three seconds forever**, with no backoff and no
+  ceiling. A device with no network, a wrong URL, or a dead session drained
+  battery and data invisibly. It now doubles to a minute and resets when a
+  connection opens.
+
+## Added
+
+- **One exception hierarchy.** `KoolbaseError` is the root; the data, storage,
+  auth, and Function families sit beneath it, so `catch (e) { if (e instanceof
+  KoolbaseError) }` covers any SDK failure.
+
+- **`KoolbaseUnauthenticatedError`** — raised by any surface. A session stops
+  working for the whole SDK at once, not one subsystem at a time. Named for what
+  the server reports: a 401 covers an expired session, a revoked key, and
+  missing credentials, and it does not distinguish them.
+
+- **`auth.clearStoredSession()`** — discards a session already known to be
+  unusable, without a server call.
+
+- **Typed Function failures.** `FunctionNotFoundError`,
+  `FunctionPermissionError`, `FunctionValidationError`,
+  `FunctionQuotaExceededError`, `FunctionExecutionError`. Every failed
+  invocation used to be a bare `Error`, matchable only on message text.
+
+- The package's first tests: 19, covering the paths above.
+
+## Still missing
+
+Offline `update` and `delete` are queued without recording what the change was
+based on, so replay applies them blindly and overwrites anything that changed
+meanwhile. The Flutter SDK addresses this in 9.8.0; the equivalent here needs a
+different design, because the local store is key-value rather than SQL.
+
 # Changelog
 
 All notable changes to `@koolbase/react-native` are documented
