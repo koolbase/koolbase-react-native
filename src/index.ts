@@ -20,6 +20,11 @@ import { KoolbaseConfig, VersionCheckResult } from './types';
 import { getOrCreateDeviceId } from './device-id';
 
 export * from './types';
+// The root, and the authentication failure any surface can raise. Listed
+// first: an application catching broadly needs these more than it needs any
+// single subsystem's types.
+export * from './errors';
+export * from './function-errors';
 export * from './auth-errors';
 export * from './database-errors';
 export * from './storage-errors';
@@ -66,7 +71,11 @@ export const Koolbase = {
       config,
       () => _auth?.validAccessToken() ?? Promise.resolve(null),
     );
-    _functions = new KoolbaseFunctions(config, () => _auth?.validAccessToken() ?? Promise.resolve(null));
+    _functions = new KoolbaseFunctions(
+      config,
+      () => _auth?.validAccessToken() ?? Promise.resolve(null),
+      async () => { await _auth?.clearStoredSession(); },
+    );
 
     // One anonymous device id for the whole SDK — bucketing (flags), targeting
     // (code push), and registration keying (messaging) must all agree on it.

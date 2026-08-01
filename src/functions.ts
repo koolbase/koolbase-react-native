@@ -1,3 +1,5 @@
+import { functionInvokeError } from './function-errors';
+import { KoolbaseUnauthenticatedError } from './errors';
 import {
   KoolbaseConfig,
   FunctionInvokeResult,
@@ -10,11 +12,21 @@ export class KoolbaseFunctions {
   private config: KoolbaseConfig;
   private getUserAccessToken?: () => Promise<string | null>;
 
+  /**
+   * Called when the server rejects the caller's credentials.
+   *
+   * A session stops working for the whole SDK at once, so an app whose failing
+   * call happens to be a Function invoke must not keep believing it is signed in.
+   */
+  private onSessionExpired?: () => Promise<void>;
+
   constructor(
     config: KoolbaseConfig,
     getUserAccessToken?: () => Promise<string | null>,
+    onSessionExpired?: () => Promise<void>,
   ) {
     this.config = config;
+    this.onSessionExpired = onSessionExpired;
     this.getUserAccessToken = getUserAccessToken;
   }
 
@@ -42,10 +54,14 @@ export class KoolbaseFunctions {
 
     const data = await res.json().catch(() => null);
     if (!res.ok) {
-      throw new Error(
-        (data as Record<string, unknown>)?.error as string ??
-          'Function deploy failed'
-      );
+      const message =
+        ((data as Record<string, unknown>)?.error as string) ??
+        'Function deploy failed';
+      const err = functionInvokeError(res.status, message);
+      if (err instanceof KoolbaseUnauthenticatedError) {
+        await this.onSessionExpired?.();
+      }
+      throw err;
     }
 
     const d = data as Record<string, unknown>;
@@ -89,10 +105,14 @@ export class KoolbaseFunctions {
     const success = res.status >= 200 && res.status < 300;
 
     if (!success) {
-      throw new Error(
-        (data as Record<string, unknown>)?.error as string ??
-          'Function invocation failed'
-      );
+      const message =
+        ((data as Record<string, unknown>)?.error as string) ??
+        'Function invocation failed';
+      const err = functionInvokeError(res.status, message);
+      if (err instanceof KoolbaseUnauthenticatedError) {
+        await this.onSessionExpired?.();
+      }
+      throw err;
     }
 
     return {
