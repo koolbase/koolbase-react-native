@@ -24,6 +24,7 @@ export * from './types';
 // first: an application catching broadly needs these more than it needs any
 // single subsystem's types.
 export * from './errors';
+export * from './conflict';
 export * from './function-errors';
 export * from './auth-errors';
 export * from './database-errors';

@@ -4,7 +4,13 @@ import {
   KoolbaseUnauthenticatedError,
 } from './errors';
 import { cacheRecord, getCachedRecord, removeCachedRecord } from './cache-store';
-import { readOfflineState, queueWrite } from './offline-state';
+import {
+  readOfflineState,
+  mutateOfflineState,
+  queueWrite,
+  QueuedConflict,
+} from './offline-state';
+import { KoolbaseConflict, ConflictResolver } from './conflict';
 import {
   KoolbaseConfig,
   KoolbaseRecord,
@@ -481,6 +487,111 @@ export class KoolbaseDatabase {
       );
     }
     return record;
+  }
+
+  // ─── Conflicts ──────────────────────────────────────────────────────────────
+
+  /**
+   * Writes that could not be applied, waiting for a decision.
+   *
+   * Held rather than discarded, and surviving restarts. An app that never reads
+   * these accumulates them invisibly, with the changes they hold never applied —
+   * so if you support offline editing, surface them somewhere.
+   */
+  async conflicts(): Promise<KoolbaseConflict[]> {
+    const userId = this.getUserId() ?? 'anonymous';
+    const { conflicts } = await readOfflineState(userId);
+    return conflicts.map(
+      (c) =>
+        new KoolbaseConflict(
+          c.id,
+          c.reason,
+          c.operation,
+          c.collection,
+          c.recordId,
+          c.local,
+          c.baseline,
+          c.server,
+          c.baseRevision,
+          c.serverRevision,
+          c.createdAt,
+          this.conflictResolver,
+        ),
+    );
+  }
+
+  /**
+   * Resolves by id, reloading the stored conflict first.
+   *
+   * A conflict object handed to a UI can sit there while someone decides, and a
+   * sync pass may resolve it or another write supersede it meanwhile. Acting on
+   * values captured when the object was built would write against a state that
+   * no longer exists.
+   */
+  private readonly conflictResolver: ConflictResolver = {
+    resolveWithLocal: async (id) => {
+      const c = await this.requireConflict(id);
+      await this.applyResolution(c, c.local ?? {});
+    },
+    resolveWithMerge: async (id, data) => {
+      const c = await this.requireConflict(id);
+      await this.applyResolution(c, data);
+    },
+    resolveWithServer: async (id) => {
+      const c = await this.requireConflict(id);
+      // The server's version stands. Recorded as a decision by removing the
+      // conflict, rather than the change quietly disappearing.
+      await this.dropConflict(c.id);
+    },
+    abandon: async (id) => {
+      const c = await this.requireConflict(id);
+      await this.dropConflict(c.id);
+    },
+  };
+
+  private async requireConflict(id: string): Promise<QueuedConflict> {
+    const userId = this.getUserId() ?? 'anonymous';
+    const { conflicts } = await readOfflineState(userId);
+    const found = conflicts.find((c) => c.id === id);
+    if (!found) {
+      throw new KoolbaseDataError(
+        'That conflict is no longer outstanding — it may already have been resolved.',
+        'conflict_not_found',
+      );
+    }
+    return found;
+  }
+
+  private async dropConflict(id: string): Promise<void> {
+    const userId = this.getUserId() ?? 'anonymous';
+    await mutateOfflineState(userId, (s) => {
+      s.conflicts = s.conflicts.filter((c) => c.id !== id);
+    });
+  }
+
+  /**
+   * Issues the resolving write, conditional on the revision the refusal
+   * reported, and clears the conflict only once the server accepts it.
+   *
+   * Clearing first would lose the change if the write then failed.
+   */
+  private async applyResolution(
+    c: QueuedConflict,
+    payload: Record<string, unknown>,
+  ): Promise<void> {
+    const rev = c.serverRevision;
+    if (c.operation === 'delete') {
+      const q = rev !== undefined ? `?expected_revision=${rev}` : '';
+      await this.request<null>('DELETE', `/v1/sdk/db/records/${c.recordId}${q}`);
+    } else {
+      await this.request<Record<string, unknown>>(
+        'PATCH',
+        `/v1/sdk/db/records/${c.recordId}`,
+        { data: payload, ...(rev !== undefined ? { expected_revision: rev } : {}) },
+      );
+    }
+    await this.dropConflict(c.id);
+    await invalidateCache(this.getUserId() ?? 'anonymous', c.collection);
   }
 
   // ─── Update (online-first with offline fallback) ───────────────────────────
