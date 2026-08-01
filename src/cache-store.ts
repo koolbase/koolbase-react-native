@@ -63,11 +63,20 @@ export async function invalidateCache(
   }
 }
 
+/**
+ * Drops everything cached for a user.
+ *
+ * Deliberately spares the write queue. The prefix covers every key for this
+ * user, and the queue lives under one of them — so clearing the cache used to
+ * delete offline writes the user believes are saved, silently and
+ * irrecoverably. A cache is what can be refetched; queued writes are not that.
+ */
 export async function clearUserCache(userId: string): Promise<void> {
   try {
     const keys = await AsyncStorage.getAllKeys();
     const prefix = `koolbase:${CACHE_VERSION}:${userId}:`;
-    const toDelete = keys.filter(k => k.startsWith(prefix));
+    const queueKey = writeQueueKey(userId);
+    const toDelete = keys.filter(k => k.startsWith(prefix) && k !== queueKey);
     for (const key of toDelete) {
       await AsyncStorage.removeItem(key);
     }
