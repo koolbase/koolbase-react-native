@@ -123,6 +123,48 @@ export class KoolbaseDatabase {
     return data as T;
   }
 
+  /**
+   * Like [request], but returns the status alongside the body.
+   *
+   * Several operations need it — upsert distinguishes create from update by a
+   * 201, batch reports per-operation outcomes — and needing it was why they
+   * hand-rolled their own fetch, each mapping errors slightly differently and
+   * none of them clearing a rejected session. One path, two shapes of result.
+   */
+  private async requestWithStatus<T>(
+    method: string,
+    path: string,
+    body?: unknown
+  ): Promise<{ status: number; data: T }> {
+    const res = await fetch(`${this.config.baseUrl}${path}`, {
+      method,
+      headers: await this.buildHeaders(),
+      body: body ? JSON.stringify(body) : undefined,
+    });
+    const text = await res.text();
+    let data: unknown = null;
+    if (text.length > 0) {
+      try {
+        data = JSON.parse(text);
+      } catch {
+        // Not JSON: the status is more informative than an unparseable body,
+        // and failing to parse must not mask it.
+      }
+    }
+    if (!res.ok) {
+      const err = koolbaseDataError(
+        res.status,
+        (data as Record<string, unknown>) ?? {},
+        `Request failed: ${res.status}`
+      );
+      if (err instanceof KoolbaseUnauthenticatedError) {
+        await this.onSessionExpired?.();
+      }
+      throw err;
+    }
+    return { status: res.status, data: data as T };
+  }
+
   // ─── Query (cache-first) ───────────────────────────────────────────────────
 
   private async runQuery(
@@ -255,18 +297,13 @@ export class KoolbaseDatabase {
     match: Record<string, unknown>,
     data: Record<string, unknown>
   ): Promise<UpsertResult> {
-    const res = await fetch(`${this.config.baseUrl}/v1/sdk/db/upsert`, {
-      method: 'POST',
-      headers: await this.buildHeaders(),
-      body: JSON.stringify({ collection, match, data }),
-    });
+    const { status, data: body } = await this.requestWithStatus<Record<string, unknown>>(
+      'POST',
+      '/v1/sdk/db/upsert',
+      { collection, match, data }
+    );
 
-    const body = await res.json();
-    if (!res.ok) {
-      throw koolbaseDataError(res.status, body, `Upsert failed: ${res.status}`);
-    }
-
-    const created = res.status === 201;
+    const created = status === 201;
     const record = recordFromWire(body as Record<string, unknown>);
 
     // Keep the cache fresh, same intent as insert's post-success invalidate.
@@ -293,15 +330,11 @@ export class KoolbaseDatabase {
     collection: string,
     filters: Record<string, unknown>
   ): Promise<number> {
-    const res = await fetch(`${this.config.baseUrl}/v1/sdk/db/delete-where`, {
-      method: 'POST',
-      headers: await this.buildHeaders(),
-      body: JSON.stringify({ collection, filters }),
-    });
-    const body = await res.json();
-    if (!res.ok) {
-      throw koolbaseDataError(res.status, body, `Delete failed: ${res.status}`);
-    }
+    const body = await this.request<Record<string, unknown>>(
+      'POST',
+      '/v1/sdk/db/delete-where',
+      { collection, filters }
+    );
 
     const userId = this.getUserId() ?? 'anonymous';
     await invalidateCache(userId, collection);
@@ -339,18 +372,9 @@ export class KoolbaseDatabase {
       throw new Error('batch requires at least one operation');
     }
 
-    const res = await fetch(`${this.config.baseUrl}/v1/sdk/db/batch`, {
-      method: 'POST',
-      headers: await this.buildHeaders(),
-      body: JSON.stringify({
-        operations: operations.map(batchOpToWire),
-      }),
+    const body = await this.request<Record<string, unknown>>('POST', '/v1/sdk/db/batch', {
+      operations: operations.map(batchOpToWire),
     });
-
-    const body = await res.json();
-    if (!res.ok) {
-      throw koolbaseDataError(res.status, body, `Batch failed: ${res.status}`);
-    }
 
     const results: BatchResult[] = (
       (body.results as Array<Record<string, unknown>>) ?? []
@@ -499,15 +523,11 @@ export class KoolbaseDatabase {
     field: string,
     vector: number[],
   ): Promise<void> {
-    const res = await fetch(`${this.config.baseUrl}/v1/sdk/db/set-vector`, {
-      method: 'POST',
-      headers: await this.buildHeaders(),
-      body: JSON.stringify({ record_id: recordId, field, vector }),
+    await this.request<null>('POST', '/v1/sdk/db/set-vector', {
+      record_id: recordId,
+      field,
+      vector,
     });
-    if (res.status !== 204) {
-      const body = await res.json().catch(() => ({}));
-      throw koolbaseDataError(res.status, body, 'Set vector failed');
-    }
   }
 
   /**
@@ -553,15 +573,10 @@ export class KoolbaseDatabase {
    * collection and is still settable on other records.
    */
   async deleteVector(recordId: string, field: string): Promise<void> {
-    const res = await fetch(`${this.config.baseUrl}/v1/sdk/db/delete-vector`, {
-      method: 'POST',
-      headers: await this.buildHeaders(),
-      body: JSON.stringify({ record_id: recordId, field }),
+    await this.request<null>('POST', '/v1/sdk/db/delete-vector', {
+      record_id: recordId,
+      field,
     });
-    if (res.status !== 204) {
-      const body = await res.json().catch(() => ({}));
-      throw koolbaseDataError(res.status, body, 'Delete vector failed');
-    }
   }
 
   /**
