@@ -21,7 +21,6 @@ import {
   getCached,
   setCached,
   invalidateCache,
-  addToWriteQueue,
   optimisticallyInsert,
   hashQuery,
 } from './cache-store';
@@ -76,7 +75,13 @@ export class KoolbaseDatabase {
     this.getUserId = getUserId;
     this.getToken = getToken;
     this.onSessionExpired = onSessionExpired;
-    this.syncEngine = new SyncEngine(config, getUserId, getToken);
+    this.syncEngine = new SyncEngine(
+      config,
+      getUserId,
+      getToken,
+      undefined,
+      onSessionExpired,
+    );
     this.syncEngine.start();
   }
 
@@ -292,10 +297,14 @@ export class KoolbaseDatabase {
         updatedAt: new Date().toISOString(),
       };
       await optimisticallyInsert(userId, collection, optimisticRecord);
-      await addToWriteQueue(userId, {
+      // No baseline: an insert has no prior state, and the record does not
+      // exist on the server yet, so there is nothing to be conditional against.
+      // An offline edit to it composes against this queued write instead.
+      await queueWrite(userId, {
         id: generateId(),
-        type: 'insert',
+        operation: 'insert',
         collection,
+        recordId: optimisticRecord.id,
         data,
       });
       return optimisticRecord;

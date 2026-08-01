@@ -49,8 +49,27 @@ export interface QueuedWrite {
   enqueuedAt: string;
 }
 
+/**
+ * Why a write is waiting for a decision.
+ *
+ * Kept distinct because they are different situations and an app showing them
+ * to someone should say different things. One means two people changed the same
+ * thing; the other means we never knew what the change was based on, so there is
+ * nothing to compare it against.
+ */
+export type ConflictReason =
+  /** The record moved between the change being made and the queue reaching it. */
+  | 'concurrent_modification'
+  /**
+   * Queued by a version of this SDK that did not record what the change was
+   * composed against. It cannot be replayed safely — there is nothing to check
+   * it against — so it waits rather than overwriting whatever is there now.
+   */
+  | 'baseline_unavailable';
+
 /** A write the server would not apply, held until someone decides. */
 export interface QueuedConflict {
+  reason: ConflictReason;
   id: string;
   operation: 'update' | 'delete';
   collection: string;
@@ -184,4 +203,68 @@ export async function queueWrite(
       enqueuedAt: new Date().toISOString(),
     });
   });
+}
+
+const LEGACY_QUEUE_VERSION = 'v1';
+
+function legacyQueueKey(userId: string): string {
+  return `koolbase:${LEGACY_QUEUE_VERSION}:${userId}:write_queue`;
+}
+
+/**
+ * Moves writes queued by an earlier version into the current state.
+ *
+ * Runs once, before any replay, and never contacts the network. Migration that
+ * depended on connectivity would give the same input two different outcomes
+ * depending on whether the device happened to be online at startup — which is
+ * how a bug becomes unreproducible.
+ *
+ * Inserts carry everything they need and simply move across. Updates and
+ * deletes do not: they were queued before baselines were recorded, so replaying
+ * one would apply it blindly and overwrite whatever changed in the meantime.
+ * They are preserved as waiting for a decision instead — the change is not lost,
+ * and nothing is written on a guess.
+ */
+export async function migrateLegacyQueue(userId: string): Promise<void> {
+  const raw = await AsyncStorage.getItem(legacyQueueKey(userId));
+  if (!raw) return;
+
+  let legacy: Array<Record<string, any>> = [];
+  try {
+    legacy = JSON.parse(raw) as Array<Record<string, any>>;
+  } catch {
+    // Unreadable: nothing recoverable, and leaving the key would retry forever.
+    await AsyncStorage.removeItem(legacyQueueKey(userId));
+    return;
+  }
+
+  await mutateOfflineState(userId, (state) => {
+    for (const w of legacy) {
+      const operation = w.type as 'insert' | 'update' | 'delete';
+      if (operation === 'insert') {
+        state.pending.push({
+          id: w.id,
+          operation: 'insert',
+          collection: w.collection,
+          recordId: w.recordId,
+          data: w.data,
+          retries: w.retries ?? 0,
+          enqueuedAt: w.createdAt ?? new Date().toISOString(),
+        });
+        continue;
+      }
+      if (!w.recordId) continue;
+      state.conflicts.push({
+        id: w.id,
+        reason: 'baseline_unavailable',
+        operation,
+        collection: w.collection ?? '',
+        recordId: w.recordId,
+        local: w.data,
+        createdAt: w.createdAt ?? new Date().toISOString(),
+      });
+    }
+  });
+
+  await AsyncStorage.removeItem(legacyQueueKey(userId));
 }

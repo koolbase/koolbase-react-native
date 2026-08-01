@@ -59,6 +59,7 @@ describe('offline state', () => {
       const w = s.pending.shift()!;
       s.conflicts.push({
         id: w.id,
+        reason: 'concurrent_modification',
         operation: 'update',
         collection: w.collection,
         recordId: w.recordId!,

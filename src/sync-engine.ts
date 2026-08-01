@@ -1,18 +1,46 @@
+import {
+  readOfflineState,
+  mutateOfflineState,
+  migrateLegacyQueue,
+  QueuedWrite,
+} from './offline-state';
+import { KoolbaseUnauthenticatedError } from './errors';
 import NetInfo from '@react-native-community/netinfo';
 import {
-  getWriteQueue,
-  removeFromWriteQueue,
-  incrementWriteRetry,
 } from './cache-store';
 import { KoolbaseConfig } from './types';
 
 type SyncCallback = () => void;
+
+/**
+ * Internal signal that the server refused a write because the record moved.
+ *
+ * Not exported: a conflict during replay becomes durable state rather than
+ * reaching a caller, since nobody is waiting on a write made hours ago.
+ */
+class RevisionMismatch extends Error {
+  constructor(
+    readonly serverRecord?: Record<string, unknown>,
+    readonly serverRevision?: number,
+  ) {
+    super('revision mismatch');
+    Object.setPrototypeOf(this, new.target.prototype);
+  }
+}
 
 export class SyncEngine {
   private config: KoolbaseConfig;
   private getUserId: () => string | null;
   private getToken: () => Promise<string | null>;
   private onSyncComplete?: SyncCallback;
+
+  /**
+   * Called when the server rejects the caller's credentials during replay.
+   *
+   * Background sync is the likeliest place to meet a dead session: the queue
+   * replays writes made long before the session stopped being honoured.
+   */
+  private onSessionExpired?: () => Promise<void>;
   private unsubscribe?: () => void;
   private isSyncing = false;
 
@@ -20,12 +48,14 @@ export class SyncEngine {
     config: KoolbaseConfig,
     getUserId: () => string | null,
     getToken: () => Promise<string | null>,
-    onSyncComplete?: SyncCallback
+    onSyncComplete?: SyncCallback,
+    onSessionExpired?: () => Promise<void>
   ) {
     this.config = config;
     this.getUserId = getUserId;
     this.getToken = getToken;
     this.onSyncComplete = onSyncComplete;
+    this.onSessionExpired = onSessionExpired;
   }
 
   start(): void {
@@ -47,30 +77,98 @@ export class SyncEngine {
 
     this.isSyncing = true;
     try {
-      const queue = await getWriteQueue(userId);
-      if (queue.length === 0) return;
+      // Before anything is sent. Writes queued by an earlier version sit under a
+      // different key, and a migration that ran after replay — or depended on
+      // being online — would give the same input different outcomes. It clears
+      // the old key when done, so later calls find nothing and return.
+      await migrateLegacyQueue(userId);
 
-      for (const write of queue) {
+      const { pending } = await readOfflineState(userId);
+      if (pending.length === 0) return;
+
+      // Records whose chain stopped this pass. Writes queued after a conflicted
+      // one were composed against the state it would have produced, so applying
+      // them now would write against a state their baseline never described.
+      const blocked = new Set<string>();
+
+      for (const queued of pending) {
+        if (queued.recordId && blocked.has(queued.recordId)) continue;
+
+        // Read fresh. The list was taken at the start of the pass, so a write
+        // behind one that has already landed still carries the revision it was
+        // queued with — and would replay against a revision its predecessor has
+        // since superseded, conflicting for a reason the user never caused.
+        const state = await readOfflineState(userId);
+        const write = state.pending.find((w) => w.id === queued.id);
+        if (!write) continue;
+
         try {
-          await this.executeWrite(write);
-          await removeFromWriteQueue(userId, write.id);
-        } catch {
-          await incrementWriteRetry(userId, write.id);
+          const revision = await this.executeWrite(write);
+          await mutateOfflineState(userId, (s) => {
+            s.pending = s.pending.filter((w) => w.id !== write.id);
+            // Anything behind this for the same record was composed against its
+            // result, and now knows the revision that result carries.
+            if (revision !== undefined && write.recordId) {
+              for (const w of s.pending) {
+                if (w.recordId === write.recordId) w.baseRevision = revision;
+              }
+            }
+          });
+        } catch (e) {
+          if (e instanceof KoolbaseUnauthenticatedError) {
+            // The session is gone, so nothing else in the queue can succeed.
+            // Stopping beats spending a retry on every remaining write against
+            // a token the server has already refused; the queue is intact and
+            // replays after login.
+            await this.onSessionExpired?.();
+            return;
+          }
+          if (e instanceof RevisionMismatch) {
+            // Not a failure to retry — retrying cannot help. It becomes durable
+            // unresolved state, in one write so it can be in neither place nor
+            // both.
+            await mutateOfflineState(userId, (s) => {
+              s.pending = s.pending.filter((w) => w.id !== write.id);
+              s.conflicts.push({
+                id: write.id,
+                // The record moved between the change being made and the queue
+                // reaching it — distinct from a write that never had a baseline
+                // to compare against at all.
+                reason: 'concurrent_modification',
+                operation: write.operation === 'delete' ? 'delete' : 'update',
+                collection: write.collection,
+                recordId: write.recordId!,
+                local: write.data,
+                baseline: write.baseline,
+                server: e.serverRecord,
+                baseRevision: write.baseRevision,
+                serverRevision: e.serverRevision,
+                createdAt: new Date().toISOString(),
+              });
+            });
+            if (write.recordId) blocked.add(write.recordId);
+            continue;
+          }
+          await mutateOfflineState(userId, (s) => {
+            const w = s.pending.find((x) => x.id === write.id);
+            if (w) w.retries += 1;
+          });
         }
       }
-
       this.onSyncComplete?.();
     } finally {
       this.isSyncing = false;
     }
   }
 
-  private async executeWrite(write: {
-    type: 'insert' | 'update' | 'delete';
-    collection?: string;
-    recordId?: string;
-    data?: Record<string, unknown>;
-  }): Promise<void> {
+  /**
+   * Sends one queued write, returning the revision the record now carries.
+   *
+   * The revision matters to whatever is queued behind this for the same record:
+   * those were composed against this one's result and cannot know its revision
+   * until the server assigns it.
+   */
+  private async executeWrite(write: QueuedWrite): Promise<number | undefined> {
     const token = await this.getToken();
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
@@ -78,31 +176,63 @@ export class SyncEngine {
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
     };
 
-    if (write.type === 'insert') {
-      const res = await fetch(`${this.config.baseUrl}/v1/sdk/db/insert`, {
+    const url =
+      write.operation === 'insert'
+        ? `${this.config.baseUrl}/v1/sdk/db/insert`
+        : `${this.config.baseUrl}/v1/sdk/db/records/${write.recordId}`;
+
+    let res: Response;
+    if (write.operation === 'insert') {
+      res = await fetch(url, {
         method: 'POST',
         headers,
         body: JSON.stringify({ collection: write.collection, data: write.data }),
       });
-      if (!res.ok) throw new Error(`Insert failed: ${res.status}`);
-    } else if (write.type === 'update') {
-      const res = await fetch(
-        `${this.config.baseUrl}/v1/sdk/db/records/${write.recordId}`,
-        {
-          method: 'PATCH',
-          headers,
-          body: JSON.stringify({ data: write.data }),
-        }
-      );
-      if (!res.ok) throw new Error(`Update failed: ${res.status}`);
-    } else if (write.type === 'delete') {
-      const res = await fetch(
-        `${this.config.baseUrl}/v1/sdk/db/records/${write.recordId}`,
-        { method: 'DELETE', headers }
-      );
-      if (!res.ok && res.status !== 204) {
-        throw new Error(`Delete failed: ${res.status}`);
+    } else if (write.operation === 'update') {
+      res = await fetch(url, {
+        method: 'PATCH',
+        headers,
+        // The revision the change was composed against. The server applies it
+        // only if the record still carries that revision, so nothing can land
+        // between the client deciding the write is safe and the server applying
+        // it — which matters here most of all, since hours may have passed.
+        body: JSON.stringify({
+          data: write.data,
+          ...(write.baseRevision !== undefined
+            ? { expected_revision: write.baseRevision }
+            : {}),
+        }),
+      });
+    } else {
+      const q =
+        write.baseRevision !== undefined
+          ? `?expected_revision=${write.baseRevision}`
+          : '';
+      res = await fetch(`${url}${q}`, { method: 'DELETE', headers });
+    }
+
+    if (res.status === 401) throw new KoolbaseUnauthenticatedError('unauthorized');
+
+    if (res.status === 409) {
+      const body = await res.json().catch(() => ({} as any));
+      if (body?.code === 'revision_mismatch') {
+        throw new RevisionMismatch(
+          body?.details?.record,
+          body?.details?.current_revision
+        );
       }
+    }
+
+    if (!res.ok && res.status !== 204) {
+      throw new Error(`${write.operation} sync failed: ${res.status}`);
+    }
+
+    const text = await res.text().catch(() => '');
+    if (!text) return undefined;
+    try {
+      return JSON.parse(text)?.$revision;
+    } catch {
+      return undefined;
     }
   }
 }
