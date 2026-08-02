@@ -25,6 +25,7 @@ export * from './types';
 // single subsystem's types.
 export * from './errors';
 export * from './conflict';
+export * from './pending-write';
 export * from './function-errors';
 export * from './auth-errors';
 export * from './database-errors';

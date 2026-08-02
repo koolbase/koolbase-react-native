@@ -1,5 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { KoolbaseRecord, PendingWrite, QueryResult } from './types';
+import { KoolbaseRecord, LegacyPendingWrite, QueryResult } from './types';
 
 const CACHE_VERSION = 'v1';
 
@@ -170,11 +170,11 @@ export async function removeCachedRecord(userId: string, recordId: string): Prom
 
 // ─── Write Queue ────────────────────────────────────────────────────────────
 
-export async function getWriteQueue(userId: string): Promise<PendingWrite[]> {
+export async function getWriteQueue(userId: string): Promise<LegacyPendingWrite[]> {
   try {
     const raw = await AsyncStorage.getItem(writeQueueKey(userId));
     if (!raw) return [];
-    return JSON.parse(raw) as PendingWrite[];
+    return JSON.parse(raw) as LegacyPendingWrite[];
   } catch {
     return [];
   }
@@ -182,7 +182,7 @@ export async function getWriteQueue(userId: string): Promise<PendingWrite[]> {
 
 export async function addToWriteQueue(
   userId: string,
-  write: Omit<PendingWrite, 'retries' | 'createdAt'>
+  write: Omit<LegacyPendingWrite, 'retries' | 'createdAt'>
 ): Promise<void> {
   try {
     const queue = await getWriteQueue(userId);

@@ -175,7 +175,13 @@ export interface UpsertResult {
   created: boolean;
 }
 
-export interface PendingWrite {
+/**
+ * The 9.1.x queue entry shape. Superseded: the observable queue API returns
+ * the PendingWrite from './pending-write'; this shape survives only for
+ * migrateLegacyQueue, which drains the old storage key on first sync.
+ * No longer part of the public surface as of 9.2.0.
+ */
+export interface LegacyPendingWrite {
   id: string;
   type: 'insert' | 'update' | 'delete';
   collection?: string;

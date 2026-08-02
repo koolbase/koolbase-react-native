@@ -54,6 +54,21 @@ catching `KoolbaseDataError` to handle a dead session will stop matching.
 
 - The package's first tests: 19, covering the paths above.
 
+## Added — the queue is observable
+
+- **`db.pendingWrites()`** — changes made offline, waiting to be sent, oldest
+  first. For sync indicators and for warning a user about to log out with
+  unsynced edits: queues are per-user and survive logout by design, so those
+  edits sync whenever that user next signs in on this device — possibly never.
+  `conflicts()` got this treatment; the queue, the same durable state one step
+  earlier, now has it too.
+- The returned shape deliberately excludes replay internals (baselines,
+  revisions). What is public is what an app needs to display.
+- **Renamed:** the old exported `PendingWrite` interface — the 9.1.x queue-entry
+  shape, which no API ever returned — is no longer public. The name now refers
+  to the observable queue entry above. The old shape survives internally only
+  for the legacy-queue migration.
+
 ## Added — offline editing that cannot overwrite silently
 
 Offline `update` and `delete` used to be queued without recording what the change

@@ -16,7 +16,14 @@ Auth, database, storage, realtime, functions, feature flags, remote config, vers
 3. Add the SDK:
 
 ```bash
-   npm install @koolbase/react-native
+   npm install @koolbase/react-native \\
+  @react-native-async-storage/async-storage @react-native-community/netinfo react-native-keychain
+
+> The three native modules are peer dependencies — your app installs them so
+> exactly one copy of each exists. Two copies of a native module in one app is
+> a runtime failure that looks like an SDK bug, which is why they are not
+> bundled.
+
    # or
    yarn add @koolbase/react-native
    # or

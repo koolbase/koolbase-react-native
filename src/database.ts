@@ -11,6 +11,7 @@ import {
   QueuedConflict,
 } from './offline-state';
 import { KoolbaseConflict, ConflictResolver } from './conflict';
+import { PendingWrite, toPendingWrite } from './pending-write';
 import {
   KoolbaseConfig,
   KoolbaseRecord,
@@ -498,6 +499,19 @@ export class KoolbaseDatabase {
    * these accumulates them invisibly, with the changes they hold never applied —
    * so if you support offline editing, surface them somewhere.
    */
+  /**
+   * Changes made offline, waiting to be sent. Oldest first.
+   *
+   * For sync indicators ("3 changes waiting") and for warning a user who is
+   * about to log out with unsynced edits — see [PendingWrite] for why that
+   * moment matters. Snapshot, not a live handle; per-user.
+   */
+  async pendingWrites(): Promise<PendingWrite[]> {
+    const userId = this.getUserId() ?? 'anonymous';
+    const { pending } = await readOfflineState(userId);
+    return pending.map(toPendingWrite);
+  }
+
   async conflicts(): Promise<KoolbaseConflict[]> {
     const userId = this.getUserId() ?? 'anonymous';
     const { conflicts } = await readOfflineState(userId);
