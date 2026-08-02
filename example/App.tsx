@@ -127,7 +127,7 @@ export default function App() {
       const pending = await Koolbase.db.pendingWrites();
       append(`pending: ${pending.length}`);
       for (const w of pending) {
-        append(`  ⏳ ${w.operation} ${w.collection} ${w.recordId ? short(w.recordId) : '(no id yet)'} attempts=${w.attempts}`);
+        append(`  ⏳ ${w.operation} ${w.collection} wid=${w.id} rec=${w.recordId ?? '-'} attempts=${w.attempts}`);
       }
     } catch (e: any) { append(`✗ pendingWrites: ${e?.name} — ${e?.message}`); }
   };
