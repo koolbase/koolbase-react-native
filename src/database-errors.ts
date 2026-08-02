@@ -146,6 +146,12 @@ export function koolbaseDataError(
   const code: string | undefined = body?.code;
   const message: string = body?.error ?? fallbackMessage;
   const field: string | undefined = body?.details?.field;
+  // Status-first for auth: a 401 means the credentials were not accepted,
+  // whatever code the body claims. Trusting a mislabelled body here bypasses
+  // session-clearing and strands the app signed-in with dead credentials.
+  if (status === 401) {
+    return new KoolbaseUnauthenticatedError(message);
+  }
 
   // ─── code-first ───
   switch (code) {

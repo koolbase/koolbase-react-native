@@ -223,6 +223,23 @@ export class KoolbaseDatabase {
     return { records, total: raw.total };
   }
 
+  /**
+   * Query records, cache-first (stale-while-revalidate).
+   *
+   * A cache hit is returned immediately with `isFromCache: true`, and a
+   * background refresh updates the cache for the next call — so a repeat
+   * query converges on the server's state one call behind it. Only a cache
+   * miss awaits the network (`isFromCache: false`).
+   *
+   * Two consequences worth designing for: results can be one refresh stale,
+   * even online — re-query if you need convergence after a known write; and
+   * background refresh failures are swallowed by design (the cached result
+   * has already been returned), so a dead network looks identical to a slow
+   * refresh. Check `isFromCache` when the difference matters.
+   *
+   * The cache is per-user and persisted; it doubles as the offline baseline
+   * store for `update`/`delete`.
+   */
   async query(
     collection: string,
     options: QueryOptions = {}
@@ -232,13 +249,12 @@ export class KoolbaseDatabase {
 
     const cached = await getCached(userId, collection, queryHash);
 
-    this.runQuery(collection, options)
-      .then(result => setCached(userId, collection, queryHash, result))
-      .catch(() => {
-        // Network unavailable — cached data already returned
-      });
-
     if (cached) {
+      this.runQuery(collection, options)
+        .then(result => setCached(userId, collection, queryHash, result))
+        .catch(() => {
+          // Network unavailable — cached data already returned
+        });
       return { ...cached, isFromCache: true };
     }
 
@@ -292,6 +308,16 @@ export class KoolbaseDatabase {
       // retry. Checked against the root rather than the data family, because a
       // rejected credential belongs to no single surface.
       if (e instanceof KoolbaseError) throw e;
+
+      // The queue is per-user, and signed out there is no user: filing this
+      // into the anonymous bucket would queue real work where no signed-in
+      // sync ever looks — the fake-zero's origin. Refusing is honest; the
+      // caller knows the change did not save and can say so.
+      if (!this.getUserId()) {
+        throw new KoolbaseUnauthenticatedError(
+          'Signed out and offline — this change cannot be queued for sync.',
+        );
+      }
 
       // Genuine network failure → offline path: save to local cache and
       // queue for SyncEngine to retry when online. Return the optimistic
@@ -507,13 +533,13 @@ export class KoolbaseDatabase {
    * moment matters. Snapshot, not a live handle; per-user.
    */
   async pendingWrites(): Promise<PendingWrite[]> {
-    const userId = this.getUserId() ?? 'anonymous';
+    const userId = this.requireUserId('the pending-write queue');
     const { pending } = await readOfflineState(userId);
     return pending.map(toPendingWrite);
   }
 
   async conflicts(): Promise<KoolbaseConflict[]> {
-    const userId = this.getUserId() ?? 'anonymous';
+    const userId = this.requireUserId('the conflict list');
     const { conflicts } = await readOfflineState(userId);
     return conflicts.map(
       (c) =>
@@ -563,8 +589,23 @@ export class KoolbaseDatabase {
     },
   };
 
+  /**
+   * Per-user state demands a user. Signed out, "no answer" must not be
+   * disguised as "empty" — tonight's fake-zero: the display read the anonymous
+   * bucket while a signed-in user's writes sat unseen in theirs.
+   */
+  private requireUserId(doing: string): string {
+    const userId = this.getUserId();
+    if (!userId) {
+      throw new KoolbaseUnauthenticatedError(
+        `Signed out — ${doing} is per-user state and has no answer without a user.`,
+      );
+    }
+    return userId;
+  }
+
   private async requireConflict(id: string): Promise<QueuedConflict> {
-    const userId = this.getUserId() ?? 'anonymous';
+    const userId = this.requireUserId('conflict resolution');
     const { conflicts } = await readOfflineState(userId);
     const found = conflicts.find((c) => c.id === id);
     if (!found) {
@@ -577,7 +618,7 @@ export class KoolbaseDatabase {
   }
 
   private async dropConflict(id: string): Promise<void> {
-    const userId = this.getUserId() ?? 'anonymous';
+    const userId = this.requireUserId('conflict resolution');
     await mutateOfflineState(userId, (s) => {
       s.conflicts = s.conflicts.filter((c) => c.id !== id);
     });

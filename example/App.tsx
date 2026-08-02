@@ -24,11 +24,10 @@ export default function App() {
   const [who, setWho] = useState<string>('null');
   const [records, setRecords] = useState<Rec[]>([]);
   const [selected, setSelected] = useState<string | null>(null);
-  const [queuedCount, setQueuedCount] = useState(0); // local workaround: no pendingWrites API
   const [conflictCount, setConflictCount] = useState(0);
 
   const append = useCallback((line: string) => {
-    setLog(prev => [...prev.slice(-40), `${new Date().toLocaleTimeString()}  ${line}`]);
+    setLog(prev => [...prev.slice(-200), `${new Date().toLocaleTimeString()}  ${line}`]);
   }, []);
 
   const refreshWho = () => setWho(Koolbase.auth.currentUser?.email ?? 'null');
@@ -89,8 +88,7 @@ export default function App() {
     if (!selected) { append('· select a record first'); return; }
     try {
       const rec = await Koolbase.db.update(selected, { amount: Math.floor(Math.random() * 90) + 10 });
-      append(`✓ update ${short(selected)} → amount=${rec.amount ?? '?'} ${rec._optimistic ? '(optimistic/queued)' : ''}`);
-      setQueuedCount(q => q + 0); // adjusted below if we detect offline path
+      append(`✓ update ${short(selected)} → amount=${(rec as any)?.data?.amount ?? '?'}`);
     } catch (e: any) {
       if (e instanceof KoolbaseOfflineBaselineUnavailableError) {
         append(`✗ update REFUSED (baseline unavailable) — nothing queued`);
@@ -122,6 +120,16 @@ export default function App() {
       append('✓ sync pass complete');
       await refreshConflicts();
     } catch (e: any) { append(`✗ sync: ${e?.name} — ${e?.message}`); }
+  };
+
+  const doPending = async () => {
+    try {
+      const pending = await Koolbase.db.pendingWrites();
+      append(`pending: ${pending.length}`);
+      for (const w of pending) {
+        append(`  ⏳ ${w.operation} ${w.collection} ${w.recordId ? short(w.recordId) : '(no id yet)'} attempts=${w.attempts}`);
+      }
+    } catch (e: any) { append(`✗ pendingWrites: ${e?.name} — ${e?.message}`); }
   };
 
   const refreshConflicts = async () => {
@@ -161,14 +169,14 @@ export default function App() {
         <Row><B t="Login U1" f={() => login(USER1, 'U1')} /><B t="Login U2" f={() => login(USER2, 'U2')} /><B t="Logout" f={logout} /></Row>
         <Row><B t="Insert" f={doInsert} /><B t="Query" f={doQuery} /></Row>
         <Row><B t="Update sel" f={doUpdate} /><B t="Delete sel" f={doDelete} /></Row>
-        <Row><B t="Sync now" f={doSync} /><B t="Conflicts?" f={refreshConflicts} /></Row>
+        <Row><B t="Sync now" f={doSync} /><B t="Pending?" f={doPending} /><B t="Conflicts?" f={refreshConflicts} /></Row>
         <Row><B t="Res:local" f={() => resolveFirst('local')} /><B t="Res:server" f={() => resolveFirst('server')} /><B t="Res:aband" f={() => resolveFirst('abandon')} /></Row>
 
         <Text style={s.logHeader}>Records (tap to select)</Text>
         {records.map(r => (
           <TouchableOpacity key={r.id} onPress={() => { setSelected(r.id); append(`· selected ${short(r.id)}`); }}>
             <Text style={[s.rec, selected === r.id && s.recSel]}>
-              {short(r.id)}  {String(r.title ?? '')}  amt={String(r.amount ?? '?')}
+              {short(r.id)}  {String((r.data as any)?.title ?? '')}  amt={String((r.data as any)?.amount ?? '?')}
             </Text>
           </TouchableOpacity>
         ))}
