@@ -35,8 +35,18 @@ import { SyncEngine } from './sync-engine';
 import { recordFromWire } from './record';
 import { koolbaseDataError, KoolbaseDataError } from './database-errors';
 
-function generateId(): string {
+function generateWriteId(): string {
   return 'local_' + Math.random().toString(36).slice(2) + Date.now().toString(36);
+}
+// Record ids are UUIDs from birth: the server honors a caller-supplied UUID id,
+// so the optimistic identity and the server identity are the same string and
+// chained offline writes need no remapping on replay. Write ids (above) stay
+// local_-prefixed — they are idempotency keys, never addresses.
+function generateRecordId(): string {
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+    const r = (Math.random() * 16) | 0;
+    return (c === 'x' ? r : (r & 0x3) | 0x8).toString(16);
+  });
 }
 
 function batchOpToWire(op: BatchOp): Record<string, unknown> {
@@ -322,10 +332,11 @@ export class KoolbaseDatabase {
       // Genuine network failure → offline path: save to local cache and
       // queue for SyncEngine to retry when online. Return the optimistic
       // record so the UI has something to render in the meantime.
+      const recordId = generateRecordId();
       const optimisticRecord: KoolbaseRecord = {
-        id: generateId(),
+        id: recordId,
         createdBy: userId,
-        data,
+        data: { ...data, id: recordId },
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       };
@@ -334,11 +345,14 @@ export class KoolbaseDatabase {
       // exist on the server yet, so there is nothing to be conditional against.
       // An offline edit to it composes against this queued write instead.
       await queueWrite(userId, {
-        id: generateId(),
+        id: generateWriteId(),
         operation: 'insert',
         collection,
         recordId: optimisticRecord.id,
-        data,
+        // The record's UUID travels inside the payload: the server honors a
+        // caller-supplied id, which is what keeps offline identity alive across
+        // the boundary — the whole reason record ids are UUIDs from birth.
+        data: optimisticRecord.data,
       });
       return optimisticRecord;
     }
@@ -747,7 +761,7 @@ export class KoolbaseDatabase {
         );
       }
       await queueWrite(userId, {
-        id: generateId(),
+        id: generateWriteId(),
         operation: 'update',
         collection: base.collection,
         recordId,
@@ -799,7 +813,7 @@ export class KoolbaseDatabase {
         );
       }
       await queueWrite(userId, {
-        id: generateId(),
+        id: generateWriteId(),
         operation: 'delete',
         collection: base.collection,
         recordId,
