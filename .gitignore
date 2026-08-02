@@ -44,3 +44,8 @@ coverage/
 # yarn.lock
 # package-lock.json
 # pnpm-lock.yaml
+
+example/node_modules/
+example/ios/Pods/
+example/android/.gradle/
+example/android/app/build/
