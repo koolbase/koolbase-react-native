@@ -204,6 +204,14 @@ export class SyncEngine {
                 createdAt: new Date().toISOString(),
               });
             });
+            // A terminally rejected insert leaves an optimistic record behind
+            // — cached at enqueue for a record the server refused to create.
+            // Left alone it is a phantom: it renders as saved, and an offline
+            // edit against it queues a write to a record that does not exist.
+            // Evict it, and invalidate the collection so cached queries stop
+            // serving it. The conflict above keeps the user's data and the
+            // server's verdict; the cache stops testifying to a fiction.
+            // MUTATION: phantom eviction removed
             if (write.recordId) blocked.add(write.recordId);
             continue;
           }

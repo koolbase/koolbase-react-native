@@ -160,4 +160,53 @@ describe('offline chain identity', () => {
     const res = await client.query('expenses', {});
     expect(res.records.map((r: any) => r.id ?? r.$id)).not.toContain(rec.id);
   });
+
+  it('a terminally rejected insert evicts its phantom — no never-created record served', async () => {
+    const netinfo = require('@react-native-community/netinfo').default as any;
+    const reply = (status: number, body: any) => ({
+      ok: status >= 200 && status < 300,
+      status,
+      text: async () => JSON.stringify(body),
+      json: async () => body,
+    });
+
+    netinfo.fetch = async () => ({ isConnected: true, isInternetReachable: true });
+    global.fetch = jest.fn().mockImplementation(async (url: string) => {
+      if (String(url).endsWith('/v1/sdk/db/query')) {
+        return reply(200, { records: [], total: 0 });
+      }
+      return reply(404, { code: 'record_not_found', error: 'no such record' });
+    });
+    const client = db();
+    await client.query('expenses', {});
+
+    netinfo.fetch = async () => ({ isConnected: false, isInternetReachable: false });
+    (global.fetch as jest.Mock).mockRejectedValue(new TypeError('Network request failed'));
+    const rec = await client.insert('expenses', { amount: 10, title: 'COLLIDE' });
+
+    const poisoned = await client.query('expenses', {});
+    expect(poisoned.records.map((r: any) => r.id ?? r.$id)).toContain(rec.id);
+
+    netinfo.fetch = async () => ({ isConnected: true, isInternetReachable: true });
+    (global.fetch as jest.Mock).mockImplementation(async (url: string) => {
+      const u = String(url);
+      if (u.endsWith('/v1/sdk/db/insert')) {
+        return reply(409, { code: 'unique_violation', error: 'title must be unique' });
+      }
+      if (u.endsWith('/v1/sdk/db/query')) {
+        return reply(200, { records: [], total: 0 });
+      }
+      return reply(404, { code: 'record_not_found', error: 'no such record' });
+    });
+
+    await client.syncPendingWrites();
+
+    expect(await client.pendingWrites()).toHaveLength(0);
+    expect(await client.conflicts()).toHaveLength(1);
+
+    netinfo.fetch = async () => ({ isConnected: false, isInternetReachable: false });
+    (global.fetch as jest.Mock).mockRejectedValue(new TypeError('Network request failed'));
+    const res = await client.query('expenses', {});
+    expect(res.records.map((r: any) => r.id ?? r.$id)).not.toContain(rec.id);
+  });
 });
