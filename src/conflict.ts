@@ -23,7 +23,7 @@ export class KoolbaseConflict {
   constructor(
     readonly id: string,
     readonly reason: ConflictReason,
-    readonly operation: 'update' | 'delete',
+    readonly operation: 'insert' | 'update' | 'delete',
     readonly collection: string,
     readonly recordId: string,
     /** The change the user made, still unapplied. */

@@ -209,4 +209,88 @@ describe('offline chain identity', () => {
     const res = await client.query('expenses', {});
     expect(res.records.map((r: any) => r.id ?? r.$id)).not.toContain(rec.id);
   });
+
+  it('a rejected insert holds as an insert-conflict, and resolving it IS the insert', async () => {
+    const netinfo = require('@react-native-community/netinfo').default as any;
+    const reply = (status: number, body: any) => ({
+      ok: status >= 200 && status < 300,
+      status,
+      text: async () => JSON.stringify(body),
+      json: async () => body,
+    });
+
+    // Offline: queue the doomed insert.
+    netinfo.fetch = async () => ({ isConnected: false, isInternetReachable: false });
+    global.fetch = jest.fn().mockRejectedValue(new TypeError('Network request failed'));
+    const client = db();
+    const rec = await client.insert('expenses', { amount: 10, title: 'COLLIDE' });
+
+    // Reconnect against a server that refuses it as a duplicate.
+    netinfo.fetch = async () => ({ isConnected: true, isInternetReachable: true });
+    (global.fetch as jest.Mock).mockImplementation(async (url: string) => {
+      if (String(url).endsWith('/v1/sdk/db/insert')) {
+        return reply(409, { code: 'unique_violation', error: 'title must be unique' });
+      }
+      return reply(200, { records: [], total: 0 });
+    });
+    await client.syncPendingWrites();
+
+    // The conflict tells the truth about what happened.
+    const conflicts = await client.conflicts();
+    expect(conflicts).toHaveLength(1);
+    expect(conflicts[0].operation).toBe('insert');
+
+    // Resolving with amended data IS the insert, retried — a POST carrying
+    // the conflict's id as the idempotency key, unconditional (no record,
+    // no revision to be conditional against).
+    const calls: any[] = [];
+    (global.fetch as jest.Mock).mockImplementation(async (url: string, init: any) => {
+      calls.push({ url: String(url), body: init?.body ? JSON.parse(init.body) : null, method: init?.method });
+      if (String(url).endsWith('/v1/sdk/db/insert')) {
+        return reply(201, { $id: 'srv-1', $revision: 1, amount: 10, title: 'FIXED' });
+      }
+      return reply(200, { records: [], total: 0 });
+    });
+    await conflicts[0].resolveWithMerge({ amount: 10, title: 'FIXED' });
+
+    const insertCall = calls.find(c => c.url.endsWith('/v1/sdk/db/insert'));
+    expect(insertCall).toBeDefined();
+    expect(insertCall.method).toBe('POST');
+    expect(insertCall.body.idempotency_key).toBe(conflicts[0].id);
+    expect(insertCall.body.data.title).toBe('FIXED');
+    expect(await client.conflicts()).toHaveLength(0);
+  });
+
+  it('resolveWithServer on an insert-conflict clears with zero requests — the colliding row stands', async () => {
+    const netinfo = require('@react-native-community/netinfo').default as any;
+    const reply = (status: number, body: any) => ({
+      ok: status >= 200 && status < 300,
+      status,
+      text: async () => JSON.stringify(body),
+      json: async () => body,
+    });
+
+    netinfo.fetch = async () => ({ isConnected: false, isInternetReachable: false });
+    global.fetch = jest.fn().mockRejectedValue(new TypeError('Network request failed'));
+    const client = db();
+    await client.insert('expenses', { amount: 10, title: 'COLLIDE' });
+
+    netinfo.fetch = async () => ({ isConnected: true, isInternetReachable: true });
+    (global.fetch as jest.Mock).mockImplementation(async (url: string) => {
+      if (String(url).endsWith('/v1/sdk/db/insert')) {
+        return reply(409, { code: 'unique_violation', error: 'title must be unique' });
+      }
+      return reply(200, { records: [], total: 0 });
+    });
+    await client.syncPendingWrites();
+    const conflicts = await client.conflicts();
+    expect(conflicts).toHaveLength(1);
+
+    // From here, no network call is legitimate.
+    (global.fetch as jest.Mock).mockClear();
+    await conflicts[0].resolveWithServer();
+
+    expect((global.fetch as jest.Mock).mock.calls).toHaveLength(0);
+    expect(await client.conflicts()).toHaveLength(0);
+  });
 });

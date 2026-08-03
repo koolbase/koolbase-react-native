@@ -81,7 +81,9 @@ export type ConflictReason =
 export interface QueuedConflict {
   reason: ConflictReason;
   id: string;
-  operation: 'update' | 'delete';
+  // 'insert' since unique constraints made insert-conflicts real: a queued
+  // insert refused as a duplicate is held like any other terminal refusal.
+  operation: 'insert' | 'update' | 'delete';
   collection: string;
   recordId: string;
   local?: Record<string, unknown>;

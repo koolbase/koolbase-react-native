@@ -170,7 +170,7 @@ export class SyncEngine {
                 // reaching it — distinct from a write that never had a baseline
                 // to compare against at all.
                 reason: 'concurrent_modification',
-                operation: write.operation === 'delete' ? 'delete' : 'update',
+                operation: write.operation,
                 collection: write.collection,
                 recordId: write.recordId!,
                 local: write.data,
@@ -194,7 +194,7 @@ export class SyncEngine {
               s.conflicts.push({
                 id: write.id,
                 reason: 'rejected',
-                operation: write.operation === 'delete' ? 'delete' : 'update',
+                operation: write.operation,
                 collection: write.collection,
                 recordId: write.recordId ?? '',
                 local: write.data,

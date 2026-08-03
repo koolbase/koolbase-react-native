@@ -650,7 +650,21 @@ export class KoolbaseDatabase {
   ): Promise<void> {
     const rev = c.serverRevision;
     try {
-      if (c.operation === 'delete') {
+      if (c.operation === 'insert') {
+        // Resolving a rejected insert IS the insert, retried — with amended
+        // data via resolveWithMerge (the "fix the colliding title" path).
+        // Unconditional: there is no revision to be conditional against,
+        // because there is no record. The conflict's id rides as the
+        // idempotency key, so a resolution whose response is lost returns the
+        // original on retry rather than duplicating — the queue's own
+        // lost-response discipline, extended to the one insert path that
+        // lacked it.
+        await this.request<Record<string, unknown>>('POST', '/v1/sdk/db/insert', {
+          collection: c.collection,
+          data: payload,
+          idempotency_key: c.id,
+        });
+      } else if (c.operation === 'delete') {
         const q = rev !== undefined ? `?expected_revision=${rev}` : '';
         await this.request<null>('DELETE', `/v1/sdk/db/records/${c.recordId}${q}`);
       } else {
