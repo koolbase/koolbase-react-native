@@ -41,7 +41,10 @@ export default function App() {
         const r = await Koolbase.auth.restoreSession();
         append(`restore → ${JSON.stringify(r)}`);
         refreshWho();
-        await refreshConflicts();
+        // Per-user state has no answer without a user — only ask signed in.
+        if (Koolbase.auth.currentUser) {
+          await refreshConflicts();
+        }
       } catch (e: any) {
         append(`✗ init: ${e?.name} — ${e?.message}`);
       }
@@ -68,6 +71,7 @@ export default function App() {
         amount: 10,
       });
       append(`✓ insert → ${rec.id}`);
+      setRecords(prev => [rec as Rec, ...prev]);
       // If this happened offline, insert resolves optimistically = queued.
     } catch (e: any) {
       append(`✗ insert: ${e?.name} — ${e?.message}`);
@@ -145,7 +149,7 @@ export default function App() {
     } catch (e: any) { append(`✗ conflicts(): ${e?.name} — ${e?.message}`); return []; }
   };
 
-  const resolveFirst = async (how: 'local' | 'server' | 'abandon') => {
+  const resolveFirst = async (how: 'local' | 'server' | 'merge' | 'abandon') => {
     const list = await refreshConflicts();
     if (!list.length) { append('· no conflicts'); return; }
     const c = list[0];
@@ -153,6 +157,7 @@ export default function App() {
       if (how === 'local') await c.resolveWithLocal();
       if (how === 'server') await c.resolveWithServer();
       if (how === 'abandon') await c.abandon();
+      if (how === 'merge') await c.resolveWithMerge({ amount: 777, title: 'merged-by-probe' });
       append(`✓ resolved ${short(c.id)} with ${how}`);
       await refreshConflicts();
     } catch (e: any) { append(`✗ resolve ${how}: ${e?.name} — ${e?.message}`); }
@@ -170,7 +175,7 @@ export default function App() {
         <Row><B t="Insert" f={doInsert} /><B t="Query" f={doQuery} /></Row>
         <Row><B t="Update sel" f={doUpdate} /><B t="Delete sel" f={doDelete} /></Row>
         <Row><B t="Sync now" f={doSync} /><B t="Pending?" f={doPending} /><B t="Conflicts?" f={refreshConflicts} /></Row>
-        <Row><B t="Res:local" f={() => resolveFirst('local')} /><B t="Res:server" f={() => resolveFirst('server')} /><B t="Res:aband" f={() => resolveFirst('abandon')} /></Row>
+        <Row><B t="Res:local" f={() => resolveFirst('local')} /><B t="Res:server" f={() => resolveFirst('server')} /><B t="Res:merge" f={() => resolveFirst('merge')} /><B t="Res:aband" f={() => resolveFirst('abandon')} /></Row>
 
         <Text style={s.logHeader}>Records (tap to select)</Text>
         {records.map(r => (
