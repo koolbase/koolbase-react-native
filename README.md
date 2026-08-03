@@ -1137,7 +1137,7 @@ Manage your projects at [app.koolbase.com](https://app.koolbase.com)
 
 - [GitHub Issues](https://github.com/kennedyowusu/koolbase-react-native/issues)
 - [docs.koolbase.com](https://docs.koolbase.com)
-- Email: <hello@koolbase.com>
+- Email: <dev@koolbase.com>
 
 ## License
 

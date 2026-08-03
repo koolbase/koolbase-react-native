@@ -9,6 +9,13 @@ import { KoolbaseError, KoolbaseUnauthenticatedError } from './errors';
  * specific subclass to branch on the kind of failure.
  */
 export class KoolbaseDataError extends KoolbaseError {
+  /**
+   * Structured payload from the server's error body, when it sent one — e.g. a
+   * revision_mismatch 409 carries {expected_revision, current_revision,
+   * record}. Attached by the factory; absent when the body had none.
+   */
+  details?: Record<string, unknown>;
+
   constructor(message: string, code?: string) {
     super(message, code);
     this.name = 'KoolbaseDataError';
@@ -146,6 +153,16 @@ export function koolbaseDataError(
   const code: string | undefined = body?.code;
   const message: string = body?.error ?? fallbackMessage;
   const field: string | undefined = body?.details?.field;
+  const attach = (err: KoolbaseError): KoolbaseError => {
+    // The body's structured details ride along on data errors — a
+    // revision_mismatch 409 carries the current revision and record, and
+    // discarding them here is how a refused conflict-resolution became
+    // permanently unresolvable: the information arrived and died in this file.
+    if (err instanceof KoolbaseDataError && body?.details) {
+      err.details = body.details as Record<string, unknown>;
+    }
+    return err;
+  };
   // Status-first for auth: a 401 means the credentials were not accepted,
   // whatever code the body claims. Trusting a mislabelled body here bypasses
   // session-clearing and strands the app signed-in with dead credentials.
@@ -156,49 +173,49 @@ export function koolbaseDataError(
   // ─── code-first ───
   switch (code) {
     case 'unique_violation':
-      return new KoolbaseConflictError(message, field);
+      return attach(new KoolbaseConflictError(message, field));
     case 'not_found':
     case 'record_not_found':
     case 'collection_not_found':
     case 'vector_not_found':
     case 'vector_field_not_found':
-      return new KoolbaseNotFoundError(message);
+      return attach(new KoolbaseNotFoundError(message));
     case 'unauthenticated':
     case 'session_expired':
     case 'invalid_token':
-      return new KoolbaseUnauthenticatedError(message);
+      return attach(new KoolbaseUnauthenticatedError(message));
     case 'permission_denied':
-      return new KoolbasePermissionError(message);
+      return attach(new KoolbasePermissionError(message));
     case 'rate_limit':
-      return new KoolbaseRateLimitError(message);
+      return attach(new KoolbaseRateLimitError(message));
     case 'validation_error':
     case 'vector_collection_mismatch':
     case 'unsupported_dimension':
-      return new KoolbaseValidationError(message);
+      return attach(new KoolbaseValidationError(message));
     case 'vector_dimension_mismatch':
-      return new KoolbaseVectorDimensionMismatchError(message);
+      return attach(new KoolbaseVectorDimensionMismatchError(message));
   }
 
   // ─── status fallback (pre-code servers) ───
   switch (status) {
     case 409:
-      return new KoolbaseConflictError(message);
+      return attach(new KoolbaseConflictError(message));
     case 404:
-      return new KoolbaseNotFoundError(message);
+      return attach(new KoolbaseNotFoundError(message));
     case 401:
       // The status carries the meaning: every 401 from this server reports the
       // same code, so it cannot say whether the session expired, the key was
       // revoked, or the header was malformed. Safe to treat uniformly because a
       // permission failure is 403 — a 401 means the credentials were not
       // accepted, not that this caller may not proceed.
-      return new KoolbaseUnauthenticatedError(message);
+      return attach(new KoolbaseUnauthenticatedError(message));
     case 403:
-      return new KoolbasePermissionError(message);
+      return attach(new KoolbasePermissionError(message));
     case 429:
-      return new KoolbaseRateLimitError(message);
+      return attach(new KoolbaseRateLimitError(message));
     case 400:
-      return new KoolbaseValidationError(message);
+      return attach(new KoolbaseValidationError(message));
   }
 
-  return new KoolbaseDataError(message, code);
+  return attach(new KoolbaseDataError(message, code));
 }

@@ -649,15 +649,44 @@ export class KoolbaseDatabase {
     payload: Record<string, unknown>,
   ): Promise<void> {
     const rev = c.serverRevision;
-    if (c.operation === 'delete') {
-      const q = rev !== undefined ? `?expected_revision=${rev}` : '';
-      await this.request<null>('DELETE', `/v1/sdk/db/records/${c.recordId}${q}`);
-    } else {
-      await this.request<Record<string, unknown>>(
-        'PATCH',
-        `/v1/sdk/db/records/${c.recordId}`,
-        { data: payload, ...(rev !== undefined ? { expected_revision: rev } : {}) },
-      );
+    try {
+      if (c.operation === 'delete') {
+        const q = rev !== undefined ? `?expected_revision=${rev}` : '';
+        await this.request<null>('DELETE', `/v1/sdk/db/records/${c.recordId}${q}`);
+      } else {
+        await this.request<Record<string, unknown>>(
+          'PATCH',
+          `/v1/sdk/db/records/${c.recordId}`,
+          { data: payload, ...(rev !== undefined ? { expected_revision: rev } : {}) },
+        );
+      }
+    } catch (e) {
+      // A refusal must teach the stored conflict, not just gate it. The 409
+      // carries the server's current revision and record; absorbing them makes
+      // the NEXT attempt conditional against reality. Without this, every
+      // retry replays the stale condition and a conflict whose resolution
+      // fails once is permanently unresolvable except by abandon —
+      // device-proven: three identical refusals against an unchanged server.
+      const details =
+        e instanceof KoolbaseDataError ? e.details : undefined;
+      const current = details?.current_revision;
+      const record = details?.record as Record<string, unknown> | undefined;
+      if (typeof current === 'number') {
+        await mutateOfflineState(this.requireUserId('conflict resolution'), (st) => {
+          const stored = st.conflicts.find((x) => x.id === c.id);
+          if (!stored) return;
+          stored.serverRevision = current;
+          // Storing the fresh server snapshot IS the divergence update: the
+          // public conflict computes divergentFields from local vs server.
+          if (record) stored.server = record;
+        });
+        throw new KoolbaseDataError(
+          'The record has changed again while deciding. The conflict now ' +
+            'reflects the server\'s current state — review and retry.',
+          'revision_mismatch',
+        );
+      }
+      throw e;
     }
     await this.dropConflict(c.id);
     await invalidateCache(this.getUserId() ?? 'anonymous', c.collection);
