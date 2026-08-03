@@ -105,4 +105,59 @@ describe('offline chain identity', () => {
     expect(landed.amount).toBe(93);
     expect(landed.$revision).toBe(3);
   });
+
+  it('a replayed delete evicts the cache — no ghost served after sync', async () => {
+    const netinfo = require('@react-native-community/netinfo').default as any;
+
+    // Online phase: insert + query so the record enters the query cache.
+    netinfo.fetch = async () => ({ isConnected: true, isInternetReachable: true });
+    const rows = new Map<string, any>();
+    const reply = (status: number, body: any) => ({
+      ok: status >= 200 && status < 300,
+      status,
+      text: async () => (body === null ? '' : JSON.stringify(body)),
+      json: async () => body,
+    });
+    const serverMock = async (url: string, init: any) => {
+      const u = String(url);
+      const method = init?.method ?? 'GET';
+      if (u.endsWith('/v1/sdk/db/insert')) {
+        const body = JSON.parse(init.body);
+        const id = body.data?.id ?? `srv-${rows.size}`;
+        rows.set(id, { ...body.data, $id: id, $revision: 1 });
+        return reply(201, rows.get(id));
+      }
+      if (u.endsWith('/v1/sdk/db/query')) {
+        return reply(200, { records: [...rows.values()], total: rows.size });
+      }
+      const m = u.match(/\/v1\/sdk\/db\/records\/([^/?]+)/);
+      const id = m?.[1] ?? '';
+      if (method === 'DELETE') {
+        rows.delete(id);
+        return reply(204, null);
+      }
+      return reply(404, { code: 'record_not_found', error: 'no such record' });
+    };
+    global.fetch = jest.fn().mockImplementation(serverMock);
+
+    const client = db();
+    const rec = await client.insert('expenses', { amount: 10 });
+    await client.query('expenses', {});          // cache now holds the record
+
+    // Offline: queue the delete.
+    netinfo.fetch = async () => ({ isConnected: false, isInternetReachable: false });
+    (global.fetch as jest.Mock).mockRejectedValue(new TypeError('Network request failed'));
+    await client.delete(rec.id);
+
+    // Reconnect and replay.
+    netinfo.fetch = async () => ({ isConnected: true, isInternetReachable: true });
+    (global.fetch as jest.Mock).mockImplementation(serverMock);
+    await client.syncPendingWrites();
+
+    // The verdict: a query after the replayed delete must not serve the ghost.
+    // (SWR may serve cache first — the eviction means the cache no longer
+    // holds the record, so even the cached answer is ghost-free.)
+    const res = await client.query('expenses', {});
+    expect(res.records.map((r: any) => r.id ?? r.$id)).not.toContain(rec.id);
+  });
 });

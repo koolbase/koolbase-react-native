@@ -7,6 +7,8 @@ import {
 import { KoolbaseUnauthenticatedError } from './errors';
 import NetInfo from '@react-native-community/netinfo';
 import {
+  invalidateCache,
+  removeCachedRecord,
 } from './cache-store';
 import { KoolbaseConfig } from './types';
 
@@ -128,6 +130,15 @@ export class SyncEngine {
 
         try {
           const revision = await this.executeWrite(write);
+          // The replayed write just changed the server; the cache must stop
+          // testifying to the old world. Mirrors the online paths — a replayed
+          // delete evicts the record, and every replayed write invalidates the
+          // collection's cached queries, so the next query reconverges instead
+          // of serving a ghost.
+          if (write.operation === 'delete' && write.recordId) {
+            await removeCachedRecord(userId, write.recordId);
+          }
+          await invalidateCache(userId, write.collection);
           await mutateOfflineState(userId, (s) => {
             s.pending = s.pending.filter((w) => w.id !== write.id);
             // Anything behind this for the same record was composed against its
