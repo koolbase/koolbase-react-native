@@ -84,6 +84,9 @@ export default function App() {
         limit: 20, orderBy: 'created_at', orderDesc: true,
       });
       setRecords(res.records as Rec[]);
+      const guarded = await Koolbase.db.query('rn_guarded', { limit: 10 });
+      setRecords(prev => [...prev, ...(guarded.records as Rec[])]);
+      append(`✓ query rn_guarded → ${guarded.records.length}`);
       append(`✓ query → ${res.records.length}/${res.total}${res.isFromCache ? ' (FROM CACHE)' : ' (server)'}`);
     } catch (e: any) { append(`✗ query: ${e?.name} — ${e?.message}`); }
   };
@@ -124,6 +127,17 @@ export default function App() {
       append('✓ sync pass complete');
       await refreshConflicts();
     } catch (e: any) { append(`✗ sync: ${e?.name} — ${e?.message}`); }
+  };
+
+  const doSeedLegacy = async () => {
+    try {
+      const AsyncStorage = (await import('@react-native-async-storage/async-storage')).default;
+      const uid = (Koolbase.auth.currentUser as any)?.id;
+      if (!uid) { append('· sign in first'); return; }
+      const legacy = [{ id: `legacy_${Date.now()}`, type: 'insert', collection: 'rn_expenses', data: { amount: 5, title: `legacy-${Date.now() % 100000}` } }];
+      await AsyncStorage.setItem(`koolbase:v1:${uid}:write_queue`, JSON.stringify(legacy));
+      append(`✓ seeded legacy queue for ${uid.slice(0, 8)}`);
+    } catch (e: any) { append(`✗ seed: ${e?.name} — ${e?.message}`); }
   };
 
   const doPending = async () => {
@@ -174,7 +188,7 @@ export default function App() {
         <Row><B t="Login U1" f={() => login(USER1, 'U1')} /><B t="Login U2" f={() => login(USER2, 'U2')} /><B t="Logout" f={logout} /></Row>
         <Row><B t="Insert" f={doInsert} /><B t="Query" f={doQuery} /></Row>
         <Row><B t="Update sel" f={doUpdate} /><B t="Delete sel" f={doDelete} /></Row>
-        <Row><B t="Sync now" f={doSync} /><B t="Pending?" f={doPending} /><B t="Conflicts?" f={refreshConflicts} /></Row>
+        <Row><B t="Sync now" f={doSync} /><B t="Pending?" f={doPending} /><B t="Seed legacy" f={doSeedLegacy} /><B t="Conflicts?" f={refreshConflicts} /></Row>
         <Row><B t="Res:local" f={() => resolveFirst('local')} /><B t="Res:server" f={() => resolveFirst('server')} /><B t="Res:merge" f={() => resolveFirst('merge')} /><B t="Res:aband" f={() => resolveFirst('abandon')} /></Row>
 
         <Text style={s.logHeader}>Records (tap to select)</Text>
