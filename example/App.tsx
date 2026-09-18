@@ -129,6 +129,15 @@ export default function App() {
     } catch (e: any) { append(`✗ sync: ${e?.name} — ${e?.message}`); }
   };
 
+  const doFunction = async (mode: 'ok' | 'throw' | 'validation') => {
+    try {
+      const res = await Koolbase.functions.invoke('rn-probe', mode === 'ok' ? { ping: 1 } : { fail: mode });
+      append(`✓ fn[${mode}] → ${JSON.stringify(res).slice(0, 120)}`);
+    } catch (e: any) {
+      append(`✗ fn[${mode}]: ${e?.name} — ${String(e?.message).slice(0, 80)}`);
+    }
+  };
+
   const doPending = async () => {
     try {
       const pending = await Koolbase.db.pendingWrites();
@@ -179,6 +188,7 @@ export default function App() {
         <Row><B t="Update sel" f={doUpdate} /><B t="Delete sel" f={doDelete} /></Row>
         <Row><B t="Sync now" f={doSync} /><B t="Pending?" f={doPending} /><B t="Conflicts?" f={refreshConflicts} /></Row>
         <Row><B t="Res:local" f={() => resolveFirst('local')} /><B t="Res:server" f={() => resolveFirst('server')} /><B t="Res:merge" f={() => resolveFirst('merge')} /><B t="Res:aband" f={() => resolveFirst('abandon')} /></Row>
+        <Row><B t="Fn:ok" f={() => doFunction('ok')} /><B t="Fn:throw" f={() => doFunction('throw')} /><B t="Fn:400" f={() => doFunction('validation')} /></Row>
 
         <Text style={s.logHeader}>Records (tap to select)</Text>
         {records.map(r => (

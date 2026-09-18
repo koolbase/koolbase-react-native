@@ -1,6 +1,15 @@
-# 9.2.0
+# Changelog
 
-## Read before upgrading
+All notable changes to `@koolbase/react-native` are documented
+in this file. The format is based on [Keep a Changelog][kac], and this project
+adheres to [Semantic Versioning][semver].
+
+[kac]: https://keepachangelog.com/en/1.1.0/
+[semver]: https://semver.org/
+
+## 9.2.0
+
+### Read before upgrading
 
 **`delete()` can now fail.** It previously returned `Promise<void>` with no throw
 path: a delete the server refused — no permission, wrong project, record already
@@ -12,7 +21,7 @@ it never did before, which is the point, and still a change.
 `KoolbaseUnauthenticatedError`, a sibling under the new shared root. Code
 catching `KoolbaseDataError` to handle a dead session will stop matching.
 
-## Fixed
+### Fixed
 
 - **`delete()` queued the write before attempting it, and never removed it.** A
   delete that succeeded stayed in the queue and replayed later — against a
@@ -28,12 +37,53 @@ catching `KoolbaseDataError` to handle a dead session will stop matching.
   the app the change had succeeded. Anything the server answered with is now
   surfaced, because it will be refused again on every retry.
 
+- **A 401 carrying a body `code` did not clear the session.** Responses were
+  mapped by their body's `code` field before their status, so a server answering
+  a rejected credential with `code: 'validation_error'` produced a data error and
+  left the dead session in place — the app kept making calls that could only
+  fail. Status is now authoritative: a 401 is an authentication failure whatever
+  the body says.
+
+- **Offline insert chains broke at the server boundary.** A record created
+  offline got a `local_` id, and any queued update or delete addressed that id —
+  which ceased to exist the moment the insert replayed and the server assigned a
+  real one. The follow-up writes failed against a record that was sitting right
+  there. Ids are now UUID v4 from the moment of creation, client-side, and the
+  id travels with the queued insert, so a chain of edits made offline replays
+  exactly as it was made.
+
+- **Every cold `query()` hit the network twice.** The stale-while-revalidate
+  refresh was fired before the cache was consulted, so a query with nothing
+  cached issued the background request and the real one. Doubled reads on every
+  first load, against your quota.
+
+- **Signed-out state read as empty state.** Per-user caches and queues fell back
+  to a shared anonymous bucket when no user was present, so a signed-out call
+  reported zero pending writes rather than refusing — a sync indicator could show
+  "all synced" over a queue that was merely out of reach. Per-user surfaces now
+  refuse without a user.
+
+- **A replayed write left the cache it invalidated behind.** Replay updated the
+  server and stopped there: a record deleted offline stayed in every cached query
+  result after its delete succeeded, and an updated one kept its pre-edit values
+  until something else evicted it. Replay now maintains the cache at the point of
+  success.
+
+- **A terminally rejected insert left its optimistic record standing.** When the
+  server refused a queued insert for good — no permission, validation — the write
+  left the queue but the optimistic record stayed in every cached result it had
+  been written into. The app displayed a record that does not exist and never
+  will. Terminal rejection now evicts it.
+
 - **Realtime reconnected every three seconds forever**, with no backoff and no
   ceiling. A device with no network, a wrong URL, or a dead session drained
   battery and data invisibly. It now doubles to a minute and resets when a
   connection opens.
 
-## Added
+- **`clearUserCache` deleted the write queue along with the cache.** Nothing
+  called it, which is the only reason it had not lost anyone's work.
+
+### Added
 
 - **One exception hierarchy.** `KoolbaseError` is the root; the data, storage,
   auth, and Function families sit beneath it, so `catch (e) { if (e instanceof
@@ -52,9 +102,9 @@ catching `KoolbaseDataError` to handle a dead session will stop matching.
   `FunctionQuotaExceededError`, `FunctionExecutionError`. Every failed
   invocation used to be a bare `Error`, matchable only on message text.
 
-- The package's first tests: 19, covering the paths above.
+- The package's first tests: 60, covering the paths above.
 
-## Added — the queue is observable
+### Added — the queue is observable
 
 - **`db.pendingWrites()`** — changes made offline, waiting to be sent, oldest
   first. For sync indicators and for warning a user about to log out with
@@ -69,7 +119,7 @@ catching `KoolbaseDataError` to handle a dead session will stop matching.
   to the observable queue entry above. The old shape survives internally only
   for the legacy-queue migration.
 
-## Added — offline editing that cannot overwrite silently
+### Added — offline editing that cannot overwrite silently
 
 Offline `update` and `delete` used to be queued without recording what the change
 was based on, so replay applied them blindly and overwrote anything that had
@@ -89,6 +139,17 @@ changed meanwhile. Now:
   restarts, and do not expire: an app that never reads them accumulates them
   invisibly, so surface them if you support offline editing.
 
+- A refused insert is now a conflict you can resolve. It was recorded as an
+  `update`, and resolution had no branch for an insert at all, so the one class
+  of conflict that loses a record outright was the one class you could not act
+  on. A rejected insert now holds its operation, and resolving it retries the
+  insert, carrying the conflict id as the idempotency key so a retry cannot
+  double-write.
+
+- A resolution the server refuses no longer disappears. The conflict is updated
+  with what the server returned and stands, rather than being cleared on the
+  assumption the resolution landed.
+
 - Writes queued by an earlier version are migrated on first sync. Inserts replay
   normally; updates and deletes have no baseline, so they are preserved as
   conflicts marked `baseline_unavailable` rather than replayed blindly or
@@ -98,23 +159,6 @@ changed meanwhile. Now:
 - Records reach a per-record cache from every path that returns one — queries,
   reads, writes, batch results, search hits, and realtime events — so anything
   the SDK has fully seen can be edited offline.
-
-## Also fixed
-
-- `clearUserCache` deleted the write queue along with the cache. Nothing called
-  it, which is the only reason it had not lost anyone's work.
-
-- Realtime reconnected every three seconds indefinitely. It now backs off to a
-  minute and resets when a connection opens.
-
-# Changelog
-
-All notable changes to `@koolbase/react-native` are documented
-in this file. The format is based on [Keep a Changelog][kac], and this project
-adheres to [Semantic Versioning][semver].
-
-[kac]: https://keepachangelog.com/en/1.1.0/
-[semver]: https://semver.org/
 
 ## 9.1.0
 
@@ -130,7 +174,7 @@ adheres to [Semantic Versioning][semver].
   way. A single `getOrCreateDeviceId()` now generates a persisted UUID v4 once
   (crypto-backed where the runtime provides it) and all subsystems share it.
 
-  ### Removed
+### Removed
 
 - **`Koolbase.messaging.send()` and `SendOptions`.** Sending push notifications
   is server-initiated only — it requires a secret `kb_live_` key and must run
@@ -329,7 +373,7 @@ command) and rebuilding (`yarn build`).
   `versionId` / `restoreVersion` / `purgeVersion` / `delete` with
   `forcePurge`), same semantics.
 
-# 5.4.0
+## 5.4.0
 
 ### Added — storage
 
@@ -367,7 +411,7 @@ edge-cached for 4 hours.
 No breaking changes. All new APIs are additive; existing `publicUrl`
 calls without `transform` produce the exact same URL they did in 5.3.0.
 
-# 5.3.0
+## 5.3.0
 
 ### Added — storage
 
@@ -690,7 +734,6 @@ can vary subtly by platform.
   - `Koolbase.codePush.hasMandatoryUpdate` returns `true` — read it on app resume to gate your UI.
   - The optional `onMandatoryUpdate` callback on the config passed to `Koolbase.initialize()` fires with `{ version, bundleId }` so you can prompt the user to restart.
 - No breaking changes.
--
 
 ## 2.3.0
 
@@ -710,8 +753,7 @@ can vary subtly by platform.
 ## 2.1.0
 
 - Added `Koolbase.db.upsert(collection:, match:, data:)` — insert-or-update by a match filter; returns `KoolbaseUpsertResult { record, created }`. Online-only.
-  - Added `Koolbase.db.deleteWhere(collection:, filters:)` — bulk delete by filter; returns the number of records deleted. Online-only.
--
+- Added `Koolbase.db.deleteWhere(collection:, filters:)` — bulk delete by filter; returns the number of records deleted. Online-only.
 
 ## 2.0.0
 
@@ -885,7 +927,7 @@ instance — same place as all other auth methods.
 
 ## 1.9.0
 
-### 🚨 Fixed (critical)
+### Fixed (critical)
 
 v1.8.0 and earlier shipped with silent breakages on the SDK auth surface.
 Anyone using `KoolbaseAuth` before v1.9.0 should upgrade immediately.
@@ -1008,8 +1050,6 @@ For apps using Apple Sign-In: temporarily switch to email/password until
 v1.10.0 ships. The deprecated method now throws explicitly rather than
 silently failing.
 
----
-
 ## 1.8.0
 
 ### Added
@@ -1028,8 +1068,6 @@ silently failing.
 
 Backwards compatible: no breaking changes. Existing code paths continue
 to work.
-
----
 
 ## 1.7.0
 
@@ -1061,15 +1099,11 @@ Phone numbers must be in E.164 format (e.g. `+233244000000`). Configure
 your SMS provider (Twilio, Africa's Talking, or Hubtel) in the Koolbase
 dashboard before using.
 
----
-
 ## 1.6.1
 
 ### Changed
 
 - README update — Logic Engine v2 operators.
-
----
 
 ## 1.6.0
 
@@ -1090,8 +1124,6 @@ Richer conditions with new operators:
 - `not_exists` — value is null or missing
 
 All operators work with AND/OR condition groups.
-
----
 
 ## 1.5.0
 
@@ -1124,8 +1156,6 @@ const session = await KoolbaseAppleAuth.signIn(async () => {
 
 Install `@invertase/react-native-apple-authentication` and configure your
 App ID in the Apple Developer portal.
-
----
 
 ## 1.4.0
 
@@ -1165,16 +1195,12 @@ await Koolbase.messaging.send({
 Add your FCM server key as a project secret named `FCM_SERVER_KEY` in the
 Koolbase dashboard.
 
----
-
 ## 1.3.1
 
 ### Changed
 
 - Updated README — added Code Push, Analytics, Logic Engine sections,
   clearer get started guide.
-
----
 
 ## 1.3.0
 
@@ -1233,8 +1259,6 @@ const result = Koolbase.executeFlow('on_checkout_tap', { plan: user.plan });
 if (result.hasEvent) navigation.navigate(result.eventName!);
 ```
 
----
-
 ## 1.1.0
 
 ### Added — Offline-first database
@@ -1250,8 +1274,6 @@ if (result.hasEvent) navigation.navigate(result.eventName!);
 - Write queue with max 3 retries before dropping failed writes.
 - User-scoped cache — no cross-user data leakage on shared devices.
 - `PendingWrite` type exported from package.
-
----
 
 ## 1.0.0
 
