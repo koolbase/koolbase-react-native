@@ -42,7 +42,7 @@ import {
   InvalidGoogleTokenError,
 } from './auth-errors';
 import type { SignInWithGoogleParams } from './types';
-import { SecureAuthStorage, isKeychainAvailable } from './auth-storage';
+import { getPlatform } from './platform';
 import { DeviceMetadata } from './device-metadata';
 
 export class KoolbaseAuth {
@@ -64,8 +64,8 @@ export class KoolbaseAuth {
 
     if (config.authStorage) {
       this.storage = config.authStorage;
-    } else if (isKeychainAvailable()) {
-      this.storage = new SecureAuthStorage();
+    } else if (getPlatform().authStorage()) {
+      this.storage = getPlatform().authStorage();
     } else {
       this.storage = null;
       // eslint-disable-next-line no-console

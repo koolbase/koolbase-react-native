@@ -53,10 +53,8 @@ describe('offline chain identity', () => {
   });
 
   it('the chain replays whole: server honors the id, updates land on it', async () => {
-    const netinfo = require('@react-native-community/netinfo').default as any;
 
     // Offline phase — pinned: the engine must not flush while we stage.
-    netinfo.fetch = async () => ({ isConnected: false, isInternetReachable: false });
     global.fetch = jest.fn().mockRejectedValue(new TypeError('Network request failed'));
     const client = db();
     const rec = await client.insert('expenses', { amount: 10 });
@@ -66,7 +64,6 @@ describe('offline chain identity', () => {
     // Reconnect: connectivity restored, and a server that honors data.id —
     // minting its own when absent, exactly like production. Updates PATCH
     // /v1/sdk/db/records/<id> and 404 unless the id exists.
-    netinfo.fetch = async () => ({ isConnected: true, isInternetReachable: true });
     const rows = new Map<string, any>();
     const reply = (status: number, body: any) => ({
       ok: status >= 200 && status < 300,
@@ -108,10 +105,8 @@ describe('offline chain identity', () => {
   });
 
   it('a replayed delete evicts the cache — no ghost served after sync', async () => {
-    const netinfo = require('@react-native-community/netinfo').default as any;
 
     // Online phase: insert + query so the record enters the query cache.
-    netinfo.fetch = async () => ({ isConnected: true, isInternetReachable: true });
     const rows = new Map<string, any>();
     const reply = (status: number, body: any) => ({
       ok: status >= 200 && status < 300,
@@ -146,12 +141,10 @@ describe('offline chain identity', () => {
     await client.query('expenses', {});          // cache now holds the record
 
     // Offline: queue the delete.
-    netinfo.fetch = async () => ({ isConnected: false, isInternetReachable: false });
     (global.fetch as jest.Mock).mockRejectedValue(new TypeError('Network request failed'));
     await client.delete(rec.id);
 
     // Reconnect and replay.
-    netinfo.fetch = async () => ({ isConnected: true, isInternetReachable: true });
     (global.fetch as jest.Mock).mockImplementation(serverMock);
     await client.syncPendingWrites();
 
@@ -163,15 +156,12 @@ describe('offline chain identity', () => {
   });
 
   it('a terminally rejected insert evicts its phantom — no never-created record served', async () => {
-    const netinfo = require('@react-native-community/netinfo').default as any;
     const reply = (status: number, body: any) => ({
       ok: status >= 200 && status < 300,
       status,
       text: async () => JSON.stringify(body),
       json: async () => body,
     });
-
-    netinfo.fetch = async () => ({ isConnected: true, isInternetReachable: true });
     global.fetch = jest.fn().mockImplementation(async (url: string) => {
       if (String(url).endsWith('/v1/sdk/db/query')) {
         return reply(200, { records: [], total: 0 });
@@ -180,15 +170,11 @@ describe('offline chain identity', () => {
     });
     const client = db();
     await client.query('expenses', {});
-
-    netinfo.fetch = async () => ({ isConnected: false, isInternetReachable: false });
     (global.fetch as jest.Mock).mockRejectedValue(new TypeError('Network request failed'));
     const rec = await client.insert('expenses', { amount: 10, title: 'COLLIDE' });
 
     const poisoned = await client.query('expenses', {});
     expect(poisoned.records.map((r: any) => r.id ?? r.$id)).toContain(rec.id);
-
-    netinfo.fetch = async () => ({ isConnected: true, isInternetReachable: true });
     (global.fetch as jest.Mock).mockImplementation(async (url: string) => {
       const u = String(url);
       if (u.endsWith('/v1/sdk/db/insert')) {
@@ -204,15 +190,12 @@ describe('offline chain identity', () => {
 
     expect(await client.pendingWrites()).toHaveLength(0);
     expect(await client.conflicts()).toHaveLength(1);
-
-    netinfo.fetch = async () => ({ isConnected: false, isInternetReachable: false });
     (global.fetch as jest.Mock).mockRejectedValue(new TypeError('Network request failed'));
     const res = await client.query('expenses', {});
     expect(res.records.map((r: any) => r.id ?? r.$id)).not.toContain(rec.id);
   });
 
   it('a rejected insert holds as an insert-conflict, and resolving it IS the insert', async () => {
-    const netinfo = require('@react-native-community/netinfo').default as any;
     const reply = (status: number, body: any) => ({
       ok: status >= 200 && status < 300,
       status,
@@ -221,13 +204,11 @@ describe('offline chain identity', () => {
     });
 
     // Offline: queue the doomed insert.
-    netinfo.fetch = async () => ({ isConnected: false, isInternetReachable: false });
     global.fetch = jest.fn().mockRejectedValue(new TypeError('Network request failed'));
     const client = db();
     const rec = await client.insert('expenses', { amount: 10, title: 'COLLIDE' });
 
     // Reconnect against a server that refuses it as a duplicate.
-    netinfo.fetch = async () => ({ isConnected: true, isInternetReachable: true });
     (global.fetch as jest.Mock).mockImplementation(async (url: string) => {
       if (String(url).endsWith('/v1/sdk/db/insert')) {
         return reply(409, { code: 'unique_violation', error: 'title must be unique' });
@@ -263,20 +244,15 @@ describe('offline chain identity', () => {
   });
 
   it('resolveWithServer on an insert-conflict clears with zero requests — the colliding row stands', async () => {
-    const netinfo = require('@react-native-community/netinfo').default as any;
     const reply = (status: number, body: any) => ({
       ok: status >= 200 && status < 300,
       status,
       text: async () => JSON.stringify(body),
       json: async () => body,
     });
-
-    netinfo.fetch = async () => ({ isConnected: false, isInternetReachable: false });
     global.fetch = jest.fn().mockRejectedValue(new TypeError('Network request failed'));
     const client = db();
     await client.insert('expenses', { amount: 10, title: 'COLLIDE' });
-
-    netinfo.fetch = async () => ({ isConnected: true, isInternetReachable: true });
     (global.fetch as jest.Mock).mockImplementation(async (url: string) => {
       if (String(url).endsWith('/v1/sdk/db/insert')) {
         return reply(409, { code: 'unique_violation', error: 'title must be unique' });

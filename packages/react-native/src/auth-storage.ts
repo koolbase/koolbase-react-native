@@ -1,4 +1,4 @@
-import { KoolbaseAuthStorage, KoolbaseSession } from './types';
+import type { KoolbaseAuthStorage, KoolbaseSession } from '@koolbase/core';
 
 // Lazy-load react-native-keychain so apps without it installed (e.g. Expo Go,
 // or those providing a custom adapter) can still import this module without

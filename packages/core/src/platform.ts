@@ -46,6 +46,14 @@ export interface PlatformAdapter {
   network: PlatformNetwork;
   lifecycle: PlatformLifecycle;
   info: PlatformInfo;
+  /**
+   * The host's best persistent store for the auth session, or null if it has
+   * none worth the name. Used only when the app injects nothing through
+   * KoolbaseConfig.authStorage. React Native answers with the keychain when
+   * it is installed; a browser answers with IndexedDB and says so in its
+   * README, since nothing JavaScript can read is secure against XSS.
+   */
+  authStorage(): import('./types').KoolbaseAuthStorage | null;
 }
 
 /**
@@ -71,6 +79,7 @@ export function memoryPlatform(): PlatformAdapter {
       onBackground: () => () => {},
     },
     info: { os: 'memory', version: '' },
+    authStorage: () => null,
   };
 }
 

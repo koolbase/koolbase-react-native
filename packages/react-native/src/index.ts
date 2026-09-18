@@ -1,37 +1,31 @@
-import { KoolbaseAuth } from './auth';
-import { setPlatform, type PlatformAdapter } from './platform';
-import { reactNativePlatform } from './platform-react-native';
-import { KoolbaseCodePush } from './code-push';
-import { KoolbaseAnalytics } from './analytics';
-import { KoolbaseMessaging } from './messaging';
-export { KoolbaseMessaging } from './messaging';
-export { KoolbaseAppleAuth } from './apple-auth';
-export type { RegisterTokenOptions } from './messaging';
-import { KoolbaseLogicEngine, FlowResult } from './logic-engine';
-export { KoolbaseAnalytics } from './analytics';
-export type { FlowResult } from './logic-engine';
-export { KoolbaseCodePush } from './code-push';
-export type { BundleManifest, BundlePayload } from './code-push';
-import { KoolbaseDatabase } from './database';
-import { KoolbaseFlags } from './flags';
-import { KoolbaseFunctions } from './functions';
-import { KoolbaseRealtime } from './realtime';
-import { KoolbaseStorage } from './storage';
-import { KoolbaseConfig, VersionCheckResult } from './types';
-import { getOrCreateDeviceId } from './device-id';
+// @koolbase/react-native — composes @koolbase/core for a React Native host.
+//
+// Everything the core exports is re-exported here unchanged, so an app that
+// installed this package before the split sees the same surface. What this
+// file adds is the composition: one Koolbase singleton, initialized with the
+// React Native platform adapter and keychain-backed session storage.
 
-export * from './types';
-// The root, and the authentication failure any surface can raise. Listed
-// first: an application catching broadly needs these more than it needs any
-// single subsystem's types.
-export * from './errors';
-export * from './conflict';
-export * from './pending-write';
-export * from './function-errors';
-export * from './auth-errors';
-export * from './database-errors';
-export * from './storage-errors';
-export { KoolbaseAuth, KoolbaseDatabase, KoolbaseFlags, KoolbaseFunctions, KoolbaseRealtime, KoolbaseStorage };
+export * from '@koolbase/core';
+export { reactNativePlatform } from './platform';
+
+import {
+  KoolbaseAuth,
+  KoolbaseDatabase,
+  KoolbaseStorage,
+  KoolbaseRealtime,
+  KoolbaseFunctions,
+  KoolbaseFlags,
+  KoolbaseCodePush,
+  KoolbaseAnalytics,
+  KoolbaseMessaging,
+  KoolbaseLogicEngine,
+  getOrCreateDeviceId,
+  setPlatform,
+  type FlowResult,
+  type KoolbaseConfig,
+  type VersionCheckResult,
+} from '@koolbase/core';
+import { reactNativePlatform } from './platform';
 
 let _auth: KoolbaseAuth | null = null;
 let _db: KoolbaseDatabase | null = null;
@@ -199,28 +193,4 @@ export const Koolbase = {
   },
 };
 
-// v1.9.0 additions
-export { koolbaseSdkVersion } from './device-metadata';
-export { RestoreResult } from './types';
-export type { AuthStateListener, FetchLike, KoolbaseAuthStorage } from './types';
 export { SecureAuthStorage } from './auth-storage';
-export {
-  KoolbaseAuthError,
-  InvalidCredentialsError,
-  EmailAlreadyInUseError,
-  UserDisabledError,
-  WeakPasswordError,
-  SessionExpiredError,
-  TokenRevokedError,
-  AccountLockedError,
-  UnlockTokenInvalidError,
-  RateLimitError,
-  NetworkError,
-  InvalidPhoneNumberError,
-  OtpExpiredError,
-  OtpInvalidError,
-  OtpMaxAttemptsError,
-  OtpRateLimitError,
-  PhoneAlreadyLinkedError,
-  SmsConfigMissingError,
-} from './auth-errors';

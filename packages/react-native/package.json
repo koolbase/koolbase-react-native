@@ -1,0 +1,42 @@
+{
+  "name": "@koolbase/react-native",
+  "version": "10.0.0",
+  "description": "React Native SDK for Koolbase \u2014 auth, database, storage, realtime, feature flags, and functions in one package.",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc"
+  },
+  "keywords": [
+    "koolbase",
+    "react-native",
+    "baas",
+    "firebase-alternative",
+    "flutter"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/koolbase/koolbase-react-native"
+  },
+  "dependencies": {
+    "@koolbase/core": "10.0.0"
+  },
+  "peerDependencies": {
+    "@react-native-async-storage/async-storage": "^3.0.2",
+    "@react-native-community/netinfo": "^12.0.1",
+    "react-native": ">=0.70.0",
+    "react-native-keychain": ">=8.0.0"
+  },
+  "peerDependenciesMeta": {
+    "react-native-keychain": {
+      "optional": true
+    }
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

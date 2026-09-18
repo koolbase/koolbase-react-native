@@ -1,5 +1,4 @@
 import { getPlatform } from './platform';
-import { isKeychainAvailable } from './auth-storage';
 
 /**
  * Koolbase React Native SDK version. Sent in the `x-koolbase-sdk-version`
@@ -74,34 +73,22 @@ export class DeviceMetadata {
   }
 
   private async getOrCreateDeviceLabel(): Promise<string> {
-    // No keychain available → ephemeral per-session label.
-    // (Better than no label — still useful for in-session debugging.)
-    if (!isKeychainAvailable()) {
-      if (!this.ephemeralLabel) {
-        this.ephemeralLabel = generateDeviceLabel();
-      }
-      return this.ephemeralLabel;
-    }
-
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const Keychain = require('react-native-keychain');
-    const service = 'koolbase_device_label_v1';
-
+    // A stable per-install label, kept in the platform's storage. On a host
+    // with nothing persistent (the in-memory adapter) it lives for the
+    // session, which is still useful for in-session debugging.
+    const key = 'koolbase_device_label_v1';
+    const storage = getPlatform().storage;
     try {
-      const existing = await Keychain.getGenericPassword({ service });
-      if (existing && existing.password) {
-        return existing.password;
-      }
+      const existing = await storage.getItem(key);
+      if (existing) return existing;
     } catch {
       // fall through to create
     }
-
     const newLabel = generateDeviceLabel();
     try {
-      await Keychain.setGenericPassword('device', newLabel, { service });
+      await storage.setItem(key, newLabel);
     } catch {
-      // Persistence failed — return the generated label anyway, but
-      // don't cache it as ephemeral since future requests may persist.
+      // storage refused; the label still serves this session
     }
     return newLabel;
   }

@@ -1,4 +1,5 @@
-import type { PlatformAdapter, PlatformStorage } from './platform';
+import type { PlatformAdapter, PlatformStorage } from '@koolbase/core';
+import { BrowserAuthStorage } from './auth-storage';
 
 // The browser host, expressed through the platform seam.
 //
@@ -136,5 +137,8 @@ export function browserPlatform(): PlatformAdapter {
       os: 'web',
       version: browserVersion(),
     },
+    // IndexedDB-backed; see auth-storage.ts for what that does and does not
+    // protect against.
+    authStorage: () => new BrowserAuthStorage(),
   };
 }

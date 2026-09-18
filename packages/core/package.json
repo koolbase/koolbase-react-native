@@ -1,0 +1,33 @@
+{
+  "name": "@koolbase/core",
+  "version": "10.0.0",
+  "description": "Koolbase SDK core \u2014 shared behaviour behind @koolbase/react-native and @koolbase/js. Install one of those, not this.",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "test": "jest"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/koolbase/koolbase-react-native"
+  },
+  "dependencies": {
+    "jszip": "^3.10.1"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "devDependencies": {
+    "@types/jest": "^30.0.0",
+    "@types/node": "^25.9.1",
+    "fake-indexeddb": "^6.2.5",
+    "jest": "^30.4.2",
+    "ts-jest": "^29.4.12",
+    "typescript": "^5.0.0"
+  }
+}

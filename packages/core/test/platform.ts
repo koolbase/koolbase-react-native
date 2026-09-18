@@ -1,6 +1,6 @@
 import 'fake-indexeddb/auto';
 import { memoryPlatform, type PlatformAdapter, type PlatformStorage } from '../src/platform';
-import { browserPlatform } from '../src/platform-browser';
+import { browserPlatform } from '../../js/src/platform'; // test-only reach across packages; dist has no such edge
 
 // The adapter every test installs in beforeEach. KOOLBASE_TEST_PLATFORM=browser
 // runs the identical suite on the browser adapter over fake-indexeddb, which is
