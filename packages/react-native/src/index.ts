@@ -15,13 +15,10 @@ import {
   KoolbaseRealtime,
   KoolbaseFunctions,
   KoolbaseFlags,
-  KoolbaseCodePush,
   KoolbaseAnalytics,
   KoolbaseMessaging,
-  KoolbaseLogicEngine,
   getOrCreateDeviceId,
   setPlatform,
-  type FlowResult,
   type KoolbaseConfig,
   type VersionCheckResult,
 } from '@koolbase/core';
@@ -33,10 +30,8 @@ let _storage: KoolbaseStorage | null = null;
 let _realtime: KoolbaseRealtime | null = null;
 let _functions: KoolbaseFunctions | null = null;
 let _flags: KoolbaseFlags | null = null;
-let _codePush: KoolbaseCodePush | null = null;
 let _analytics: KoolbaseAnalytics | null = null;
 let _messaging: KoolbaseMessaging | null = null;
-const _logicEngine = new KoolbaseLogicEngine();
 let _initialized = false;
 
 function ensureInitialized() {
@@ -84,13 +79,6 @@ export const Koolbase = {
     const deviceId = await getOrCreateDeviceId();
 
     _flags = new KoolbaseFlags(config, deviceId);
-    _codePush = new KoolbaseCodePush(config, config.codePushChannel ?? 'stable');
-    // Initialize code push — loads cached bundle then checks in background
-    await _codePush.init({
-      appVersion: '1.0.0', // override with your app version
-      platform: 'react-native',
-      deviceId,
-    });
     // Initialize analytics
     if (config.analyticsEnabled !== false) {
       _analytics = new KoolbaseAnalytics(config);
@@ -132,54 +120,27 @@ export const Koolbase = {
 
   isEnabled(key: string): boolean {
     ensureInitialized();
-    // Bundle flag wins over remote flag
-    const bundleFlag = _codePush?.getBundleFlag(key);
-    if (bundleFlag !== undefined) return bundleFlag;
     return _flags!.isEnabled(key);
   },
 
   configString(key: string, fallback = ''): string {
     ensureInitialized();
-    const bundleVal = _codePush?.getBundleConfig(key);
-    if (bundleVal !== undefined) return String(bundleVal);
     return _flags!.getString(key, fallback);
   },
 
   configNumber(key: string, fallback = 0): number {
     ensureInitialized();
-    const bundleVal = _codePush?.getBundleConfig(key);
-    if (bundleVal !== undefined) return typeof bundleVal === 'number' ? bundleVal : Number(bundleVal) || fallback;
     return _flags!.getNumber(key, fallback);
   },
 
   configBool(key: string, fallback = false): boolean {
     ensureInitialized();
-    const bundleVal = _codePush?.getBundleConfig(key);
-    if (bundleVal !== undefined) return typeof bundleVal === 'boolean' ? bundleVal : bundleVal === 'true';
     return _flags!.getBool(key, fallback);
-  },
-
-  get codePush(): KoolbaseCodePush {
-    ensureInitialized();
-    return _codePush!;
   },
 
   get analytics(): KoolbaseAnalytics {
     ensureInitialized();
     return _analytics!;
-  },
-
-  executeFlow(flowId: string, context?: Record<string, unknown>): FlowResult {
-    ensureInitialized();
-    const manifest = _codePush?.manifest;
-    if (!manifest) return { hasEvent: false, args: {}, completed: true };
-    return _logicEngine.execute(
-      flowId,
-      manifest.payload.flows ?? {},
-      context ?? {},
-      manifest.payload.config ?? {},
-      manifest.payload.flags ?? {},
-    );
   },
 
   get messaging(): KoolbaseMessaging {

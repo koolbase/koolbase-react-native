@@ -6,8 +6,6 @@ export interface KoolbaseConfig {
   platform?: import('./platform').PlatformAdapter;
   publicKey: string;
   baseUrl: string;
-  codePushChannel?: string;
-  onMandatoryUpdate?: (info: { version: number; bundleId: string }) => void;
   analyticsEnabled?: boolean;
   appVersion?: string;
   messagingEnabled?: boolean;
