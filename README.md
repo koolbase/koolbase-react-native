@@ -3,9 +3,12 @@
 [![npm](https://img.shields.io/npm/v/@koolbase/react-native.svg)](https://www.npmjs.com/package/@koolbase/react-native)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 
-React Native SDK for [Koolbase](https://koolbase.com) — Backend as a Service built for mobile developers.
+**From idea to app. And everything after.** Design your app, power it with a
+complete backend, and keep shipping after release.
 
-Auth, database, storage, realtime, functions, feature flags, remote config, version enforcement, code push, logic engine, analytics, and cloud messaging — one SDK, one `initialize()` call.
+Auth, database, storage, realtime, functions, feature flags, remote config,
+version enforcement, logic engine, analytics, and cloud messaging — one SDK,
+one `initialize()` call.
 
 ---
 
@@ -13,82 +16,102 @@ Auth, database, storage, realtime, functions, feature flags, remote config, vers
 
 1. Create a free account at [app.koolbase.com](https://app.koolbase.com)
 2. Create a project and copy your public key from Environments
-3. Add the SDK:
+3. Install the SDK and its peer dependencies:
 
 ```bash
-   npm install @koolbase/react-native \\
-  @react-native-async-storage/async-storage @react-native-community/netinfo react-native-keychain
-
-> The three native modules are peer dependencies — your app installs them so
-> exactly one copy of each exists. Two copies of a native module in one app is
-> a runtime failure that looks like an SDK bug, which is why they are not
-> bundled.
-
-   # or
-   yarn add @koolbase/react-native
-   # or
-   pnpm add @koolbase/react-native
-   # or
-   bun add @koolbase/react-native
+npm install @koolbase/react-native
+npm install @react-native-async-storage/async-storage @react-native-community/netinfo
 ```
+
+> The native modules are peer dependencies so exactly one copy of each exists in
+> your app. Two copies of a native module is a runtime failure that looks like an
+> SDK bug, which is why they are not bundled.
 
 4. Initialize at app startup:
 
 ```typescript
-   import { Koolbase } from '@koolbase/react-native';
+import { Koolbase } from '@koolbase/react-native';
 
-   await Koolbase.initialize({
-     publicKey: 'pk_live_xxxx',
-     baseUrl: 'https://api.koolbase.com',
-   });
+await Koolbase.initialize({
+  publicKey: 'pk_live_xxxx',
+  baseUrl: 'https://api.koolbase.com',
+});
 ```
 
 That's it. Every feature below is now available via `Koolbase.*`.
+
+### Optional peer dependencies
+
+| Package | Needed for |
+|---|---|
+| `react-native-keychain` | Persistent sessions in Keychain / Keystore. Without it the SDK warns once and runs without persistence. |
+| `@invertase/react-native-apple-authentication` | Sign in with Apple |
+| `@react-native-google-signin/google-signin` | Sign in with Google |
+| `@react-native-firebase/messaging` | Push notification tokens |
+
+> **Expo Go:** `react-native-keychain` and the native sign-in modules are not
+> available there. Sessions still work — implement `KoolbaseAuthStorage` over
+> `expo-secure-store` or `AsyncStorage` and pass it as `config.authStorage`.
+> Native Apple/Google sign-in and remote push require a development build.
 
 ---
 
 > **Auth is automatic (v3+).** Database, storage, and functions calls
 > authenticate as the currently signed-in user — nothing to pass, no manual
-> wiring. Log in (or restore a session) and every request carries that
-> identity. `owner`/`authenticated` collections require an active session.
+> wiring. Sign in (or restore a session) and every request carries that
+> identity. `owner` and `authenticated` collections require an active session.
 
 ---
 
 ## Authentication
 
-Email + password, Apple Sign-In, Google Sign-In, and phone + OTP — out of the box.
+Email and password, Apple Sign-In, Google Sign-In, and phone + OTP.
 
 ```typescript
-// Register
 await Koolbase.auth.register({ email: 'user@example.com', password: 'password' });
 
-// Login
-const session = await Koolbase.auth.login({ email: 'user@example.com', password: 'password' });
+const session = await Koolbase.auth.login({
+  email: 'user@example.com',
+  password: 'password',
+});
 
-// Current user
 const me = Koolbase.auth.currentUser;
 
-// Logout
 await Koolbase.auth.logout();
 
-// Password reset
 await Koolbase.auth.forgotPassword('user@example.com');
 
-// Listen to auth state changes (fires immediately with current state)
+// Fires immediately with the current state, then on every change
 const unsubscribe = Koolbase.auth.onAuthStateChange((user) => {
   console.log(user ? 'signed in' : 'signed out');
 });
 ```
 
----
+### Sessions across restarts
 
-### OAuth — Apple
+With `react-native-keychain` installed, sessions persist. Restore at launch
+before rendering:
 
-Apple Sign-In uses the native authentication flow via `@invertase/react-native-apple-authentication` as a peer dependency:
+```typescript
+import { RestoreResult } from '@koolbase/react-native';
+
+const result = await Koolbase.auth.restoreSession();
+
+switch (result) {
+  case RestoreResult.Restored: navigate('Home'); break;
+  case RestoreResult.Offline:  navigate('Home'); break; // optimistic, no network
+  case RestoreResult.Expired:  navigate('Login'); break;
+  case RestoreResult.NoSession: navigate('Login'); break;
+}
+```
+
+Optimistic state is read from disk before any network call, so authenticated UI
+renders with no round-trip.
+
+### Sign in with Apple
 
 ```typescript
 import appleAuth from '@invertase/react-native-apple-authentication';
-import { Koolbase } from '@koolbase/react-native';
 
 const response = await appleAuth.performRequest({
   requestedOperation: appleAuth.Operation.LOGIN,
@@ -107,17 +130,13 @@ const session = await Koolbase.auth.signInWithApple({
 });
 ```
 
-Configure Apple Sign-In for your environment with your iOS app's Bundle ID. Full setup guide at [docs.koolbase.com/auth/oauth](https://docs.koolbase.com/auth/oauth).
+Configure Apple Sign-In for your environment with your iOS Bundle ID. Setup
+guide at [docs.koolbase.com/auth/oauth](https://docs.koolbase.com/auth/oauth).
 
----
-
-### OAuth — Google
-
-Google Sign-In uses the native authentication flow via `@react-native-google-signin/google-signin` as a peer dependency:
+### Sign in with Google
 
 ```typescript
 import { GoogleSignin } from '@react-native-google-signin/google-signin';
-import { Koolbase } from '@koolbase/react-native';
 
 GoogleSignin.configure({
   webClientId: '<your-web-client-id>.apps.googleusercontent.com',
@@ -130,40 +149,36 @@ const session = await Koolbase.auth.signInWithGoogle({
 });
 ```
 
-Configure Google Sign-In for your environment with the OAuth client IDs from Google Cloud Console (typically one each for iOS, Android, and web). Full setup guide at [docs.koolbase.com/auth/oauth](https://docs.koolbase.com/auth/oauth).
-
----
+Configure the OAuth client IDs from Google Cloud Console (one each for iOS,
+Android, and web).
 
 ### Phone + OTP
 
 ```typescript
-// Send a one-time code
 await Koolbase.auth.sendOtp({ phoneNumber: '+233200000000' });
 
-// Verify and sign in
 await Koolbase.auth.verifyOtp({
   phoneNumber: '+233200000000',
   code: '123456',
 });
 
-// Or link a phone to an existing account
+// Or attach a phone to an account that already exists
 await Koolbase.auth.linkPhone({
   phoneNumber: '+233200000000',
   code: '123456',
 });
 ```
 
-Configure your SMS provider (Twilio, Africa's Talking, or Hubtel) in the dashboard under Phone Auth.
+Configure your SMS provider (Twilio, Africa's Talking, or Hubtel) in the
+dashboard under Phone Auth.
 
 ---
 
 ## Database
 
 ```typescript
-// Insert
 await Koolbase.db.insert('posts', { title: 'Hello', published: true });
 
-// Query
 const { records } = await Koolbase.db.query('posts', {
   filters: { published: true },
   limit: 10,
@@ -171,162 +186,98 @@ const { records } = await Koolbase.db.query('posts', {
   orderDesc: true,
 });
 
-// Read fields off a record
 const post = records[0];
 console.log(post.data.title);          // your fields live under .data
 console.log(post.id, post.collection); // metadata
 
-// Populate related records
-const { records: postsWithAuthor } = await Koolbase.db.query('posts', {
+// Related records
+const { records: withAuthor } = await Koolbase.db.query('posts', {
   populate: ['author_id:users'],
 });
 
-// Update / Delete
 await Koolbase.db.update('record-id', { title: 'Updated' });
 await Koolbase.db.delete('record-id');
 ```
-
----
-
-### Handling unique-constraint conflicts
-
-A write that would violate a unique constraint throws `KoolbaseConflictError`:
-
-```ts
-try {
-  await Koolbase.db.upsert('users', { email }, { name });
-} catch (e) {
-  if (e instanceof KoolbaseConflictError) {
-    showError('That email is already registered.');
-  }
-}
-```
-
----
-
-### Public bucket URLs
-
-For files in public buckets, you can construct the stable CDN URL directly — no
-network call, no expiry, embeddable anywhere a browser fetches a URL.
-
-```typescript
-import { KoolbaseStorage } from '@koolbase/react-native';
-
-// From a KoolbaseObject you already have (e.g. from upload() or another read)
-const { object } = await Koolbase.storage.upload({
-  bucket: 'avatars',
-  path: `user-${userId}.jpg`,
-  file: { uri: imageUri, name: 'avatar.jpg', type: 'image/jpeg' },
-});
-
-const url = KoolbaseStorage.publicUrlForObject(object, 'avatars');
-// url is null for private-bucket objects; the CDN URL for public-bucket ones.
-
-if (url) {
-  // Safe to use — file lives in the public R2 bucket
-  return <Image source={{ uri: url }} />;
-}
-
-// For build-time URL construction (no Object on hand)
-const url = KoolbaseStorage.publicUrl({
-  projectId: 'proj_abc',
-  bucket: 'avatars',
-  path: 'user-123.jpg',
-});
-// Always returns the URL pattern; caller is responsible for knowing
-// the file lives in a public bucket. For files in private buckets,
-// the resulting URL will 404.
-```
-
-URLs follow the pattern `https://cdn.koolbase.com/{project_id}/{bucket}/{path}` — long-lived, edge-cached, no authentication. For files in private buckets, use `getDownloadUrl` instead, which returns a 1-hour presigned URL.
-
----
-
-### Image transforms
-
-Public bucket URLs can be transformed at the edge — resize, reformat,
-optimize — without any preprocessing. Two ways:
-
-**Direct transforms** — pass a `transform` option to `publicUrl`:
-
-```ts
-const url = KoolbaseStorage.publicUrl({
-  projectId: 'proj_abc',
-  bucket: 'avatars',
-  path: 'user-123.jpg',
-  transform: {
-    width: 200,
-    height: 200,
-    fit: 'cover',
-    format: 'auto',
-    quality: 85,
-  },
-});
-```
-
-**Named presets** — store an option set server-side (via the dashboard or
-REST API), reference it by name:
-
-```ts
-const url = KoolbaseStorage.publicUrlWithPreset({
-  projectId: 'proj_abc',
-  presetName: 'thumbnail',
-  bucket: 'avatars',
-  path: 'user-123.jpg',
-});
-
-// Or from a KoolbaseObject instance:
-const url = KoolbaseStorage.publicUrlForObjectWithPreset(object, 'avatars', 'thumbnail');
-```
-
-Available options: `width` and `height` (1–2000), `format`
-(`auto`/`webp`/`avif`/`jpeg`/`png`), `quality` (1–100), `fit`
-(`scale-down`/`contain`/`cover`/`crop`/`pad`), `dpr` (1–3), `gravity`
-(`auto`/`center`/`top`/`bottom`/`left`/`right`/`top-left`/`top-right`/
-`bottom-left`/`bottom-right`). Transformed responses are edge-cached for 4
-hours; Cloudflare includes 5,000 unique transformations/month free per
-account.
-
-See the [Image Transforms docs](https://docs.koolbase.com/storage/image-transforms)
-for the full reference.
-
----
 
 ### Upsert
 
 Insert a record, or update the existing one matching a filter.
 
-```ts
+```typescript
 const result = await Koolbase.db.upsert(
   'profiles',
   { user_id: userId },
-  { weightKg: 70 }
+  { weightKg: 70 },
 );
 
-console.log(result.created); // true if inserted, false if updated
+console.log(result.created);   // true if inserted, false if updated
 console.log(result.record.id);
 ```
 
-> Online-only: needs the server's view to decide insert vs update, so unlike
-> `insert` it isn't queued offline and throws on network failure.
+> Online-only: deciding insert versus update needs the server's view, so unlike
+> `insert` it is not queued offline and throws on network failure.
 
 ### Delete where
 
 Bulk-delete every record matching a filter. Returns the number deleted.
 
-```ts
+```typescript
 const deleted = await Koolbase.db.deleteWhere('sessions', {
   user_id: userId,
   status: 'expired',
 });
 ```
 
-> A non-empty filter is required. The collection's delete rule applies; for
-> `owner`/`scoped` rules the delete is scoped to your own records. Online-only.
+> A non-empty filter is required. The collection's delete rule applies; under
+> `owner` or `scoped` rules the delete is scoped to your own records.
+> Online-only.
+
+### Atomic batch writes
+
+All operations commit together or none are applied.
+
+```typescript
+import { Koolbase, BatchOp } from '@koolbase/react-native';
+
+const results = await Koolbase.db.batch([
+  BatchOp.insert('orders', { total: 50, customer_id: customerId }),
+  BatchOp.update(inventoryId, { stock: 9 }),
+  BatchOp.upsert('counters', { match: { name: 'orders' }, data: { value: 1 } }),
+  BatchOp.delete(cartItemId),
+]);
+
+// results[i] corresponds to operations[i]:
+//   insert / update -> { type, record }
+//   upsert          -> { type, record, created }
+//   delete          -> { type, deleted: true }
+```
+
+Atomicity needs the server's authoritative view, so `batch()` is never queued
+offline — it throws on network failure. A rejection throws a `KoolbaseDataError`
+carrying the failing operation's details; nothing was persisted.
+
+### Handling write conflicts
+
+`insert`, `update`, and `upsert` are online-first: when the server is reachable
+they throw on rejection.
+
+```typescript
+import { KoolbaseConflictError } from '@koolbase/react-native';
+
+try {
+  await Koolbase.db.insert('users', { email, name });
+} catch (e) {
+  if (e instanceof KoolbaseConflictError) {
+    showError(`That ${e.field ?? 'value'} is already in use.`);
+  } else {
+    throw e;
+  }
+}
+```
 
 ---
 
-### Offline-first
+## Offline-first
 
 Reads come from a local cache when the network is unavailable, and `insert`,
 `update`, and `delete` are queued and sent when it returns.
@@ -347,16 +298,34 @@ A server-side rejection is never queued. A unique-constraint violation, a
 validation failure, or a permission denial surfaces immediately — only a genuine
 network failure defers.
 
-#### Editing offline requires having read the record
+### Showing what is waiting
+
+```typescript
+const pending = await Koolbase.db.pendingWrites();   // oldest first
+
+if (pending.length) {
+  showSyncBadge(pending.length);
+}
+```
+
+Queues are per-user and survive logout by design, so unsynced edits sync
+whenever that user next signs in on this device — possibly never. Warn before
+signing out with a non-empty queue.
+
+> Requires a signed-in user. Per-user surfaces refuse rather than falling back
+> to a shared anonymous bucket, so a signed-out call throws instead of reporting
+> a misleading zero.
+
+### Editing offline requires having read the record
 
 An update or delete is queued only if the SDK knows what the record looked like
 when the change was made. Replaying a change without that means applying it
-blindly: whatever else happened to the record in the meantime is overwritten,
+blindly: whatever else happened to the record meanwhile is overwritten,
 silently, with nobody able to tell.
 
 The SDK has that state if the record has been seen on this device — through a
 query, a single read, a realtime event, or because it was created here and is
-still queued. If it has not, the write is refused rather than queued:
+still queued. If not, the write is refused rather than queued:
 
 ```typescript
 try {
@@ -372,7 +341,7 @@ That is deliberate rather than lenient. Queueing it anyway would mean most
 offline updates are conflict-safe and some quietly are not, which is a worse
 guarantee than a clear refusal.
 
-#### When a queued write cannot be applied
+### When a queued write cannot be applied
 
 On replay the server applies a queued write only if the record still carries the
 revision the change was based on. If something changed it meanwhile — another
@@ -386,12 +355,13 @@ for (const c of conflicts) {
   c.local;             // the change the user made
   c.server;            // the record as the server holds it now
   c.divergentFields;   // where they disagree
+  c.operation;         // 'insert' | 'update' | 'delete'
   c.reason;            // why it is waiting
 
-  await c.resolveWithLocal();       // reapply the user's change
-  await c.resolveWithServer();      // keep the server's version
+  await c.resolveWithLocal();        // reapply the user's change
+  await c.resolveWithServer();       // keep the server's version
   await c.resolveWithMerge({ ... }); // something composed from both
-  await c.abandon();                // drop it, neither side wins
+  await c.abandon();                 // drop it, neither side wins
 }
 ```
 
@@ -401,85 +371,29 @@ queued by a version of this SDK that did not record what it was based on — tho
 are migrated on upgrade rather than replayed, since there is nothing to check
 them against.
 
+A refused insert is a conflict too, and resolving it retries the insert, carrying
+the conflict id as an idempotency key so a retry cannot double-write.
+
 Resolving is itself conditional: if the record has moved again while someone was
 deciding, resolution produces a new conflict rather than overwriting a change
 nobody has seen.
 
-> **These do not expire.** An app that never reads `conflicts()` accumulates
-> them in local storage indefinitely, invisible to the user, with the changes
-> they hold never applied. If you support offline editing, surface them
-> somewhere. Automatic expiry would hide the problem while quietly losing the
-> work.
+> **These do not expire.** An app that never reads `conflicts()` accumulates them
+> in local storage indefinitely, invisible to the user, with the changes they
+> hold never applied. If you support offline editing, surface them somewhere.
+> Automatic expiry would hide the problem while quietly losing the work.
 
 ---
 
+## Search — semantic, lexical, and hybrid
 
-### Atomic batch writes
-
-Run multiple writes in a single server-side transaction. All operations commit together or none are applied — any failure rolls back the entire batch.
-
-```ts
-import { Koolbase, BatchOp } from '@koolbase/react-native';
-
-const results = await Koolbase.db.batch([
-  BatchOp.insert('orders', { total: 50, customer_id: customerId }),
-  BatchOp.update(inventoryId, { stock: 9 }),
-  BatchOp.upsert('counters', {
-    match: { name: 'orders' },
-    data: { value: 1 },
-  }),
-  BatchOp.delete(cartItemId),
-]);
-
-// results[i] corresponds to operations[i]:
-//   - insert / update: { type, record }
-//   - upsert:          { type, record, created }   // created = true if inserted
-//   - delete:          { type, deleted: true }
-```
-
-**Online-only by design.** Atomicity needs the server's authoritative view, so `batch()` is never queued offline — it throws on network failure (like `upsert` and `deleteWhere`). A server-side rejection throws a `KoolbaseDataError` with the failing operation's details; nothing was persisted.
-
----
-
-### Handling write conflicts
-
-`insert`, `update`, and `upsert` are online-first: when the server is reachable they throw a typed error on rejection. Catch `KoolbaseConflictError` to handle unique-constraint violations (e.g. a duplicate email):
-
-```ts
-import { KoolbaseConflictError } from '@koolbase/react-native';
-
-try {
-  await Koolbase.db.insert('users', { email, name });
-} catch (e) {
-  if (e instanceof KoolbaseConflictError) {
-    showError(`That ${e.field ?? 'value'} is already in use.`);
-  } else {
-    throw e;
-  }
-}
-```
-
-When the device is offline, `insert`, `update`, and `delete` are queued and sent
-when connectivity returns — an update or delete only if the record has been read
-on this device, so the change has something to be applied against. See
-[Offline-first](#offline-first).
-
----
-
-### Semantic, lexical, and hybrid search
-
-Find records by meaning, exact terms, or both. Koolbase ships three
-retrieval modes from a single API — pick the one that matches your
-query characteristics, or use `'hybrid'` as a strong production default.
-
-Declare a vector field on the collection from the dashboard or CLI first
-(picking a dimension; v1 supports 384, 768, 1024, and 1536).
-
-#### The three search modes
+Find records by meaning, by exact terms, or both. Declare a vector field on the
+collection from the dashboard or CLI first, picking a dimension (384, 768, 1024,
+or 1536).
 
 ```typescript
-// Semantic (default) — pure vector search via HNSW + cosine. Best for
-// fuzzy or conceptual queries where exact words don't have to match.
+// Semantic (default) — vector search via HNSW + cosine. Fuzzy or conceptual
+// queries where exact words need not match.
 const result = await Koolbase.db.searchSemantic({
   collection: 'articles',
   field: 'content_embedding',
@@ -487,9 +401,9 @@ const result = await Koolbase.db.searchSemantic({
   limit: 10,
 });
 
-// Lexical — pure BM25 over the field's source text (Postgres
-// ts_rank_cd). Best for exact terms, product codes, names, acronyms.
-const result = await Koolbase.db.searchSemantic({
+// Lexical — BM25 over the field's source text. Exact terms, product codes,
+// names, acronyms.
+await Koolbase.db.searchSemantic({
   collection: 'articles',
   field: 'content_embedding',
   queryText: 'CVE-2024-1234',
@@ -497,99 +411,86 @@ const result = await Koolbase.db.searchSemantic({
   limit: 10,
 });
 
-// Hybrid — vector + lexical fused with reciprocal rank fusion (k=60).
-// Generally the strongest default; both rankers vote and the fused
-// score promotes records that score well on either signal.
-const result = await Koolbase.db.searchSemantic({
+// Hybrid — both, fused with reciprocal rank fusion (k=60). Generally the
+// strongest default.
+await Koolbase.db.searchSemantic({
   collection: 'articles',
   field: 'content_embedding',
   queryText: 'production deploy pipeline',
   mode: 'hybrid',
   limit: 10,
 });
+
+for (const hit of result.hits) {
+  console.log(`${hit.record.data.title}  ${hit.distance.toFixed(3)}`);
+}
 ```
 
-#### Filtering weak matches
+### Filtering weak matches
 
-For `'semantic'` and `'hybrid'` modes, pass `minSimilarity` (0..100) to
-drop results below a similarity threshold server-side — saves bandwidth
-on weak matches:
+For `semantic` and `hybrid`, `minSimilarity` (0–100) drops results below a
+threshold server-side:
 
 ```typescript
-const result = await Koolbase.db.searchSemantic({
+await Koolbase.db.searchSemantic({
   collection: 'articles',
   field: 'content_embedding',
   queryText: 'how do I move quicker?',
   mode: 'hybrid',
-  minSimilarity: 70, // only matches at least 70% similar
+  minSimilarity: 70,
   limit: 10,
 });
 ```
 
-`minSimilarity` is rejected by the server when used with `'lexical'` —
-BM25 rank scores aren't comparable to cosine similarity, and silently
-ignoring the parameter would produce confusing behavior.
+The server rejects `minSimilarity` on `lexical` mode — BM25 ranks are not
+comparable to cosine similarity, and silently ignoring it would be confusing.
 
-#### Server-side embedding (recommended)
+### Server-side embedding (recommended)
 
-Configure an AI provider on the project once (Gemini's free tier works;
-OpenAI also supported), tag the vector field with the
-provider/model/source_field, and Koolbase auto-embeds records as
-they're inserted or updated. Lexical indexing happens automatically on
-the same write, so all three search modes work without extra setup:
+Configure an AI provider on the project once (Gemini's free tier works; OpenAI
+is also supported), tag the vector field with provider, model, and source field,
+and records are embedded as they are written. Lexical indexing happens on the
+same write, so all three modes work with no extra setup.
 
 ```typescript
-// One-time setup via dashboard. Then just write records normally —
-// vectors AND lexical rows land within ~1s.
-await Koolbase.db.insert({
-  collection: 'articles',
-  data: {
-    title: 'How to ship faster',
-    content: 'Cut scope ruthlessly. Ship the smallest useful slice...',
-  },
+// Write records normally — vectors and lexical rows land within about a second
+await Koolbase.db.insert('articles', {
+  title: 'How to ship faster',
+  content: 'Cut scope ruthlessly. Ship the smallest useful slice...',
 });
 
-// Iterate over hits the same way regardless of mode:
-for (const hit of result.hits) {
-  console.log(`${hit.record.data.title}  ${hit.distance.toFixed(3)}`);
-}
-
-// Backfill records that pre-date the auto-embed config:
+// Backfill records that pre-date the auto-embed config
 await Koolbase.db.embedText({
   collection: 'articles',
-  recordId: article.$id,
+  recordId: article.id,
   vectorField: 'content_embedding',
 });
 
-// Or override the source — useful for combining fields:
+// Or override the source, to combine fields
 await Koolbase.db.embedText({
   collection: 'articles',
-  recordId: article.$id,
+  recordId: article.id,
   vectorField: 'content_embedding',
   text: `${article.title}\n\n${article.summary}`,
 });
 ```
 
-#### Client-side embedding (advanced)
+### Client-side embedding
 
-If you'd rather control the embedding model yourself, pass a vector
-instead of text. Note that lexical and hybrid modes require text, since
-BM25 has no notion of "vector queries":
+Pass a vector instead of text if you would rather control the model. Lexical and
+hybrid modes require text, since BM25 has no notion of a vector query.
 
 ```typescript
-// Set a vector you've encoded yourself
 await Koolbase.db.setVector(
   articleId,
   'embedding',
   await myEmbeddingModel.encode(article.content),
 );
 
-// Read it back
 const v = await Koolbase.db.getVector(articleId, 'embedding');
 console.log(`${v.vector.length}-dim, updated ${v.updatedAt}`);
 
-// Search with a precomputed vector — semantic mode only.
-const result = await Koolbase.db.searchSemantic({
+await Koolbase.db.searchSemantic({
   collection: 'articles',
   field: 'embedding',
   queryVector: await myEmbeddingModel.encode(userQuery),
@@ -597,55 +498,41 @@ const result = await Koolbase.db.searchSemantic({
   where: { category: 'tech' },
 });
 
-// Remove a record's vector when no longer needed
 await Koolbase.db.deleteVector(articleId, 'embedding');
 ```
 
-#### Behaviors worth knowing
+### Behaviours worth knowing
 
-- **Pass exactly one of `queryVector` or `queryText`.** Supplying both
-  or neither throws an `Error`.
-- **`queryVector` is for semantic mode only.** Lexical and hybrid need
-  raw text — the server uses it for BM25 ranking (and embeds it inline
-  for the vector half of hybrid).
-- **Vector length must match the declared dimension.** Mismatches throw
+- **Pass exactly one of `queryVector` or `queryText`.** Both or neither throws.
+- **`queryVector` is semantic-mode only.** Lexical and hybrid need raw text.
+- **Vector length must match the declared dimension**, or
   `KoolbaseVectorDimensionMismatchError`.
-- **`minSimilarity` must be 0..100.** Values outside that range throw
-  an `Error` client-side before the request is sent.
-- **Online-only.** Vector operations are not cached locally or queued
-  offline — HNSW similarity and BM25 ranking have no useful offline
-  semantics.
-- **Read rule applies post-search.** `owner`/`scoped`/`conditional`
-  records are filtered to the caller after retrieval, so strict rules
-  may return fewer than `limit` results.
-- **`embedText` is async.** Returns when the job is queued (~100ms).
-  The vector lands within 1 second once the worker picks it up.
-- **Higher dimensions coming.** `text-embedding-3-large` (3072 dim)
-  supported once pgvector is upgraded. Use `dimensions=1536`
-  Matryoshka truncation in the meantime.
+- **Online-only.** Vector operations are not cached or queued — similarity
+  search has no useful offline semantics.
+- **Read rules apply after retrieval.** Strict rules may return fewer than
+  `limit` results.
+- **`embedText` is async.** It returns once the job is queued; the vector lands
+  within about a second.
 
-See [Semantic search docs](https://docs.koolbase.com/database/vectors)
-for setup, provider configuration, embedding model recommendations,
-and when to pick each mode.
+See [the vector docs](https://docs.koolbase.com/database/vectors) for provider
+setup and when to pick each mode.
 
 ---
 
 ## Storage
 
-Upload and serve files via presigned URLs to Cloudflare R2. Uploads are
-**safe-by-default** (v5+) — uploading to a path that's already taken throws
-`KoolbaseStorageConflictError` instead of silently replacing the existing
-file. Pass `overwrite: true` for true upsert semantics.
+Presigned uploads and downloads backed by Cloudflare R2. Uploads are
+safe-by-default: a path that is already taken throws rather than silently
+replacing the file.
 
 ```typescript
-// Upload — rejects if `user-${userId}.jpg` already exists
 const { object, downloadUrl } = await Koolbase.storage.upload({
   bucket: 'avatars',
   path: `user-${userId}.jpg`,
   file: { uri: imageUri, name: 'avatar.jpg', type: 'image/jpeg' },
 });
 
-// Upload — silently replaces any existing object at this path
+// Replace whatever is there
 await Koolbase.storage.upload({
   bucket: 'avatars',
   path: `user-${userId}.jpg`,
@@ -653,18 +540,14 @@ await Koolbase.storage.upload({
   overwrite: true,
 });
 
-// Get download URL
 const url = await Koolbase.storage.getDownloadUrl('avatars', `user-${userId}.jpg`);
 
-// Delete
 await Koolbase.storage.delete('avatars', `user-${userId}.jpg`);
 ```
 
----
-
 ### Handling upload conflicts
 
-For user-supplied filenames, prompt the user before overwriting:
+For user-supplied filenames, prompt before overwriting:
 
 ```typescript
 import { KoolbaseStorageConflictError } from '@koolbase/react-native';
@@ -675,35 +558,29 @@ try {
     path: filename,
     file: { uri, name: filename, type: mimeType },
   });
-} catch (e) catch (e) {
-if (e instanceof KoolbaseStorageConflictError) {
-const ok = await confirm(${e.path} already exists. Overwrite?);
-if (ok) {
-await Koolbase.storage.upload({
-bucket: 'documents',
-path: filename,
-file: { uri, name: filename, type: mimeType },
-overwrite: true,
-});
-}
-} else {
-throw e;
-}
+} catch (e) {
+  if (e instanceof KoolbaseStorageConflictError) {
+    const ok = await confirm(`${e.path} already exists. Overwrite?`);
+    if (ok) {
+      await Koolbase.storage.upload({
+        bucket: 'documents',
+        path: filename,
+        file: { uri, name: filename, type: mimeType },
+        overwrite: true,
+      });
+    }
+  } else {
+    throw e;
+  }
 }
 ```
 
-See [Error handling](#error-handling) for the full set of storage errors.
+### Bucket limits
 
----
+Buckets can carry a total size cap, a per-file cap, and a content-type
+allowlist (`image/*` wildcards supported). Violations arrive as typed errors:
 
-### Handling bucket limits
-
-Buckets can be configured at creation time with a total size cap
-(`max_size_bytes`), a per-file cap (`max_file_size_bytes`), and a
-content-type allowlist (`allowed_mime_types`, supports `image/*`-style
-wildcards). The server surfaces violations as typed errors:
-
-````typescript
+```typescript
 import {
   KoolbaseStorageQuotaError,
   KoolbaseStorageFileTooLargeError,
@@ -727,110 +604,155 @@ try {
     throw e;
   }
 }
-````
+```
 
-MIME enforcement runs at presign time — no bytes are transferred before
-rejection. File-size and quota enforcement run at confirm time; the
-server cleans up the underlying R2 object before returning the error,
-so nothing leaks.
+MIME enforcement runs at presign time, so no bytes move before rejection.
+Size and quota enforcement run at confirm time, and the server removes the
+underlying R2 object before returning the error.
 
----
+### Public bucket URLs
+
+Files in public buckets have a stable CDN URL — no network call, no expiry,
+embeddable anywhere.
+
+```typescript
+import { KoolbaseStorage } from '@koolbase/react-native';
+
+// From an object you already have
+const url = KoolbaseStorage.publicUrlForObject(object, 'avatars');
+// null for private-bucket objects; the CDN URL for public ones
+
+if (url) {
+  return <Image source={{ uri: url }} />;
+}
+
+// Build-time construction, no object on hand
+const built = KoolbaseStorage.publicUrl({
+  projectId: 'proj_abc',
+  bucket: 'avatars',
+  path: 'user-123.jpg',
+});
+// Always returns the pattern; the caller is responsible for knowing the file
+// is public. A private-bucket path will 404.
+```
+
+URLs follow `https://cdn.koolbase.com/{project_id}/{bucket}/{path}` — long-lived
+and edge-cached. For private buckets use `getDownloadUrl`, which returns a
+one-hour presigned URL.
+
+### Image transforms
+
+Public URLs can be resized and reformatted at the edge with no preprocessing.
+
+```typescript
+const url = KoolbaseStorage.publicUrl({
+  projectId: 'proj_abc',
+  bucket: 'avatars',
+  path: 'user-123.jpg',
+  transform: { width: 200, height: 200, fit: 'cover', format: 'auto', quality: 85 },
+});
+```
+
+Or store the option set server-side and reference it by name:
+
+```typescript
+const url = KoolbaseStorage.publicUrlWithPreset({
+  projectId: 'proj_abc',
+  presetName: 'thumbnail',
+  bucket: 'avatars',
+  path: 'user-123.jpg',
+});
+
+const fromObject = KoolbaseStorage.publicUrlForObjectWithPreset(
+  object,
+  'avatars',
+  'thumbnail',
+);
+```
+
+Options: `width` and `height` (1–2000), `format`
+(`auto`/`webp`/`avif`/`jpeg`/`png`), `quality` (1–100), `fit`
+(`scale-down`/`contain`/`cover`/`crop`/`pad`), `dpr` (1–3), and `gravity` (ten
+anchor positions). Transformed responses are edge-cached for four hours, and
+every account includes 5,000 unique transformations a month.
 
 ### Object versioning
 
-For buckets with versioning enabled, every overwrite preserves the prior
-content as a history version, and deletes are soft (recoverable until
-force-purged). Enable versioning on a bucket from the dashboard.
+On buckets with versioning enabled, overwrites preserve the prior content and
+deletes are soft.
 
 ```typescript
-// List all versions of a path, newest first
 const versions = await Koolbase.storage.listVersions('documents', 'contract.pdf');
 
 for (const v of versions) {
   console.log(`${v.versionId}: size=${v.size} isCurrent=${v.isCurrent}`);
 }
 
-// Download a specific historical version
+// Download a historical version
 const url = await Koolbase.storage.getDownloadUrl(
   'documents',
   'contract.pdf',
   '019e98ed-eed6-7e71-...',
 );
 
-// Bring a history version back as current
-// (the existing current is snapshotted to history first)
-const restored = await Koolbase.storage.restoreVersion(
-  'documents',
-  'contract.pdf',
-  '019e98ed-eed6-7e71-...',
-);
+// Bring one back as current (the existing current is snapshotted first)
+await Koolbase.storage.restoreVersion('documents', 'contract.pdf', '019e98ed-...');
 
-// Hard-remove a single history version (row + R2 bytes)
-await Koolbase.storage.purgeVersion(
-  'documents',
-  'contract.pdf',
-  'old-version-id',
-);
+// Hard-remove one history version, row and bytes
+await Koolbase.storage.purgeVersion('documents', 'contract.pdf', 'old-version-id');
 
-// Wipe the entire timeline for a path - every version, every R2 key
+// Wipe the whole timeline for a path
 await Koolbase.storage.delete('documents', 'contract.pdf', true);
 ```
 
-A few behaviors worth knowing:
-
-- **Overwrite snapshots automatically.** Upload to a path that already
-  exists in a versioned bucket and the prior bytes are preserved as
-  history; the upload becomes the new current.
-- **Delete is soft by default.** On a versioned bucket, `delete`
-  snapshots the current content and records a delete marker. The
-  content is still recoverable via `restoreVersion` until force-purged.
-- **Restore is itself a versioned event.** The previously-current row
-  gets snapshotted before the target's bytes overwrite canonical. The
-  restored row gets a fresh `versionId`; the target stays in history at
-  its original id - so you can always undo a restore.
-- **Delete markers can be listed but not downloaded.** A marker has
-  `size === 0`, `isDeleteMarker === true`, and no bytes. Calling
-  `getDownloadUrl` with a marker's `versionId` throws.
+- **Overwrite snapshots automatically.** The prior bytes become history; the
+  upload becomes current.
+- **Delete is soft.** The current content is snapshotted and a delete marker
+  recorded, recoverable until force-purged.
+- **Restore is itself versioned.** The restored row gets a fresh `versionId` and
+  the target stays in history at its original id, so a restore can be undone.
+- **Delete markers list but do not download.** `size === 0`,
+  `isDeleteMarker === true`, and `getDownloadUrl` on one throws.
 
 ---
 
 ## Realtime
 
 Subscribe to live changes on a collection. Uses the signed-in user's session, so
-subscribe after login. Streams `created`, `updated`, and `deleted` events for
-collections whose read rule is `public` or `authenticated`.
+subscribe after sign-in.
 
-```ts
+```typescript
 const unsubscribe = Koolbase.realtime.subscribe('messages', (event) => {
-  // event.type -> 'created' | 'updated' | 'deleted'
   if (event.type === 'deleted') {
-    console.log('deleted', event.recordId);   // recordId on deletes
+    console.log('deleted', event.recordId);        // recordId on deletes
   } else {
-    console.log(event.type, event.record!.data); // record on created/updated
+    console.log(event.type, event.record!.data);   // record on created/updated
   }
 });
 
 unsubscribe();
 ```
 
-The socket opens lazily, is shared, and reconnects automatically. The project is
-taken from the user's session.
+The socket opens lazily, is shared across subscriptions, and reconnects with
+backoff that doubles up to a minute and resets when a connection opens. The
+project is taken from the session.
 
 ---
 
 ## Functions
 
-Invoke deployed serverless functions. When a user is signed in via `Koolbase.auth`, their access token is automatically forwarded — the function receives the caller's identity via `ctx.auth`. No token handling on the client side.
+Invoke deployed functions. A signed-in user's access token is forwarded
+automatically, so the function sees the caller on `ctx.auth`.
 
 ```typescript
-// Invoke a deployed function
 const result = await Koolbase.functions.invoke('send-welcome-email', {
   userId: '123',
 });
+
 if (result.success) console.log(result.data);
 ```
 
-Inside the function, read the caller:
+Inside the function:
 
 ```typescript
 export async function handler(ctx) {
@@ -838,88 +760,47 @@ export async function handler(ctx) {
   if (!userId) {
     return { error: { code: 'AUTH_REQUIRED' }, status: 401 };
   }
-  // Authenticated logic here
   return { ok: true };
 }
 ```
 
-Token refresh is transparent — the SDK reads the current token fresh on every invoke. Full docs at [docs.koolbase.com/functions/authentication](https://docs.koolbase.com/functions/authentication).
+Failures are typed — `FunctionNotFoundError`, `FunctionPermissionError`,
+`FunctionValidationError`, `FunctionQuotaExceededError`,
+`FunctionExecutionError` — so handling never depends on message text. Token
+refresh is transparent.
 
 ---
 
-## Feature Flags & Remote Config
+## Feature flags and remote config
 
 ```typescript
 if (Koolbase.isEnabled('new_checkout')) { /* ... */ }
 
 const timeout = Koolbase.configNumber('timeout_seconds', 30);
-const apiUrl = Koolbase.configString('api_url', 'https://api.myapp.com');
-const dark = Koolbase.configBool('force_dark_mode', false);
+const apiUrl  = Koolbase.configString('api_url', 'https://api.myapp.com');
+const dark    = Koolbase.configBool('force_dark_mode', false);
 ```
+
+Rollout buckets are computed from a stable per-install device id, so a 10%
+rollout is genuinely 10% of devices.
 
 ---
 
-## Version Enforcement
+## Version enforcement
 
 ```typescript
 const result = Koolbase.checkVersion('1.2.3');
+
 if (result.status === 'force_update') {
-  // block and show update screen
+  // block and show an update screen
 }
 ```
 
 ---
 
-## Code Push
+## Logic engine
 
-Push config overrides, feature flag overrides, and directive-driven behaviour without a store release.
-
-```typescript
-await Koolbase.initialize({
-  publicKey: 'pk_live_xxxx',
-  baseUrl: 'https://api.koolbase.com',
-  codePushChannel: 'stable',
-});
-
-// Bundle values override Remote Config + Feature Flags transparently
-const timeout = Koolbase.configNumber('api_timeout_ms', 3000);
-
-// Directive handlers
-Koolbase.codePush.onDirective('force_logout_all', (value) => {
-  if (value) Koolbase.auth.logout();
-});
-Koolbase.codePush.applyDirectives();
-```
-
----
-
-### Mandatory updates
-
-Mark a bundle **mandatory** in the dashboard (or via `PATCH /mandatory`) when every device must apply it before continuing — surfaced as a push callback and a pollable flag:
-
-```typescript
-await Koolbase.initialize({
-  publicKey: 'pk_live_xxxx',
-  baseUrl: 'https://api.koolbase.com',
-  // Fires the moment a mandatory bundle is staged for the next launch
-  onMandatoryUpdate: ({ version }) => {
-    showRestartRequiredDialog(version);
-  },
-});
-
-// Or poll it — e.g. on app resume — before letting the user proceed
-if (Koolbase.codePush.hasMandatoryUpdate) {
-  showRestartRequiredDialog();
-}
-```
-
-A mandatory bundle still activates on the next cold launch like any other; the callback and flag just let you prompt the user to restart now instead of waiting.
-
----
-
-## Logic Engine
-
-Define conditional app behavior as data in your Runtime Bundle — no code changes required.
+Conditional app behaviour defined as data, updatable without a release.
 
 ```typescript
 const result = Koolbase.executeFlow('on_checkout_tap', {
@@ -930,20 +811,24 @@ const result = Koolbase.executeFlow('on_checkout_tap', {
 if (result.hasEvent) {
   switch (result.eventName) {
     case 'show_upgrade': navigation.navigate('Upgrade'); break;
-    case 'go_checkout': navigation.navigate('Checkout'); break;
+    case 'go_checkout':  navigation.navigate('Checkout'); break;
   }
 }
 ```
 
-**v2 operators:** `eq`, `neq`, `gt`, `gte`, `lt`, `lte`, `contains`, `starts_with`, `ends_with`, `in_list`, `not_in_list`, `between`, `is_true`, `is_false`, `exists`, `not_exists`, `and`, `or`
+Operators: `eq`, `neq`, `gt`, `gte`, `lt`, `lte`, `contains`, `starts_with`,
+`ends_with`, `in_list`, `not_in_list`, `between`, `is_true`, `is_false`,
+`exists`, `not_exists`, `and`, `or`.
 
-Full docs at [docs.koolbase.com/sdk/logic-engine](https://docs.koolbase.com/sdk/logic-engine).
+Full docs at
+[docs.koolbase.com/sdk/logic-engine](https://docs.koolbase.com/sdk/logic-engine).
 
 ---
 
 ## Analytics
 
-Track screen views, custom events, and user behaviour. View DAU, WAU, MAU, funnels, and retention in the Koolbase dashboard.
+Screen views, custom events, and user properties. DAU, WAU, MAU, funnels and
+retention appear in the dashboard.
 
 ```typescript
 await Koolbase.initialize({
@@ -953,23 +838,21 @@ await Koolbase.initialize({
   appVersion: '1.0.0',
 });
 
-// Custom events
 Koolbase.analytics.track('purchase', { value: 1200, currency: 'GHS' });
-
-// Screen views
 Koolbase.analytics.screenView('checkout');
-
-// User identity
 Koolbase.analytics.identify(user.id);
 Koolbase.analytics.setUserProperty('plan', 'pro');
 
-// On logout
+// On sign-out
 Koolbase.analytics.reset();
 ```
 
+Events batch and flush every 30 seconds, on backgrounding, on close, or at 20
+events.
+
 ---
 
-## Cloud Messaging
+## Cloud messaging
 
 ```typescript
 await Koolbase.initialize({
@@ -978,17 +861,18 @@ await Koolbase.initialize({
   messagingEnabled: true,
 });
 
-// Register FCM token (after obtaining from @react-native-firebase/messaging)
 const fcmToken = await messaging().getToken();
+
 await Koolbase.messaging.registerToken({
   token: fcmToken,
   platform: 'android', // or 'ios'
 });
 ```
 
-Sending is server-initiated — from your backend or a Koolbase Function with a
-secret `kb_live_` key, never the app (the publishable key ships in your bundle
-and can't send). See the [Cloud Messaging docs](https://docs.koolbase.com/sdk/messaging).
+Sending is server-initiated only. It needs a secret `kb_live_` key and must run
+from your backend or a Koolbase Function — the publishable key ships inside your
+bundle, so a client that could send would let anyone who extracts it push to
+your users.
 
 ```bash
 curl -X POST https://api.koolbase.com/v1/messaging/send \
@@ -1001,39 +885,32 @@ curl -X POST https://api.koolbase.com/v1/messaging/send \
 
 ## Error handling
 
-Koolbase throws typed errors selected from the server's stable error `code`, so
-handling doesn't depend on message text.
+Errors are selected from the server's stable error `code`, so handling never
+depends on message text. Everything the SDK raises extends `KoolbaseError`.
 
-### Database errors
-
-All data-layer failures extend `KoolbaseDataError` (which extends `Error`):
-
-Two errors are raised by any subsystem, because they are not about any one of
-them:
+### Raised by any subsystem
 
 | Error | When |
 |---|---|
-| `KoolbaseUnauthenticatedError` | The server would not accept the caller's credentials (401) — an expired session, a revoked key, or none at all; it does not distinguish. Raised by database, storage, Functions, and background sync alike, since a session stops working for the whole SDK at once. **The SDK has already signed the user out by the time you catch this** — route to login rather than retrying. |
-| `KoolbaseOfflineBaselineUnavailableError` | An offline update or delete could not be queued: the record has never been seen on this device, so there is nothing to apply the change against. Read it first, or make the change online. |
+| `KoolbaseUnauthenticatedError` | The server would not accept the caller's credentials (401) — expired session, revoked key, or none at all; it does not distinguish. A session stops working for the whole SDK at once, so this comes from database, storage, Functions and background sync alike. **The user is already signed out by the time you catch it** — route to login rather than retrying. |
+| `KoolbaseOfflineBaselineUnavailableError` | An offline update or delete could not be queued: the record has never been seen on this device, so there is nothing to apply the change against. |
 
-Note the difference from `KoolbasePermissionError` (403), which means the
-credentials *were* accepted and this caller may not proceed. It does not sign
-anyone out, and signing someone out for opening the wrong record would be worse
-than the failure itself.
+`KoolbasePermissionError` (403) is different: the credentials *were* accepted and
+this caller may not proceed. Nobody is signed out — doing so for opening the
+wrong record would be worse than the failure itself.
 
-All errors extend `KoolbaseError`, so `e instanceof KoolbaseError` catches
-anything the SDK raises.
+### Database
 
 | Error | When |
 |---|---|
-| `KoolbaseConflictError` | A write violates a unique constraint (409). Exposes `.field` — the field that collided, when the server reports it. |
-| `KoolbaseNotFoundError` | The record or collection doesn't exist (404). |
+| `KoolbaseConflictError` | A write violates a unique constraint (409). `.field` names the collision when the server reports it. |
+| `KoolbaseNotFoundError` | The record or collection does not exist (404). |
 | `KoolbaseValidationError` | The request was rejected as invalid (400). |
 | `KoolbasePermissionError` | An access rule denied the operation (403). |
 | `KoolbaseRateLimitError` | The caller is being rate-limited (429). |
-| `KoolbaseVectorDimensionMismatchError` | A vector's length doesn't match the field's declared dimension (400, code `vector_dimension_mismatch`). |
+| `KoolbaseVectorDimensionMismatchError` | A vector's length does not match the field's declared dimension. |
 
-```ts
+```typescript
 import {
   KoolbaseConflictError,
   KoolbaseDataError,
@@ -1044,8 +921,7 @@ try {
   await Koolbase.db.upsert('users', { email }, { name });
 } catch (e) {
   if (e instanceof KoolbaseUnauthenticatedError) {
-    // Already signed out — the session was cleared before this threw.
-    goToLogin();
+    goToLogin();                     // already signed out
   } else if (e instanceof KoolbaseConflictError) {
     showError(`That ${e.field ?? 'value'} is already taken.`);
   } else if (e instanceof KoolbaseDataError) {
@@ -1055,72 +931,59 @@ try {
 ```
 
 > `insert`, `update`, and `delete` queue when the network is unreachable, but
-> they still throw. A server that answered has refused — a permission denial, a
-> unique-constraint violation, a rejected credential — and that is surfaced
-> rather than queued, since it would be refused again on every retry. An update
-> or delete also throws `KoolbaseOfflineBaselineUnavailableError` when the record
-> has never been seen on this device.
+> they still throw. A server that answered has refused, and that is surfaced
+> rather than queued, since it would be refused again on every retry.
 >
 > What does not throw is a write refused during replay, hours after it was made:
 > nobody is waiting on it, so it becomes a conflict you read from
 > `Koolbase.db.conflicts()`.
 
----
-
-### Storage errors
-
-All storage failures extend `KoolbaseStorageError` (which extends `Error`):
+### Storage
 
 | Error | When |
 |---|---|
-| `KoolbaseStorageConflictError` | An upload targets a path that's already taken and `overwrite: false` (409, code `PATH_CONFLICT`). Exposes `.path` — the colliding path. |
-| `KoolbaseStorageNotFoundError` | The bucket or object doesn't exist (404). |
-| `KoolbaseStorageValidationError` | The request was rejected as invalid — bad path, missing field (400). |
-| `KoolbaseStoragePermissionError` | The caller is not allowed to perform the operation (403). |
+| `KoolbaseStorageConflictError` | The path is taken and `overwrite` is false (409). `.path` names it. |
+| `KoolbaseStorageNotFoundError` | The bucket or object does not exist (404). |
+| `KoolbaseStorageValidationError` | Bad path or missing field (400). |
+| `KoolbaseStoragePermissionError` | The caller may not perform the operation (403). |
+| `KoolbaseStorageQuotaError` | The upload would exceed the bucket's total size cap. |
+| `KoolbaseStorageFileTooLargeError` | The file exceeds the bucket's per-file cap. |
+| `KoolbaseStorageMimeTypeError` | The content type is not in the bucket's allowlist. |
+| `KoolbaseStorageMetadataInvalidError` | Object metadata failed validation. `.detail` names the key and rule. |
 
-```ts
-import {
-  KoolbaseStorageConflictError,
-  KoolbaseStorageError,
-  KoolbaseStoragePermissionError,
-} from '@koolbase/react-native';
+### Auth
 
-try {
-  await Koolbase.storage.upload({
-    bucket: 'avatars',
-    path: 'me.png',
-    file: { uri, name: 'me.png', type: 'image/png' },
-  });
-} catch (e) {
-  if (e instanceof KoolbaseStorageConflictError) {
-    // Already exists — prompt user to confirm overwrite
-    promptOverwrite(e.path);
-  } else if (e instanceof KoolbaseStoragePermissionError) {
-    showError('You do not have permission to upload here.');
-  } else if (e instanceof KoolbaseStorageError) {
-    // Catch-all for any other storage error
-    showError(e.message);
-  } else {
-    throw e;
-  }
-}
-```
+`InvalidCredentialsError`, `EmailAlreadyInUseError`, `UserDisabledError`,
+`WeakPasswordError`, `SessionExpiredError`, `TokenRevokedError`,
+`AccountLockedError` (with `lockedUntil`), `UnlockTokenInvalidError`,
+`RateLimitError`, `NetworkError`, plus the OAuth family
+(`AppleSignInNotConfiguredError`, `InvalidAppleTokenError`,
+`GoogleSignInNotConfiguredError`, `InvalidGoogleTokenError`,
+`OAuthEmailConflictError`) and the phone family (`InvalidPhoneNumberError`,
+`OtpExpiredError`, `OtpInvalidError`, `OtpMaxAttemptsError`,
+`OtpRateLimitError`, `PhoneAlreadyLinkedError`, `SmsConfigMissingError`). All
+extend `KoolbaseAuthError`.
 
 ---
 
 ## What's included
 
-- Authentication: email + password, Apple Sign-In, Google Sign-In, phone + OTP
-- Database with offline-first cache, realtime subscriptions, populate for related records, semantic search over vectors
-- Storage with presigned uploads and downloads, safe-by-default conflict handling, image transforms, object versioning (history + restore + soft-delete)
-- Realtime subscriptions over WebSocket
-- Authenticated functions (`ctx.auth` exposes the caller automatically)
+- Authentication: email and password, Apple, Google, phone + OTP, persistent
+  sessions, auth state listener
+- Database with populate for related records, atomic batches, upsert and bulk
+  delete
+- Offline-first cache, a durable write queue with baselines, and conflicts you
+  resolve four ways
+- Semantic, lexical and hybrid search over vectors, with server-side embedding
+- Storage with presigned uploads, safe-by-default conflicts, bucket limits,
+  image transforms, and object versioning
+- Realtime subscriptions over WebSocket with backoff
+- Functions with the caller's identity forwarded automatically
 - Feature flags and remote config
 - Version enforcement
-- Code push (config + flag overrides + directives, no store release)
-- Logic engine (conditional flows as data, updatable OTA)
-- Analytics (DAU/WAU/MAU, funnels, retention)
-- Cloud Messaging (FCM token registration, targeted send, broadcast)
+- Logic engine — conditional flows as data
+- Analytics — DAU, WAU, MAU, funnels, retention
+- Cloud messaging — device token registration
 - TypeScript-native with full type definitions
 
 ---
@@ -1135,7 +998,7 @@ Manage your projects at [app.koolbase.com](https://app.koolbase.com)
 
 ## Support
 
-- [GitHub Issues](https://github.com/kennedyowusu/koolbase-react-native/issues)
+- [GitHub Issues](https://github.com/koolbase/koolbase-react-native/issues)
 - [docs.koolbase.com](https://docs.koolbase.com)
 - Email: <dev@koolbase.com>
 
