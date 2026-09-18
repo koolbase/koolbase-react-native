@@ -7,6 +7,60 @@ adheres to [Semantic Versioning][semver].
 [kac]: https://keepachangelog.com/en/1.1.0/
 [semver]: https://semver.org/
 
+## 10.0.0
+
+### Read before upgrading
+
+**The package is now a thin layer over `@koolbase/core`.** The SDK's behaviour
+— auth, database, offline queue, conflicts, realtime, storage, functions —
+moved into a shared core that `@koolbase/react-native` and the new
+`@koolbase/js` both compose. Your imports do not change: everything the core
+exports is re-exported here. What changes is that the same sixty tests that
+proved the offline path on a device now run against both hosts, so a fix in
+one is a fix in the other.
+
+**Code push is gone.** `Koolbase.codePush`, `codePushChannel`,
+`onMandatoryUpdate`, `KoolbaseCodePush`, `BundleManifest` and `BundlePayload`
+are removed. Code push is a Flutter feature, where it patches the Dart VM; the
+React Native version pushed config and flag overrides, which Remote Config and
+Feature Flags already do without a bundle. If you set `codePushChannel`, delete
+the line; the flag and config reads keep working from the remote values.
+
+**`Koolbase.executeFlow` and the logic engine are gone.** Flows only ever
+arrived through code-push bundles, so with no bundle the method could only
+return an empty result. Removed rather than left as a call that does nothing.
+
+**`KoolbaseAppleAuth` is gone.** Deprecated since 1.9.0, throwing
+`not_implemented` since then. `Koolbase.auth.signInWithApple(...)` is the
+Apple flow and is unchanged.
+
+### Changed
+
+- **Host access goes through a platform adapter.** AsyncStorage, NetInfo,
+  AppState and Platform are consumed by one file, `platform.ts`, and nothing
+  else in the SDK imports a native module. `KoolbaseConfig.platform` accepts
+  a custom adapter — for tests, or for a host this package does not cover.
+
+- **The default session storage is decided by the platform.** Keychain when
+  `react-native-keychain` is installed, as before; the choice is now made by
+  the adapter rather than hard-coded in auth.
+
+- **The device label persists through the platform's storage** rather than a
+  direct keychain call. Behaviour is the same on a device with keychain; on
+  one without, the label now survives restarts where it used to be regenerated
+  each session.
+
+### Removed
+
+- `jszip` — code push was its only user. This package's core now has no
+  runtime dependencies.
+
+### Migration
+
+Delete any `codePushChannel` or `onMandatoryUpdate` from your `initialize()`
+config, and any `Koolbase.codePush` or `Koolbase.executeFlow` calls. That is
+the whole migration; everything else is source-compatible.
+
 ## 9.2.0
 
 ### Read before upgrading
