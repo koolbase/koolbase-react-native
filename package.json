@@ -1,7 +1,7 @@
 {
   "name": "@koolbase/react-native",
   "version": "9.2.0",
-  "description": "React Native SDK for Koolbase \u2014 auth, database, storage, realtime, feature flags, and functions in one package.",
+  "description": "React Native SDK for Koolbase — auth, database, storage, realtime, feature flags, and functions in one package.",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "files": [
@@ -27,22 +27,23 @@
     "url": "https://github.com/koolbase/koolbase-react-native"
   },
   "devDependencies": {
+    "@react-native-async-storage/async-storage": "^3.0.2",
+    "@react-native-community/netinfo": "^12.0.1",
     "@types/jest": "^30.0.0",
     "@types/jszip": "^3.4.0",
     "@types/node": "^25.9.1",
+    "fake-indexeddb": "^6.2.5",
     "jest": "^30.4.2",
     "react-native": "^0.85.3",
     "react-native-keychain": "^10.0.0",
     "ts-jest": "^29.4.12",
-    "typescript": "^5.0.0",
-    "@react-native-async-storage/async-storage": "^3.0.2",
-    "@react-native-community/netinfo": "^12.0.1"
+    "typescript": "^5.0.0"
   },
   "peerDependencies": {
-    "react-native": ">=0.70.0",
-    "react-native-keychain": ">=8.0.0",
     "@react-native-async-storage/async-storage": "^3.0.2",
-    "@react-native-community/netinfo": "^12.0.1"
+    "@react-native-community/netinfo": "^12.0.1",
+    "react-native": ">=0.70.0",
+    "react-native-keychain": ">=8.0.0"
   },
   "dependencies": {
     "jszip": "^3.10.1"

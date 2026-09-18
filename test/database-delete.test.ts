@@ -3,7 +3,8 @@ import { KoolbaseDataError } from '../src/database-errors';
 import { cacheRecord, getCachedRecord } from '../src/cache-store';
 import { readOfflineState, queueWrite } from '../src/offline-state';
 import { KoolbaseOfflineBaselineUnavailableError } from '../src/errors';
-import { memoryPlatform, setPlatform } from '../src/platform';
+import { setPlatform } from '../src/platform';
+import { testPlatform } from './platform';
 
 /**
  * delete() queued the write before attempting the request and swallowed every
@@ -21,7 +22,7 @@ describe('delete', () => {
     new KoolbaseDatabase(config, () => 'user-1', async () => 'token');
 
   beforeEach(async () => {
-    setPlatform(memoryPlatform());
+    setPlatform(await testPlatform());
   });
 
   it('surfaces a refusal instead of reporting success', async () => {

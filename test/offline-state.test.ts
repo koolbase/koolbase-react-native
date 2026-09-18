@@ -1,4 +1,5 @@
-import { memoryPlatform, setPlatform } from '../src/platform';
+import { setPlatform } from '../src/platform';
+import { testPlatform } from './platform';
 import {
   mutateOfflineState,
   readOfflineState,
@@ -7,7 +8,7 @@ import {
 
 describe('offline state', () => {
   beforeEach(async () => {
-    setPlatform(memoryPlatform());
+    setPlatform(await testPlatform());
   });
 
   /**

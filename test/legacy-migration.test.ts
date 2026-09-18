@@ -1,4 +1,5 @@
-import { getPlatform, memoryPlatform, setPlatform } from '../src/platform';
+import { getPlatform, setPlatform } from '../src/platform';
+import { testPlatform } from './platform';
 import { migrateLegacyQueue, readOfflineState } from '../src/offline-state';
 
 /**
@@ -14,7 +15,7 @@ import { migrateLegacyQueue, readOfflineState } from '../src/offline-state';
 describe('migrating a legacy queue', () => {
   const legacyKey = 'koolbase:v1:user-1:write_queue';
 
-  beforeEach(() => setPlatform(memoryPlatform()));
+  beforeEach(async () => setPlatform(await testPlatform()));
 
   const seed = (writes: unknown[]) =>
     getPlatform().storage.setItem(legacyKey, JSON.stringify(writes));

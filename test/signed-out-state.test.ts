@@ -1,7 +1,8 @@
 import { KoolbaseDatabase } from '../src/database';
 import { KoolbaseUnauthenticatedError } from '../src/errors';
 import { readOfflineState } from '../src/offline-state';
-import { memoryPlatform, setPlatform } from '../src/platform';
+import { setPlatform } from '../src/platform';
+import { testPlatform } from './platform';
 
 /**
  * Tonight's fake-zero, pinned. Per-user state was read with a silent
@@ -17,7 +18,7 @@ describe('signed-out per-user state', () => {
 
   beforeEach(async () => {
     user = null;
-    setPlatform(memoryPlatform());
+    setPlatform(await testPlatform());
     // Every network attempt dies: forces the offline path.
     global.fetch = jest.fn().mockRejectedValue(new TypeError('Network request failed'));
   });

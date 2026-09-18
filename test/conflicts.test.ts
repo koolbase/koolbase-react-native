@@ -1,6 +1,7 @@
 import { KoolbaseDatabase } from '../src/database';
 import { mutateOfflineState, readOfflineState } from '../src/offline-state';
-import { memoryPlatform, setPlatform } from '../src/platform';
+import { setPlatform } from '../src/platform';
+import { testPlatform } from './platform';
 
 /**
  * A conflict is durable unresolved state, not an event. Held rather than
@@ -30,7 +31,7 @@ describe('conflicts', () => {
     });
 
   beforeEach(async () => {
-    setPlatform(memoryPlatform());
+    setPlatform(await testPlatform());
   });
 
   it('surfaces both versions and what disagrees', async () => {
@@ -113,7 +114,7 @@ describe('a write the server refuses outright', () => {
   const config = { baseUrl: 'https://api.test', publicKey: 'pk' } as any;
 
   beforeEach(async () => {
-    setPlatform(memoryPlatform());
+    setPlatform(await testPlatform());
   });
 
   const queueUpdate = () =>

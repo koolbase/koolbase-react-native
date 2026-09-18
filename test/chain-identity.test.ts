@@ -1,5 +1,6 @@
 import { KoolbaseDatabase } from '../src/database';
-import { memoryPlatform, setPlatform } from '../src/platform';
+import { setPlatform } from '../src/platform';
+import { testPlatform } from './platform';
 
 /**
  * Tonight's chain break, pinned. Offline: insert → update → update, one
@@ -25,7 +26,7 @@ describe('offline chain identity', () => {
 
   beforeEach(async () => {
     user = 'u1';
-    setPlatform(memoryPlatform());
+    setPlatform(await testPlatform());
   });
 
   it('an offline insert queues a UUID id inside its payload', async () => {

@@ -1,4 +1,5 @@
-import { memoryPlatform, setPlatform } from '../src/platform';
+import { setPlatform } from '../src/platform';
+import { testPlatform } from './platform';
 import {
   addToWriteQueue,
   getWriteQueue,
@@ -18,7 +19,7 @@ import {
  */
 describe('clearUserCache', () => {
   beforeEach(async () => {
-    setPlatform(memoryPlatform());
+    setPlatform(await testPlatform());
   });
 
   it('spares the write queue', async () => {
@@ -56,7 +57,7 @@ describe('clearUserCache', () => {
  */
 describe('invalidateCache', () => {
   beforeEach(async () => {
-    setPlatform(memoryPlatform());
+    setPlatform(await testPlatform());
   });
 
   it('spares the write queue', async () => {
