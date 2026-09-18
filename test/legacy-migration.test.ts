@@ -1,4 +1,4 @@
-import AsyncStorage from './mocks/async-storage';
+import { getPlatform, memoryPlatform, setPlatform } from '../src/platform';
 import { migrateLegacyQueue, readOfflineState } from '../src/offline-state';
 
 /**
@@ -14,10 +14,10 @@ import { migrateLegacyQueue, readOfflineState } from '../src/offline-state';
 describe('migrating a legacy queue', () => {
   const legacyKey = 'koolbase:v1:user-1:write_queue';
 
-  beforeEach(() => (AsyncStorage as any).__reset());
+  beforeEach(() => setPlatform(memoryPlatform()));
 
   const seed = (writes: unknown[]) =>
-    AsyncStorage.setItem(legacyKey, JSON.stringify(writes));
+    getPlatform().storage.setItem(legacyKey, JSON.stringify(writes));
 
   it('carries an insert across, still replayable', async () => {
     await seed([
@@ -59,7 +59,7 @@ describe('migrating a legacy queue', () => {
     await migrateLegacyQueue('user-1');
 
     expect((await readOfflineState('user-1')).pending).toHaveLength(1);
-    expect(await AsyncStorage.getItem(legacyKey)).toBeNull();
+    expect(await getPlatform().storage.getItem(legacyKey)).toBeNull();
   });
 
   it('does nothing for a user with no legacy queue', async () => {

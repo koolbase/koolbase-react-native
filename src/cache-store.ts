@@ -1,4 +1,4 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { getPlatform } from './platform';
 import { KoolbaseRecord, LegacyPendingWrite, QueryResult } from './types';
 
 const CACHE_VERSION = 'v1';
@@ -23,7 +23,7 @@ export async function getCached(
   queryHash: string
 ): Promise<QueryResult | null> {
   try {
-    const raw = await AsyncStorage.getItem(cacheKey(userId, collection, queryHash));
+    const raw = await getPlatform().storage.getItem(cacheKey(userId, collection, queryHash));
     if (!raw) return null;
     return JSON.parse(raw) as QueryResult;
   } catch {
@@ -38,7 +38,7 @@ export async function setCached(
   result: QueryResult
 ): Promise<void> {
   try {
-    await AsyncStorage.setItem(
+    await getPlatform().storage.setItem(
       cacheKey(userId, collection, queryHash),
       JSON.stringify(result)
     );
@@ -52,11 +52,11 @@ export async function invalidateCache(
   collection: string
 ): Promise<void> {
   try {
-    const keys = await AsyncStorage.getAllKeys();
+    const keys = await getPlatform().storage.getAllKeys();
     const prefix = `koolbase:${CACHE_VERSION}:${userId}:${collection}:`;
     const toDelete = keys.filter(k => k.startsWith(prefix));
     for (const key of toDelete) {
-      await AsyncStorage.removeItem(key);
+      await getPlatform().storage.removeItem(key);
     }
   } catch {
     // ignore
@@ -73,12 +73,12 @@ export async function invalidateCache(
  */
 export async function clearUserCache(userId: string): Promise<void> {
   try {
-    const keys = await AsyncStorage.getAllKeys();
+    const keys = await getPlatform().storage.getAllKeys();
     const prefix = `koolbase:${CACHE_VERSION}:${userId}:`;
     const queueKey = writeQueueKey(userId);
     const toDelete = keys.filter(k => k.startsWith(prefix) && k !== queueKey);
     for (const key of toDelete) {
-      await AsyncStorage.removeItem(key);
+      await getPlatform().storage.removeItem(key);
     }
   } catch {
     // ignore
@@ -116,7 +116,7 @@ export async function getCachedRecord(
   recordId: string
 ): Promise<CachedRecord | null> {
   try {
-    const raw = await AsyncStorage.getItem(recordCacheKey(userId, recordId));
+    const raw = await getPlatform().storage.getItem(recordCacheKey(userId, recordId));
     return raw ? (JSON.parse(raw) as CachedRecord) : null;
   } catch {
     return null;
@@ -154,7 +154,7 @@ export async function cacheRecord(
       revision,
       cachedAt: new Date().toISOString(),
     };
-    await AsyncStorage.setItem(recordCacheKey(userId, recordId), JSON.stringify(entry));
+    await getPlatform().storage.setItem(recordCacheKey(userId, recordId), JSON.stringify(entry));
   } catch {
     // ignore
   }
@@ -162,7 +162,7 @@ export async function cacheRecord(
 
 export async function removeCachedRecord(userId: string, recordId: string): Promise<void> {
   try {
-    await AsyncStorage.removeItem(recordCacheKey(userId, recordId));
+    await getPlatform().storage.removeItem(recordCacheKey(userId, recordId));
   } catch {
     // ignore
   }
@@ -172,7 +172,7 @@ export async function removeCachedRecord(userId: string, recordId: string): Prom
 
 export async function getWriteQueue(userId: string): Promise<LegacyPendingWrite[]> {
   try {
-    const raw = await AsyncStorage.getItem(writeQueueKey(userId));
+    const raw = await getPlatform().storage.getItem(writeQueueKey(userId));
     if (!raw) return [];
     return JSON.parse(raw) as LegacyPendingWrite[];
   } catch {
@@ -187,7 +187,7 @@ export async function addToWriteQueue(
   try {
     const queue = await getWriteQueue(userId);
     queue.push({ ...write, retries: 0, createdAt: new Date().toISOString() });
-    await AsyncStorage.setItem(writeQueueKey(userId), JSON.stringify(queue));
+    await getPlatform().storage.setItem(writeQueueKey(userId), JSON.stringify(queue));
   } catch {
     // ignore
   }
@@ -200,7 +200,7 @@ export async function removeFromWriteQueue(
   try {
     const queue = await getWriteQueue(userId);
     const updated = queue.filter(w => w.id !== writeId);
-    await AsyncStorage.setItem(writeQueueKey(userId), JSON.stringify(updated));
+    await getPlatform().storage.setItem(writeQueueKey(userId), JSON.stringify(updated));
   } catch {
     // ignore
   }
@@ -217,7 +217,7 @@ export async function incrementWriteRetry(
     );
     // Drop writes that have exceeded 3 retries
     const filtered = updated.filter(w => w.retries <= 3);
-    await AsyncStorage.setItem(writeQueueKey(userId), JSON.stringify(filtered));
+    await getPlatform().storage.setItem(writeQueueKey(userId), JSON.stringify(filtered));
   } catch {
     // ignore
   }
@@ -231,17 +231,17 @@ export async function optimisticallyInsert(
   record: KoolbaseRecord
 ): Promise<void> {
   try {
-    const keys = await AsyncStorage.getAllKeys();
+    const keys = await getPlatform().storage.getAllKeys();
     const prefix = `koolbase:${CACHE_VERSION}:${userId}:${collection}:`;
     const collectionKeys = keys.filter(k => k.startsWith(prefix));
 
     for (const key of collectionKeys) {
-      const raw = await AsyncStorage.getItem(key);
+      const raw = await getPlatform().storage.getItem(key);
       if (!raw) continue;
       const cached: QueryResult = JSON.parse(raw);
       cached.records = [record, ...cached.records];
       cached.total = cached.total + 1;
-      await AsyncStorage.setItem(key, JSON.stringify(cached));
+      await getPlatform().storage.setItem(key, JSON.stringify(cached));
     }
   } catch {
     // ignore

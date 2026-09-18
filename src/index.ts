@@ -1,5 +1,6 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { KoolbaseAuth } from './auth';
+import { setPlatform, type PlatformAdapter } from './platform';
+import { reactNativePlatform } from './platform-react-native';
 import { KoolbaseCodePush } from './code-push';
 import { KoolbaseAnalytics } from './analytics';
 import { KoolbaseMessaging } from './messaging';
@@ -53,6 +54,10 @@ function ensureInitialized() {
 export const Koolbase = {
   async initialize(config: KoolbaseConfig): Promise<void> {
     if (_initialized) return;
+
+    // The host platform, installed before any subsystem touches storage or
+    // the network. Tests leave this unset and run on the in-memory default.
+    setPlatform(config.platform ?? reactNativePlatform());
 
     _auth = new KoolbaseAuth(config);
     _db = new KoolbaseDatabase(

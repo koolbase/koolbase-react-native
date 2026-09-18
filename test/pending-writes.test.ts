@@ -1,5 +1,6 @@
 import { KoolbaseDatabase } from '../src/database';
 import { mutateOfflineState } from '../src/offline-state';
+import { memoryPlatform, setPlatform } from '../src/platform';
 
 /**
  * The queue is the same durable state as conflicts, one step earlier: changes
@@ -41,8 +42,7 @@ describe('pendingWrites', () => {
     });
 
   beforeEach(async () => {
-    const store = await import('./mocks/async-storage');
-    (store.default as any).__reset();
+    setPlatform(memoryPlatform());
   });
 
   it('is empty with nothing queued', async () => {

@@ -1,3 +1,4 @@
+import { memoryPlatform, setPlatform } from '../src/platform';
 import {
   addToWriteQueue,
   getWriteQueue,
@@ -17,8 +18,7 @@ import {
  */
 describe('clearUserCache', () => {
   beforeEach(async () => {
-    const store = await import('./mocks/async-storage');
-    (store.default as any).__reset();
+    setPlatform(memoryPlatform());
   });
 
   it('spares the write queue', async () => {
@@ -56,8 +56,7 @@ describe('clearUserCache', () => {
  */
 describe('invalidateCache', () => {
   beforeEach(async () => {
-    const store = await import('./mocks/async-storage');
-    (store.default as any).__reset();
+    setPlatform(memoryPlatform());
   });
 
   it('spares the write queue', async () => {

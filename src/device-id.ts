@@ -1,4 +1,4 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { getPlatform } from './platform';
 
 // Single source of the anonymous device identifier for the whole SDK.
 // Generated once, persisted, and shared by messaging (registration keying),
@@ -21,13 +21,13 @@ let _cached: string | null = null;
 export async function getOrCreateDeviceId(): Promise<string> {
   if (_cached) return _cached;
   try {
-    const existing = await AsyncStorage.getItem(DEVICE_ID_KEY);
+    const existing = await getPlatform().storage.getItem(DEVICE_ID_KEY);
     if (existing) {
       _cached = existing;
       return existing;
     }
     const newId = generateUUID();
-    await AsyncStorage.setItem(DEVICE_ID_KEY, newId);
+    await getPlatform().storage.setItem(DEVICE_ID_KEY, newId);
     _cached = newId;
     return newId;
   } catch {

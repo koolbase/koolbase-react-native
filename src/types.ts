@@ -1,4 +1,9 @@
 export interface KoolbaseConfig {
+  /**
+   * Host platform adapter. Defaults to React Native. A web package or a test
+   * harness supplies its own; app code normally leaves this unset.
+   */
+  platform?: import('./platform').PlatformAdapter;
   publicKey: string;
   baseUrl: string;
   codePushChannel?: string;

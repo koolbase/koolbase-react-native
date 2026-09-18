@@ -1,5 +1,4 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { AppState, AppStateStatus, Platform } from 'react-native';
+import { getPlatform } from './platform';
 import { KoolbaseConfig } from './types';
 import { getOrCreateDeviceId } from './device-id';
 
@@ -52,11 +51,7 @@ export class KoolbaseAnalytics {
     this.appVersion = appVersion ?? '1.0.0';
 
     // Auto flush on app background
-    AppState.addEventListener('change', (state: AppStateStatus) => {
-      if (state === 'background' || state === 'inactive') {
-        this.flush();
-      }
-    });
+    getPlatform().lifecycle.onBackground(() => { this.flush(); });
 
     // Periodic flush
     this.flushTimer = setInterval(() => this.flush(), FLUSH_INTERVAL_MS);
@@ -77,7 +72,7 @@ export class KoolbaseAnalytics {
       event_name: eventName,
       properties: properties ?? {},
       user_properties: { ...this.userProperties },
-      platform: Platform.OS,
+      platform: getPlatform().info.os,
       app_version: this.appVersion,
       sdk_version: SDK_VERSION,
       session_id: this.sessionId,

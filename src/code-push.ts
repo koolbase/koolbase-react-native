@@ -1,4 +1,4 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { getPlatform } from './platform';
 import { KoolbaseConfig } from './types';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
@@ -111,12 +111,12 @@ export class KoolbaseCodePush {
 
   private async promotePendingIfAvailable(): Promise<void> {
     try {
-      const pending = await AsyncStorage.getItem(STORAGE_KEY_PENDING);
+      const pending = await getPlatform().storage.getItem(STORAGE_KEY_PENDING);
       if (!pending) return;
 
       // Archive current active → just overwrite, we keep one version
-      await AsyncStorage.setItem(STORAGE_KEY_ACTIVE, pending);
-      await AsyncStorage.removeItem(STORAGE_KEY_PENDING);
+      await getPlatform().storage.setItem(STORAGE_KEY_ACTIVE, pending);
+      await getPlatform().storage.removeItem(STORAGE_KEY_PENDING);
       console.log('[KoolbaseCodePush] promoted pending bundle to active');
     } catch (e) {
       console.warn('[KoolbaseCodePush] promotion failed:', e);
@@ -126,7 +126,7 @@ export class KoolbaseCodePush {
 
   private async loadActive(): Promise<BundleManifest | null> {
     try {
-      const stored = await AsyncStorage.getItem(STORAGE_KEY_ACTIVE);
+      const stored = await getPlatform().storage.getItem(STORAGE_KEY_ACTIVE);
       if (!stored) return null;
       return JSON.parse(stored) as BundleManifest;
     } catch {
@@ -211,7 +211,7 @@ export class KoolbaseCodePush {
       manifest.mandatory = ref.mandatory;
 
       // Store as pending — activates on next launch
-      await AsyncStorage.setItem(STORAGE_KEY_PENDING, JSON.stringify(manifest));
+      await getPlatform().storage.setItem(STORAGE_KEY_PENDING, JSON.stringify(manifest));
       console.log(`[KoolbaseCodePush] bundle v${manifest.version} ready for next launch`);
 
       if (ref.mandatory) {
@@ -230,8 +230,8 @@ export class KoolbaseCodePush {
 
   private async handleRollback(revertTo: string): Promise<void> {
     console.log(`[KoolbaseCodePush] rollback to v${revertTo}`);
-    await AsyncStorage.removeItem(STORAGE_KEY_ACTIVE);
-    await AsyncStorage.removeItem(STORAGE_KEY_PENDING);
+    await getPlatform().storage.removeItem(STORAGE_KEY_ACTIVE);
+    await getPlatform().storage.removeItem(STORAGE_KEY_PENDING);
     this.activeManifest = null;
     console.log('[KoolbaseCodePush] reverted to app defaults');
   }
@@ -289,8 +289,8 @@ export class KoolbaseCodePush {
   // ─── Cache management ────────────────────────────────────────────────────
 
   async clearBundle(): Promise<void> {
-    await AsyncStorage.removeItem(STORAGE_KEY_ACTIVE);
-    await AsyncStorage.removeItem(STORAGE_KEY_PENDING);
+    await getPlatform().storage.removeItem(STORAGE_KEY_ACTIVE);
+    await getPlatform().storage.removeItem(STORAGE_KEY_PENDING);
     this.activeManifest = null;
     console.log('[KoolbaseCodePush] bundle cache cleared');
   }

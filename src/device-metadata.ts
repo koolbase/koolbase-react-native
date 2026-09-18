@@ -1,4 +1,4 @@
-import { Platform } from 'react-native';
+import { getPlatform } from './platform';
 import { isKeychainAvailable } from './auth-storage';
 
 /**
@@ -55,8 +55,8 @@ export class DeviceMetadata {
   async build(): Promise<Record<string, string>> {
     if (this.cached) return this.cached;
 
-    const platform = String(Platform.OS);
-    const platformVersion = String(Platform.Version);
+    const platform = getPlatform().info.os;
+    const platformVersion = getPlatform().info.version;
     const deviceLabel = await this.getOrCreateDeviceLabel();
     const userAgent = `koolbase-react-native/${koolbaseSdkVersion} (${platform} ${platformVersion})`;
 

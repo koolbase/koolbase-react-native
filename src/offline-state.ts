@@ -1,4 +1,4 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { getPlatform } from './platform';
 
 /**
  * The offline system's correctness-critical state: writes waiting to be sent,
@@ -168,7 +168,7 @@ async function withLock<T>(userId: string, fn: () => Promise<T>): Promise<T> {
 
 export async function readOfflineState(userId: string): Promise<OfflineState> {
   try {
-    const raw = await AsyncStorage.getItem(stateKey(userId));
+    const raw = await getPlatform().storage.getItem(stateKey(userId));
     if (!raw) return { ...EMPTY, pending: [], conflicts: [] };
     const parsed = JSON.parse(raw) as Partial<OfflineState>;
     return { pending: parsed.pending ?? [], conflicts: parsed.conflicts ?? [] };
@@ -203,7 +203,7 @@ export async function mutateOfflineState(
     if (bytes > MAX_STATE_BYTES) {
       throw new OfflineStateTooLargeError(bytes);
     }
-    await AsyncStorage.setItem(stateKey(userId), serialised);
+    await getPlatform().storage.setItem(stateKey(userId), serialised);
   });
 }
 
@@ -242,7 +242,7 @@ function legacyQueueKey(userId: string): string {
  * and nothing is written on a guess.
  */
 export async function migrateLegacyQueue(userId: string): Promise<void> {
-  const raw = await AsyncStorage.getItem(legacyQueueKey(userId));
+  const raw = await getPlatform().storage.getItem(legacyQueueKey(userId));
   if (!raw) return;
 
   let legacy: Array<Record<string, any>> = [];
@@ -250,7 +250,7 @@ export async function migrateLegacyQueue(userId: string): Promise<void> {
     legacy = JSON.parse(raw) as Array<Record<string, any>>;
   } catch {
     // Unreadable: nothing recoverable, and leaving the key would retry forever.
-    await AsyncStorage.removeItem(legacyQueueKey(userId));
+    await getPlatform().storage.removeItem(legacyQueueKey(userId));
     return;
   }
 
@@ -282,5 +282,5 @@ export async function migrateLegacyQueue(userId: string): Promise<void> {
     }
   });
 
-  await AsyncStorage.removeItem(legacyQueueKey(userId));
+  await getPlatform().storage.removeItem(legacyQueueKey(userId));
 }

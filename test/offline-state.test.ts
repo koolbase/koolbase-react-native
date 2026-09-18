@@ -1,3 +1,4 @@
+import { memoryPlatform, setPlatform } from '../src/platform';
 import {
   mutateOfflineState,
   readOfflineState,
@@ -6,8 +7,7 @@ import {
 
 describe('offline state', () => {
   beforeEach(async () => {
-    const store = await import('./mocks/async-storage');
-    (store.default as any).__reset();
+    setPlatform(memoryPlatform());
   });
 
   /**

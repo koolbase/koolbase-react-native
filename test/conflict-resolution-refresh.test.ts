@@ -1,6 +1,7 @@
 import { KoolbaseDatabase } from '../src/database';
 import { KoolbaseDataError } from '../src/database-errors';
 import { mutateOfflineState, readOfflineState } from '../src/offline-state';
+import { memoryPlatform, setPlatform } from '../src/platform';
 
 /**
  * A refused resolution must teach the stored conflict, not just gate it.
@@ -28,8 +29,7 @@ describe('conflict resolution refresh-on-refusal', () => {
     });
 
   beforeEach(async () => {
-    const store = await import('./mocks/async-storage');
-    (store.default as any).__reset();
+    setPlatform(memoryPlatform());
     await seedConflict();
   });
 

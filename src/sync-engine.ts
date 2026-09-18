@@ -5,7 +5,7 @@ import {
   QueuedWrite,
 } from './offline-state';
 import { KoolbaseUnauthenticatedError } from './errors';
-import NetInfo from '@react-native-community/netinfo';
+import { getPlatform } from './platform';
 import {
   invalidateCache,
   removeCachedRecord,
@@ -85,10 +85,8 @@ export class SyncEngine {
   }
 
   start(): void {
-    this.unsubscribe = NetInfo.addEventListener(state => {
-      if (state.isConnected && state.isInternetReachable !== false) {
-        this.flush();
-      }
+    this.unsubscribe = getPlatform().network.onChange(online => {
+      if (online) this.flush();
     });
   }
 
