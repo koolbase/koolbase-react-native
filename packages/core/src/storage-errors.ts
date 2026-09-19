@@ -1,4 +1,4 @@
-import { KoolbaseError, KoolbaseUnauthenticatedError } from './errors';
+import { KoolbaseError, KoolbaseUnauthenticatedError } from './errors.js';
 /**
  * Base error type for all Koolbase storage errors. Catchable via
  * `instanceof KoolbaseStorageError` to handle any storage-related failure

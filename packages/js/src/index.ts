@@ -8,8 +8,8 @@
 // sign-in (use the web OAuth flows against the same auth endpoints).
 
 export * from '@koolbase/core';
-export { BrowserAuthStorage } from './auth-storage';
-export { browserPlatform } from './platform';
+export { BrowserAuthStorage } from './auth-storage.js';
+export { browserPlatform } from './platform.js';
 
 import {
   KoolbaseAuth,
@@ -24,7 +24,7 @@ import {
   type KoolbaseConfig,
   type VersionCheckResult,
 } from '@koolbase/core';
-import { browserPlatform } from './platform';
+import { browserPlatform } from './platform.js';
 
 let _auth: KoolbaseAuth | null = null;
 let _db: KoolbaseDatabase | null = null;

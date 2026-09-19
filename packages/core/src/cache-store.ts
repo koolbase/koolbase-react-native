@@ -1,5 +1,5 @@
-import { getPlatform } from './platform';
-import { KoolbaseRecord, LegacyPendingWrite, QueryResult } from './types';
+import { getPlatform } from './platform.js';
+import { KoolbaseRecord, LegacyPendingWrite, QueryResult } from './types.js';
 
 const CACHE_VERSION = 'v1';
 

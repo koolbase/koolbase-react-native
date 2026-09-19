@@ -3,7 +3,7 @@ export interface KoolbaseConfig {
    * Host platform adapter. Defaults to React Native. A web package or a test
    * harness supplies its own; app code normally leaves this unset.
    */
-  platform?: import('./platform').PlatformAdapter;
+  platform?: import('./platform.js').PlatformAdapter;
   publicKey: string;
   baseUrl: string;
   analyticsEnabled?: boolean;
@@ -180,7 +180,7 @@ export interface UpsertResult {
 
 /**
  * The 9.1.x queue entry shape. Superseded: the observable queue API returns
- * the PendingWrite from './pending-write'; this shape survives only for
+ * the PendingWrite from './pending-write.js'; this shape survives only for
  * migrateLegacyQueue, which drains the old storage key on first sync.
  * No longer part of the public surface as of 9.2.0.
  */

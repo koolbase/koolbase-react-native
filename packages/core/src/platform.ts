@@ -1,5 +1,5 @@
 // Shared across module instances; see shared.ts for why.
-import { shared, setShared } from './shared';
+import { shared, setShared } from './shared.js';
 
 // The platform seam.
 //
@@ -56,7 +56,7 @@ export interface PlatformAdapter {
    * it is installed; a browser answers with IndexedDB and says so in its
    * README, since nothing JavaScript can read is secure against XSS.
    */
-  authStorage(): import('./types').KoolbaseAuthStorage | null;
+  authStorage(): import('./types.js').KoolbaseAuthStorage | null;
 }
 
 /**

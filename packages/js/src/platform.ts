@@ -1,5 +1,5 @@
 import type { PlatformAdapter, PlatformStorage } from '@koolbase/core';
-import { BrowserAuthStorage } from './auth-storage';
+import { BrowserAuthStorage } from './auth-storage.js';
 
 // The browser host, expressed through the platform seam.
 //

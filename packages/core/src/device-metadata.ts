@@ -1,4 +1,4 @@
-import { getPlatform } from './platform';
+import { getPlatform } from './platform.js';
 
 /**
  * Koolbase React Native SDK version. Sent in the `x-koolbase-sdk-version`

@@ -1,4 +1,4 @@
-import { KoolbaseError, KoolbaseUnauthenticatedError } from './errors';
+import { KoolbaseError, KoolbaseUnauthenticatedError } from './errors.js';
 /**
  * Base class for errors surfaced by the Koolbase data layer (database reads
  * and writes). Every data error carries a `message` and, when the server

@@ -3,14 +3,14 @@ import {
   mutateOfflineState,
   migrateLegacyQueue,
   QueuedWrite,
-} from './offline-state';
-import { KoolbaseUnauthenticatedError } from './errors';
-import { getPlatform } from './platform';
+} from './offline-state.js';
+import { KoolbaseUnauthenticatedError } from './errors.js';
+import { getPlatform } from './platform.js';
 import {
   invalidateCache,
   removeCachedRecord,
-} from './cache-store';
-import { KoolbaseConfig } from './types';
+} from './cache-store.js';
+import { KoolbaseConfig } from './types.js';
 
 type SyncCallback = () => void;
 

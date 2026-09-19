@@ -5,5 +5,9 @@ module.exports = {
   preset: 'ts-jest',
   testEnvironment: 'node',
   roots: ['<rootDir>/test'],
+  // Sources carry .js extensions on relative imports because Node's ESM
+  // loader requires them. TypeScript maps ./x.js to ./x.ts; jest does not,
+  // so it is told the same rule here.
+  moduleNameMapper: { '^(\\.{1,2}/.*)\\.js$': '$1' },
   transform: { '^.+\\.ts$': ['ts-jest', { tsconfig: '<rootDir>/tsconfig.test.json' }] },
 };

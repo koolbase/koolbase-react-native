@@ -1,4 +1,4 @@
-import { QueuedWrite } from './offline-state';
+import { QueuedWrite } from './offline-state.js';
 
 /**
  * A change made offline, waiting to be sent.

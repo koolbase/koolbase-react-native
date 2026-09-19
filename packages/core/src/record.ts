@@ -1,4 +1,4 @@
-import { KoolbaseRecord } from './types';
+import { KoolbaseRecord } from './types.js';
 
 // Converts the flat public wire shape into a KoolbaseRecord.
 // Server sends: { $id, $createdAt, $updatedAt, $collection, $createdBy?, ...fields }

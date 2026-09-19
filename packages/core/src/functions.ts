@@ -1,12 +1,12 @@
-import { functionInvokeError } from './function-errors';
-import { KoolbaseUnauthenticatedError } from './errors';
+import { functionInvokeError } from './function-errors.js';
+import { KoolbaseUnauthenticatedError } from './errors.js';
 import {
   KoolbaseConfig,
   FunctionInvokeResult,
   FunctionRuntime,
   DeployOptions,
   DeployResult,
-} from './types';
+} from './types.js';
 
 export class KoolbaseFunctions {
   private config: KoolbaseConfig;

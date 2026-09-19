@@ -6,7 +6,7 @@
 // React Native platform adapter and keychain-backed session storage.
 
 export * from '@koolbase/core';
-export { reactNativePlatform } from './platform';
+export { reactNativePlatform } from './platform.js';
 
 import {
   KoolbaseAuth,
@@ -22,7 +22,7 @@ import {
   type KoolbaseConfig,
   type VersionCheckResult,
 } from '@koolbase/core';
-import { reactNativePlatform } from './platform';
+import { reactNativePlatform } from './platform.js';
 
 let _auth: KoolbaseAuth | null = null;
 let _db: KoolbaseDatabase | null = null;
@@ -154,4 +154,4 @@ export const Koolbase = {
   },
 };
 
-export { SecureAuthStorage } from './auth-storage';
+export { SecureAuthStorage } from './auth-storage.js';

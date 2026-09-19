@@ -1,4 +1,4 @@
-import { KoolbaseConfig } from './types';
+import { KoolbaseConfig } from './types.js';
 
 // ─── Models ──────────────────────────────────────────────────────────────────
 

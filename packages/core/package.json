@@ -2,13 +2,13 @@
   "name": "@koolbase/core",
   "version": "10.0.0",
   "description": "Koolbase SDK core \u2014 shared behaviour behind @koolbase/react-native and @koolbase/js. Install one of those, not this.",
-  "main": "dist/index.js",
-  "types": "dist/index.d.ts",
+  "main": "./dist/cjs/index.js",
+  "types": "./dist/esm/index.d.ts",
   "files": [
     "dist"
   ],
   "scripts": {
-    "build": "tsc",
+    "build": "node ../../scripts/build-package.js core",
     "test": "jest"
   },
   "license": "MIT",
@@ -26,5 +26,20 @@
     "jest": "^30.4.2",
     "ts-jest": "^29.4.12",
     "typescript": "^5.0.0"
-  }
+  },
+  "module": "./dist/esm/index.js",
+  "exports": {
+    ".": {
+      "import": {
+        "types": "./dist/esm/index.d.ts",
+        "default": "./dist/esm/index.js"
+      },
+      "require": {
+        "types": "./dist/cjs/index.d.ts",
+        "default": "./dist/cjs/index.js"
+      }
+    },
+    "./package.json": "./package.json"
+  },
+  "sideEffects": false
 }

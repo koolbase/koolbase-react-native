@@ -2,7 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import NetInfo from '@react-native-community/netinfo';
 import { AppState, AppStateStatus, Platform } from 'react-native';
 import type { PlatformAdapter } from '@koolbase/core';
-import { SecureAuthStorage, isKeychainAvailable } from './auth-storage';
+import { SecureAuthStorage, isKeychainAvailable } from './auth-storage.js';
 
 // The React Native host, expressed through the platform seam. This is the
 // only file in the package that imports a native module; everything the SDK

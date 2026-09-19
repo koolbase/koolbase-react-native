@@ -1,4 +1,4 @@
-import { KoolbaseError } from './errors';
+import { KoolbaseError } from './errors.js';
 /**
  * Base error type for all Koolbase auth errors. Catchable via
  * `instanceof KoolbaseAuthError` to handle any auth-related failure

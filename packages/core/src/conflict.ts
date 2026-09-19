@@ -1,4 +1,4 @@
-import { ConflictReason } from './offline-state';
+import { ConflictReason } from './offline-state.js';
 
 /** Resolves conflicts by id. */
 export interface ConflictResolver {

@@ -1,4 +1,4 @@
-import { KoolbaseError, KoolbaseUnauthenticatedError } from './errors';
+import { KoolbaseError, KoolbaseUnauthenticatedError } from './errors.js';
 import {
   KoolbaseConfig,
   UploadOptions,
@@ -6,11 +6,11 @@ import {
   KoolbaseObject,
   KoolbaseObjectVersion,
   KoolbaseImageTransform,
-} from './types';
+} from './types.js';
 import {
   KoolbaseStorageError,
   koolbaseStorageErrorFromResponse,
-} from './storage-errors';
+} from './storage-errors.js';
 
 
 // --- Cloudflare image-transform URL helpers -------------------------------

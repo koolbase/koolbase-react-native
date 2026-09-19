@@ -1,6 +1,6 @@
-import { cacheRecord, removeCachedRecord } from './cache-store';
-import { KoolbaseConfig, RealtimeCallback, RealtimeEvent } from './types';
-import { recordFromWire } from './record';
+import { cacheRecord, removeCachedRecord } from './cache-store.js';
+import { KoolbaseConfig, RealtimeCallback, RealtimeEvent } from './types.js';
+import { recordFromWire } from './record.js';
 
 type TokenProvider = () => Promise<string | null>;
 

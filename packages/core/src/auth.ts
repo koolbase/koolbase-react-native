@@ -14,7 +14,7 @@ import {
   SendOtpParams,
   SignInWithAppleParams,
   VerifyOtpParams,
-} from './types';
+} from './types.js';
 import {
   AccountLockedError,
   EmailAlreadyInUseError,
@@ -40,10 +40,10 @@ import {
   GoogleEmailRequiredError,
   GoogleSignInNotConfiguredError,
   InvalidGoogleTokenError,
-} from './auth-errors';
-import type { SignInWithGoogleParams } from './types';
-import { getPlatform } from './platform';
-import { DeviceMetadata } from './device-metadata';
+} from './auth-errors.js';
+import type { SignInWithGoogleParams } from './types.js';
+import { getPlatform } from './platform.js';
+import { DeviceMetadata } from './device-metadata.js';
 
 export class KoolbaseAuth {
   private config: KoolbaseConfig;

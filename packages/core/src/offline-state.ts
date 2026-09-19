@@ -1,5 +1,5 @@
-import { getPlatform } from './platform';
-import { shared } from './shared';
+import { getPlatform } from './platform.js';
+import { shared } from './shared.js';
 
 /**
  * The offline system's correctness-critical state: writes waiting to be sent,

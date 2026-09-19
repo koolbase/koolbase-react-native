@@ -1,6 +1,6 @@
-import { getPlatform } from './platform';
-import { KoolbaseConfig } from './types';
-import { getOrCreateDeviceId } from './device-id';
+import { getPlatform } from './platform.js';
+import { KoolbaseConfig } from './types.js';
+import { getOrCreateDeviceId } from './device-id.js';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 

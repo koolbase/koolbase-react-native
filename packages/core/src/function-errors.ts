@@ -1,4 +1,4 @@
-import { KoolbaseError, KoolbaseUnauthenticatedError } from './errors';
+import { KoolbaseError, KoolbaseUnauthenticatedError } from './errors.js';
 
 /**
  * A Function call did not succeed.

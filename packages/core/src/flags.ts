@@ -1,4 +1,4 @@
-import { BootstrapPayload, KoolbaseConfig, VersionCheckResult } from './types';
+import { BootstrapPayload, KoolbaseConfig, VersionCheckResult } from './types.js';
 
 export class KoolbaseFlags {
   private config: KoolbaseConfig;

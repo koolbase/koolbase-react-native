@@ -2,16 +2,16 @@ import {
   KoolbaseError,
   KoolbaseOfflineBaselineUnavailableError,
   KoolbaseUnauthenticatedError,
-} from './errors';
-import { cacheRecord, getCachedRecord, removeCachedRecord } from './cache-store';
+} from './errors.js';
+import { cacheRecord, getCachedRecord, removeCachedRecord } from './cache-store.js';
 import {
   readOfflineState,
   mutateOfflineState,
   queueWrite,
   QueuedConflict,
-} from './offline-state';
-import { KoolbaseConflict, ConflictResolver } from './conflict';
-import { PendingWrite, toPendingWrite } from './pending-write';
+} from './offline-state.js';
+import { KoolbaseConflict, ConflictResolver } from './conflict.js';
+import { PendingWrite, toPendingWrite } from './pending-write.js';
 import {
   KoolbaseConfig,
   KoolbaseRecord,
@@ -23,17 +23,17 @@ import {
   KoolbaseVector,
   SemanticSearchResult,
   SearchMode,
-} from './types';
+} from './types.js';
 import {
   getCached,
   setCached,
   invalidateCache,
   optimisticallyInsert,
   hashQuery,
-} from './cache-store';
-import { SyncEngine } from './sync-engine';
-import { recordFromWire } from './record';
-import { koolbaseDataError, KoolbaseDataError } from './database-errors';
+} from './cache-store.js';
+import { SyncEngine } from './sync-engine.js';
+import { recordFromWire } from './record.js';
+import { koolbaseDataError, KoolbaseDataError } from './database-errors.js';
 
 function generateWriteId(): string {
   return 'local_' + Math.random().toString(36).slice(2) + Date.now().toString(36);

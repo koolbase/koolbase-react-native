@@ -1,4 +1,4 @@
-import { getPlatform } from './platform';
+import { getPlatform } from './platform.js';
 
 // Single source of the anonymous device identifier for the whole SDK.
 // Generated once, persisted, and shared by messaging (registration keying),
