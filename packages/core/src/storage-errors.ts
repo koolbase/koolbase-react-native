@@ -106,6 +106,34 @@ export class KoolbaseStoragePermissionError extends KoolbaseStorageError {
  * 409 but means "path collides"); branch on the error type via
  * `instanceof`, not on status.
  */
+/**
+ * The presigned upload was confirmed after its window closed.
+ *
+ * An upload URL has a lifetime. A user who picks a file, gets distracted and
+ * comes back twenty minutes later hits this — so it is a retry, not a
+ * failure: presign again and send the same bytes. Worth catching rather than
+ * showing "upload failed" to someone whose file was fine.
+ */
+export class KoolbaseUploadExpiredError extends KoolbaseStorageError {
+  constructor(message?: string) {
+    super(message ?? 'This upload is past the confirmation window — please re-upload', 'upload_expired');
+    this.name = 'KoolbaseUploadExpiredError';
+    Object.setPrototypeOf(this, KoolbaseUploadExpiredError.prototype);
+  }
+}
+
+/**
+ * A bucket cap set below what the bucket already holds. A dashboard
+ * operation rather than an app one, mapped so it does not arrive untyped.
+ */
+export class KoolbaseCapBelowUsageError extends KoolbaseStorageError {
+  constructor(message?: string) {
+    super(message ?? 'The cap is below the bucket\'s current usage', 'cap_below_usage');
+    this.name = 'KoolbaseCapBelowUsageError';
+    Object.setPrototypeOf(this, KoolbaseCapBelowUsageError.prototype);
+  }
+}
+
 export class KoolbaseStorageQuotaError extends KoolbaseStorageError {
   constructor(message?: string) {
     super(message ?? 'Bucket quota exceeded', 'quota_exceeded');
@@ -221,6 +249,10 @@ export function koolbaseStorageError(
       return new KoolbaseStorageConflictError(message, body?.path);
     case 'quota_exceeded':
       return new KoolbaseStorageQuotaError(message);
+    case 'upload_expired':
+      return new KoolbaseUploadExpiredError(message);
+    case 'cap_below_usage':
+      return new KoolbaseCapBelowUsageError(message);
     case 'file_too_large':
       return new KoolbaseStorageFileTooLargeError(message);
     case 'mime_not_allowed':

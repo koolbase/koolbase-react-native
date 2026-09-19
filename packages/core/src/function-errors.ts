@@ -80,6 +80,35 @@ export class FunctionExecutionError extends FunctionInvokeError {
   }
 }
 
+/**
+ * The function ran past its timeout and was killed.
+ *
+ * Its own type because the remedy is different from a function that threw:
+ * a timeout means retry, or raise the function's timeout at deploy, or move
+ * the slow part elsewhere. Without this it arrived as FunctionExecutionError
+ * — indistinguishable from an exception, which is the one thing it is not.
+ * The server already tells them apart; it logs 504 as "timeout".
+ */
+export class FunctionTimeoutError extends FunctionInvokeError {
+  constructor(message: string) {
+    super(message, 504, 'timeout');
+    this.name = 'FunctionTimeoutError';
+    Object.setPrototypeOf(this, new.target.prototype);
+  }
+}
+
+/**
+ * Too many invocations, too fast. Distinct from a quota being spent: this one
+ * clears by waiting.
+ */
+export class FunctionRateLimitError extends FunctionInvokeError {
+  constructor(message: string) {
+    super(message, 429, 'rate_limit');
+    this.name = 'FunctionRateLimitError';
+    Object.setPrototypeOf(this, new.target.prototype);
+  }
+}
+
 /** Builds the right error for a failed invocation. */
 export function functionInvokeError(status: number, message: string): KoolbaseError {
   switch (status) {
@@ -95,6 +124,11 @@ export function functionInvokeError(status: number, message: string): KoolbaseEr
       return new FunctionValidationError(message);
     case 402:
       return new FunctionQuotaExceededError(message);
+    case 429:
+      return new FunctionRateLimitError(message);
+    case 504:
+      // Before the generic 5xx branch: a timeout is not an exception.
+      return new FunctionTimeoutError(message);
   }
   if (status >= 500) return new FunctionExecutionError(message, status);
   return new FunctionInvokeError(message, status);
