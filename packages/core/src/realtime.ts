@@ -191,10 +191,13 @@ export class KoolbaseRealtime {
     if (this.listeners.size === 0 || this.reconnectTimer) return;
     const delay = Math.min(3000 * Math.pow(2, this.reconnectAttempts), 60000);
     this.reconnectAttempts += 1;
+    // Same reason as the analytics flush: a pending reconnect must not be
+    // the thing that keeps a Node process alive.
     this.reconnectTimer = setTimeout(() => {
       this.reconnectTimer = null;
       void this.connect();
     }, delay);
+    (this.reconnectTimer as unknown as { unref?: () => void }).unref?.();
   }
 
   disconnect(): void {

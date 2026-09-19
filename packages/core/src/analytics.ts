@@ -55,6 +55,11 @@ export class KoolbaseAnalytics {
 
     // Periodic flush
     this.flushTimer = setInterval(() => this.flush(), FLUSH_INTERVAL_MS);
+    // A browser keeps the page alive regardless; Node counts this timer as
+    // work and will not exit while it is pending. Without unref, any script
+    // that initializes the SDK — a CLI, a test runner, an SSR build step —
+    // hangs after its last line. unref exists only on Node's timer object.
+    (this.flushTimer as unknown as { unref?: () => void }).unref?.();
 
     // Auto track app_open
     this.track('app_open');
