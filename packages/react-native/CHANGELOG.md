@@ -7,6 +7,26 @@ adheres to [Semantic Versioning][semver].
 [kac]: https://keepachangelog.com/en/1.1.0/
 [semver]: https://semver.org/
 
+## 10.4.0
+
+### Added
+
+- **`auth.verifyEmail(token)`** — complete email verification with a token
+  from a verification link. The endpoint and the Flutter SDK have had this;
+  the TypeScript SDKs did not, so an app's verify-email page had nothing to
+  call.
+
+- **`auth.resendVerificationEmail()`** — re-send the verification email to a
+  signed-in but unverified user. Returns `{ alreadyVerified, expiresAt,
+  cooldownUntil }`; an already-verified account is a no-op that says so
+  rather than an error, which is what a resend button needs when the user
+  verified in another tab.
+
+  The server throttles this, and the refusal now arrives typed:
+  `VerificationResendCooldownError` carries `cooldownUntil` so you can show a
+  countdown, and `VerificationResendDailyCapError` is separate because the
+  remedy differs — wait seconds versus wait until tomorrow.
+
 ## 10.3.0
 
 ### Fixed
