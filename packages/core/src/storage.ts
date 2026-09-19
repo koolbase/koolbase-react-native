@@ -114,7 +114,14 @@ export class KoolbaseStorage {
    */
   async upload(options: UploadOptions): Promise<UploadResult> {
     const overwrite = options.overwrite ?? false;
-    const contentType = options.file.type;
+    // A Blob (browser File included) knows its own type; the React Native
+    // URI form carries it alongside. Falling back to octet-stream keeps a
+    // typeless Blob from presigning with an empty content type, which R2
+    // then refuses at PUT.
+    const isBlob = typeof Blob !== 'undefined' && options.file instanceof Blob;
+    const contentType = isBlob
+      ? (options.file as Blob).type || 'application/octet-stream'
+      : (options.file as { type: string }).type;
 
     // ─── Step 1: Get presigned upload URL ───
     const urlRes = await fetch(
@@ -139,10 +146,15 @@ export class KoolbaseStorage {
     const { upload_url } = (await urlRes.json()) as { upload_url: string };
 
     // ─── Step 2: Upload directly to R2 ───
-    // RN's fetch resolves local file URIs and Blob bodies on a raw PUT.
     // R2 presigned URLs expect raw binary, NOT multipart/form-data.
-    const fileResp = await fetch(options.file.uri);
-    const fileBlob = await fileResp.blob();
+    //
+    // A browser hands us the bytes already: a File from an input is a Blob,
+    // and fetching its .uri would be fetching undefined. React Native hands
+    // us a local URI, and its fetch resolves that into a Blob — which is why
+    // the two hosts differ here and nowhere else in this method.
+    const fileBlob = isBlob
+      ? (options.file as Blob)
+      : await (await fetch((options.file as { uri: string }).uri)).blob();
     const fileSize = fileBlob.size;
 
     const uploadRes = await fetch(upload_url, {

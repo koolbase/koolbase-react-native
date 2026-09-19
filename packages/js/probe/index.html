@@ -45,6 +45,13 @@
   <button id="online">Restore fetch</button>
 </div>
 
+<div class="row">
+  <input id="bucket" value="probe-uploads" size="16">
+  <input id="file" type="file">
+  <button id="upload">Upload</button>
+  <button id="roundtrip">Upload + download + compare</button>
+</div>
+
 <div id="log"></div>
 
 <script src="./koolbase.js"></script>
@@ -99,6 +106,48 @@ $('online').onclick = () => { if (realFetch) window.fetch = realFetch; log('fetc
 
 window.addEventListener('online', () => log('event: online', 'ev'));
 window.addEventListener('offline', () => log('event: offline', 'ev'));
+// The upload gate: a presigned URL is not an upload. This round-trips real
+// bytes and compares them, because a PUT that returns 200 having sent
+// `undefined` would still look like a success in the Network panel.
+$('upload').onclick = run('upload', async () => {
+  const f = $('file').files[0];
+  if (!f) throw new Error('choose a file first');
+  const res = await Koolbase.storage.upload({
+    bucket: $('bucket').value,
+    path: `probe-${Date.now()}-${f.name}`,
+    file: f,                 // a File IS a Blob — passed straight through
+    overwrite: true,
+  });
+  return { id: res.object?.id, size: res.object?.size, type: res.object?.contentType };
+});
+
+$('roundtrip').onclick = run('round trip', async () => {
+  const f = $('file').files[0];
+  if (!f) throw new Error('choose a file first');
+  const path = `probe-${Date.now()}-${f.name}`;
+  const bucket = $('bucket').value;
+
+  const { object } = await Koolbase.storage.upload({ bucket, path, file: f, overwrite: true });
+  log(`  uploaded: ${object?.size} bytes, type=${object?.contentType}`);
+
+  // Size from the server must match the file the browser read. A mismatch
+  // means the PUT sent something other than the bytes.
+  const sent = f.size;
+  if (object?.size !== sent) throw new Error(`size mismatch: sent ${sent}, stored ${object?.size}`);
+
+  const url = await Koolbase.storage.getDownloadUrl(bucket, path);
+  const back = await fetch(url);
+  if (!back.ok) throw new Error(`download failed: ${back.status}`);
+  const bytes = new Uint8Array(await back.arrayBuffer());
+  const original = new Uint8Array(await f.arrayBuffer());
+
+  if (bytes.length !== original.length) throw new Error(`length differs: ${original.length} vs ${bytes.length}`);
+  for (let i = 0; i < bytes.length; i++) {
+    if (bytes[i] !== original[i]) throw new Error(`bytes differ at offset ${i}`);
+  }
+  return { bytes: bytes.length, identical: true, contentType: back.headers.get('content-type') };
+});
+
 log('ready — enter a publishable key and Initialize');
 </script>
 </body>

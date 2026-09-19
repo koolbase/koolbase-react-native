@@ -254,11 +254,16 @@ export interface SemanticSearchResult {
 export interface UploadOptions {
   bucket: string;
   path: string;
-  file: {
-    uri: string;
-    name: string;
-    type: string;
-  };
+  /**
+   * The bytes to upload, in whichever form the host produces them.
+   *
+   * A browser gives you a `File` from an `<input type="file">` or a `Blob`
+   * you built; pass it directly. React Native gives you a local URI from an
+   * image picker or the file system; pass `{ uri, name, type }` and the SDK
+   * resolves it. A Blob already carries its own content type, so `type` is
+   * only needed for the URI form.
+   */
+  file: Blob | { uri: string; name: string; type: string };
   /**
    * If `false` (default in v5+), an upload to a path where an object
    * already exists is rejected with `KoolbaseStorageConflictError`. Pass
