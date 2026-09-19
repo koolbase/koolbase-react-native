@@ -35,6 +35,16 @@ let _flags: KoolbaseFlags | null = null;
 let _analytics: KoolbaseAnalytics | null = null;
 let _initialized = false;
 
+// The in-flight initialize, so overlapping callers await the same one.
+//
+// A boolean guard is not enough: the check happens before the first await
+// and the flag is set after the last, so two calls that overlap in that
+// window both pass and both build a whole SDK — two of every client, two
+// analytics flush timers, two sync engines over one queue. React strict
+// mode does exactly this in development, and so does any app that
+// initializes from two components.
+let _initializing: Promise<void> | null = null;
+
 function ensureInitialized() {
   if (!_initialized) {
     throw new Error('Koolbase not initialized. Call Koolbase.initialize(config) first.');
@@ -44,6 +54,8 @@ function ensureInitialized() {
 export const Koolbase = {
   async initialize(config: KoolbaseConfig): Promise<void> {
     if (_initialized) return;
+    if (_initializing) return _initializing;
+    _initializing = (async () => {
 
     setPlatform(config.platform ?? browserPlatform());
 
@@ -78,7 +90,15 @@ export const Koolbase = {
       await _analytics.init(config.appVersion);
     }
 
-    _initialized = true;
+      _initialized = true;
+    })();
+    try {
+      await _initializing;
+    } finally {
+      // Cleared either way: a failed initialize must be retryable rather
+      // than leaving every later caller awaiting a rejected promise.
+      _initializing = null;
+    }
   },
 
   get auth(): KoolbaseAuth { ensureInitialized(); return _auth!; },
