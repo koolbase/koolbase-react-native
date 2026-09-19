@@ -7,6 +7,16 @@ is based on [Keep a Changelog][kac], and this project adheres to
 [kac]: https://keepachangelog.com/en/1.1.0/
 [semver]: https://semver.org/
 
+## 10.0.2
+
+### Fixed
+
+- **A Node process that initialized the SDK never exited.** The analytics
+  flush interval, and a pending realtime reconnect, counted as work on Node's
+  event loop, so a CLI, a test runner or an SSR build step hung after its last
+  line. Both timers are now unref'd where the runtime supports it. A browser
+  is unaffected: the page keeps itself alive regardless.
+
 ## 10.0.1
 
 ### Fixed
