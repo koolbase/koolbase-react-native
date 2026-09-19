@@ -7,6 +7,24 @@ is based on [Keep a Changelog][kac], and this project adheres to
 [kac]: https://keepachangelog.com/en/1.1.0/
 [semver]: https://semver.org/
 
+## 10.3.0
+
+### Fixed
+
+- **Analytics events carried no user unless the app called `identify()`.**
+  Nothing errored when it never did, so every event landed anonymous and
+  retention, funnels and per-user analysis were quietly worthless — found in
+  a real project as 53 events, 8 registered users, and not one event carrying
+  a user id. The SDK already knows who is signed in; it now says so. The
+  Flutter SDK fixed this in 11.2.0 and the TypeScript SDKs did not, until now.
+
+  `identify()` still wins for an app with its own identity system, and
+  `reset()` releases that override and falls back to the Koolbase session.
+
+  If you have been calling `identify()` yourself, nothing changes. If you have
+  not, your events will start carrying users — which is the point, though it
+  means your analytics before and after this version are not comparable.
+
 ## 10.2.0
 
 ### Added
