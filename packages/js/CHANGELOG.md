@@ -7,6 +7,49 @@ is based on [Keep a Changelog][kac], and this project adheres to
 [kac]: https://keepachangelog.com/en/1.1.0/
 [semver]: https://semver.org/
 
+## 11.1.0
+
+### Fixed
+
+- **Fourteen error codes the API emits were not mapped**, so they arrived as
+  a generic error and an app's `instanceof` branch silently never ran. The
+  most consequential is `contact_not_verified` — in a project with verified
+  contact required, a user who registers, does not click the link, and comes
+  back is the *commonest* auth failure there is, and it had no type. Now:
+
+  | Code | Class |
+  |---|---|
+  | `contact_not_verified`, `email_not_verified` | `ContactNotVerifiedError` |
+  | `signups_disabled` | `SignupsDisabledError` |
+  | `weak_password` | `WeakPasswordError` (existed, never mapped from the server) |
+  | `account_exists` | `AccountExistsError` |
+  | `token_expired` | `TokenExpiredError` |
+  | `token_used` | `TokenAlreadyUsedError` |
+  | `invalid_token` | `UnlockTokenInvalidError` |
+  | `invalid_password` | `CurrentPasswordIncorrectError` |
+  | `oauth_only_account` | `OAuthOnlyAccountError` |
+  | `unsupported_oauth_provider` | `UnsupportedOAuthProviderError` |
+  | `session_required` | `SessionRequiredError` |
+  | `insufficient_authority` | `InsufficientAuthorityError` |
+  | `last_credential` | `LastCredentialError` |
+  | `hide_requires_verification` | `HideRequiresVerificationError` |
+
+  `CurrentPasswordIncorrectError` is named for the operation rather than the
+  code: the server calls it `invalid_password`, which reads like a rejected
+  new password and means the opposite.
+
+- **`WeakPasswordError` carries the server's message** when there is one. The
+  SDK checks length before sending; a project may require more, and "must be
+  at least 8 characters" would then be both wrong and unhelpful. Its
+  constructor argument is optional, so existing code is unaffected.
+
+### Why these were missing
+
+Nothing inside the SDK can tell that a code fell through — the generic error
+is a valid object and the app's branch simply does not run. There is now a
+test that asserts every code maps to its own class, so a new code added to the
+API without a case here fails the build rather than a user's password reset.
+
 ## 11.0.0
 
 ### Read before upgrading
