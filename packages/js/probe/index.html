@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>@koolbase/js — browser probe</title>
+<style>
+  body { font: 14px/1.4 -apple-system, system-ui, sans-serif; background: #0b0b0f; color: #c9c9d4; margin: 0; padding: 20px; }
+  h1 { color: #fff; font-size: 18px; margin: 0 0 4px; }
+  .status { color: #8ab4f8; font-size: 12px; margin-bottom: 12px; }
+  .row { display: flex; gap: 6px; margin-bottom: 6px; flex-wrap: wrap; }
+  button { background: #2d6cdf; color: #fff; border: 0; border-radius: 8px; padding: 8px 12px; font-weight: 600; font-size: 12px; cursor: pointer; }
+  button:disabled { opacity: .4; }
+  input { background: #16161d; color: #fff; border: 1px solid #333; border-radius: 6px; padding: 6px 8px; font-size: 12px; }
+  #log { font: 11px/1.5 ui-monospace, monospace; white-space: pre-wrap; margin-top: 12px; }
+  .ok { color: #7ee787 } .err { color: #ff7b72 } .ev { color: #d2a8ff }
+</style>
+</head>
+<body>
+<h1>@koolbase/js — browser probe</h1>
+<div class="status" id="status">not initialized</div>
+
+<div class="row">
+  <input id="pk" placeholder="pk_… (publishable key)" size="40">
+  <input id="collection" value="rn_expenses" size="14">
+  <button id="init">Initialize</button>
+</div>
+<div class="row">
+  <input id="email" placeholder="email" size="24">
+  <input id="password" placeholder="password" type="password" size="14">
+  <button id="register">Register</button>
+  <button id="login">Login</button>
+  <button id="restore">Restore</button>
+  <button id="logout">Logout</button>
+</div>
+<div class="row">
+  <button id="insert">Insert</button>
+  <button id="query">Query</button>
+  <button id="pending">Pending?</button>
+  <button id="sync">Sync</button>
+  <button id="subscribe">Subscribe</button>
+  <button id="reload">Reload page</button>
+</div>
+<div class="row">
+  <button id="offline">Simulate offline (patch fetch)</button>
+  <button id="online">Restore fetch</button>
+</div>
+
+<div id="log"></div>
+
+<script src="./koolbase.js"></script>
+<script>
+// KoolbaseJS is the IIFE global esbuild produced from packages/js/src/index.ts.
+const { Koolbase } = KoolbaseJS;
+const $ = id => document.getElementById(id);
+const log = (msg, cls = '') => {
+  const t = new Date().toLocaleTimeString();
+  $('log').innerHTML += `<div class="${cls}">${t}  ${msg}</div>`;
+};
+const status = () => {
+  const u = Koolbase.auth?.currentUser;
+  $('status').textContent = `user: ${u?.email ?? 'null'} · online: ${navigator.onLine}`;
+};
+const run = (label, fn) => async () => {
+  try { const r = await fn(); log(`✓ ${label}${r !== undefined ? ' → ' + JSON.stringify(r).slice(0, 160) : ''}`, 'ok'); }
+  catch (e) { log(`✗ ${label}: ${e?.name} — ${e?.message}`, 'err'); }
+  status();
+};
+
+$('init').onclick = run('initialize', async () => {
+  await Koolbase.initialize({ publicKey: $('pk').value.trim(), baseUrl: 'https://api.koolbase.com' });
+  return 'ok';
+});
+$('register').onclick = run('register', () => Koolbase.auth.register({ email: $('email').value, password: $('password').value }));
+$('login').onclick = run('login', async () => { const s = await Koolbase.auth.login({ email: $('email').value, password: $('password').value }); return { user: s?.user?.email ?? Koolbase.auth.currentUser?.email }; });
+$('restore').onclick = run('restoreSession', () => Koolbase.auth.restoreSession());
+$('logout').onclick = run('logout', () => Koolbase.auth.logout());
+
+$('insert').onclick = run('insert', async () => {
+  const rec = await Koolbase.db.insert($('collection').value, { title: `web-${Date.now() % 100000}`, amount: 10 });
+  return rec.id;
+});
+$('query').onclick = run('query', async () => {
+  const r = await Koolbase.db.query($('collection').value, { limit: 5, orderBy: 'created_at', orderDesc: true });
+  return { n: r.records.length, total: r.total, fromCache: r.isFromCache };
+});
+$('pending').onclick = run('pendingWrites', async () => (await Koolbase.db.pendingWrites()).map(w => `${w.operation}:${w.collection}`));
+$('sync').onclick = run('syncPendingWrites', () => Koolbase.db.syncPendingWrites());
+$('subscribe').onclick = run('subscribe', () => {
+  Koolbase.realtime.subscribe($('collection').value, ev => log(`⚡ ${ev.type} ${ev.record?.id ?? ev.recordId}`, 'ev'));
+  return 'listening';
+});
+$('reload').onclick = () => location.reload();
+
+// Offline simulation: the sync engine discovers reachability by trying, so
+// a rejecting fetch is exactly what a dead network looks like to it.
+let realFetch = null;
+$('offline').onclick = () => { realFetch ??= window.fetch; window.fetch = () => Promise.reject(new TypeError('Failed to fetch')); log('fetch patched to fail'); };
+$('online').onclick = () => { if (realFetch) window.fetch = realFetch; log('fetch restored'); window.dispatchEvent(new Event('online')); };
+
+window.addEventListener('online', () => log('event: online', 'ev'));
+window.addEventListener('offline', () => log('event: offline', 'ev'));
+log('ready — enter a publishable key and Initialize');
+</script>
+</body>
+</html>

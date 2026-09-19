@@ -57,11 +57,11 @@ export class DeviceMetadata {
     const platform = getPlatform().info.os;
     const platformVersion = getPlatform().info.version;
     const deviceLabel = await this.getOrCreateDeviceLabel();
-    const userAgent = `koolbase-react-native/${koolbaseSdkVersion} (${platform} ${platformVersion})`;
-
+    // No User-Agent: a browser forbids setting it, and the same header set
+    // now goes out from both hosts. The platform and version below carry
+    // what it used to say.
     this.cached = {
-      'User-Agent': userAgent,
-      'x-koolbase-sdk': 'react-native',
+      'x-koolbase-sdk': getPlatform().info.os === 'web' ? 'js' : 'react-native',
       'x-koolbase-sdk-version': koolbaseSdkVersion,
       'x-koolbase-platform': platform,
       'x-koolbase-platform-version': platformVersion,
