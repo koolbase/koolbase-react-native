@@ -29,6 +29,18 @@ import {
   OtpRateLimitError,
   PhoneAlreadyLinkedError,
   MalformedSessionResponseError,
+  AccountExistsError,
+  ContactNotVerifiedError,
+  CurrentPasswordIncorrectError,
+  HideRequiresVerificationError,
+  InsufficientAuthorityError,
+  LastCredentialError,
+  OAuthOnlyAccountError,
+  SessionRequiredError,
+  SignupsDisabledError,
+  TokenAlreadyUsedError,
+  TokenExpiredError,
+  UnsupportedOAuthProviderError,
   RateLimitError,
   VerificationResendCooldownError,
   VerificationResendDailyCapError,
@@ -934,6 +946,56 @@ private async parseAppleSessionResponse(res: Response): Promise<KoolbaseSession>
         throw new UnlockTokenInvalidError();
       case 'rate_limit':
         throw new RateLimitError(msg || undefined);
+      // Verification state. Two codes, one situation — projectauth and the
+      // dashboard's auth package name it differently and an app should not
+      // have to know which spoke.
+
+      // Verification state. Two codes, one situation — projectauth and the
+      // dashboard's auth package name it differently and an app should not
+      // have to know which spoke.
+      case 'contact_not_verified':
+      case 'email_not_verified':
+        throw new ContactNotVerifiedError(msg || undefined);
+
+      // Registration
+      case 'signups_disabled':
+        throw new SignupsDisabledError(msg || undefined);
+      case 'weak_password':
+        // The class existed and was only ever thrown client-side for length.
+        // The server has its own rules, and a password that passes ours and
+        // fails theirs deserves the same error, not a generic one.
+        throw new WeakPasswordError(msg || undefined);
+      case 'account_exists':
+        throw new AccountExistsError(msg || undefined);
+
+      // Link tokens — verification and password reset
+      case 'token_expired':
+        throw new TokenExpiredError(msg || undefined);
+      case 'token_used':
+        throw new TokenAlreadyUsedError(msg || undefined);
+      case 'invalid_token':
+        throw new UnlockTokenInvalidError();
+
+      // Password change
+      case 'invalid_password':
+        throw new CurrentPasswordIncorrectError(msg || undefined);
+
+      // OAuth
+      case 'oauth_only_account':
+        throw new OAuthOnlyAccountError(msg || undefined);
+      case 'unsupported_oauth_provider':
+        throw new UnsupportedOAuthProviderError(msg || undefined);
+
+      // Authority
+      case 'session_required':
+        throw new SessionRequiredError(msg || undefined);
+      case 'insufficient_authority':
+        throw new InsufficientAuthorityError(msg || undefined);
+      case 'last_credential':
+        throw new LastCredentialError(msg || undefined);
+      case 'hide_requires_verification':
+        throw new HideRequiresVerificationError(msg || undefined);
+
       case 'resend_cooldown':
         throw new VerificationResendCooldownError(
           body.cooldown_until ? new Date(body.cooldown_until) : null,

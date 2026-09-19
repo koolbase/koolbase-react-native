@@ -1,0 +1,79 @@
+import { KoolbaseAuth } from '../src/auth';
+import * as errors from '../src/auth-errors';
+import { setPlatform } from '../src/platform';
+import { testPlatform } from './platform';
+
+// Every auth error code the API emits, mapped to the class an app catches.
+//
+// A code with no case falls through to a generic error, and the app's
+// `instanceof` branch silently never runs — the failure is invisible from
+// inside the SDK, which is why fourteen codes went unmapped without anyone
+// noticing. This table is the guard: add a code to the API, add it here, and
+// a missing case fails the build rather than a user's password reset.
+
+const config = { baseUrl: 'https://api.test', publicKey: 'pk' } as never;
+
+const cases: Array<[string, new (...a: never[]) => Error]> = [
+  ['invalid_credentials', errors.InvalidCredentialsError],
+  ['email_in_use', errors.EmailAlreadyInUseError],
+  ['account_disabled', errors.UserDisabledError],
+  ['account_locked', errors.AccountLockedError],
+  ['invalid_refresh_token', errors.SessionExpiredError],
+  ['token_revoked', errors.TokenRevokedError],
+  ['invalid_unlock_token', errors.UnlockTokenInvalidError],
+  ['rate_limit', errors.RateLimitError],
+  ['resend_cooldown', errors.VerificationResendCooldownError],
+  ['resend_daily_cap', errors.VerificationResendDailyCapError],
+
+  // The fourteen added in 11.1.0.
+  ['contact_not_verified', errors.ContactNotVerifiedError],
+  ['email_not_verified', errors.ContactNotVerifiedError],
+  ['signups_disabled', errors.SignupsDisabledError],
+  ['weak_password', errors.WeakPasswordError],
+  ['account_exists', errors.AccountExistsError],
+  ['token_expired', errors.TokenExpiredError],
+  ['token_used', errors.TokenAlreadyUsedError],
+  ['invalid_token', errors.UnlockTokenInvalidError],
+  ['invalid_password', errors.CurrentPasswordIncorrectError],
+  ['oauth_only_account', errors.OAuthOnlyAccountError],
+  ['unsupported_oauth_provider', errors.UnsupportedOAuthProviderError],
+  ['session_required', errors.SessionRequiredError],
+  ['insufficient_authority', errors.InsufficientAuthorityError],
+  ['last_credential', errors.LastCredentialError],
+  ['hide_requires_verification', errors.HideRequiresVerificationError],
+];
+
+describe('auth error mapping', () => {
+  beforeEach(async () => {
+    setPlatform(await testPlatform());
+  });
+
+  it.each(cases)('%s maps to its own class', async (code, Expected) => {
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: false,
+      status: 400,
+      json: async () => ({ code, error: 'server message' }),
+      text: async () => JSON.stringify({ code }),
+    }) as never;
+
+    const auth = new KoolbaseAuth(config);
+    await expect(
+      auth.login({ email: 'a@b.test', password: 'password123' })
+    ).rejects.toBeInstanceOf(Expected);
+  });
+
+  it('carries the server message rather than a canned one', async () => {
+    // The server knows why; the SDK should not overwrite it with a guess.
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: false,
+      status: 400,
+      json: async () => ({ code: 'weak_password', error: 'must contain a number' }),
+      text: async () => '',
+    }) as never;
+
+    const auth = new KoolbaseAuth(config);
+    await expect(
+      auth.login({ email: 'a@b.test', password: 'password123' })
+    ).rejects.toThrow('must contain a number');
+  });
+});

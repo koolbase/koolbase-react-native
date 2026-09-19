@@ -39,8 +39,14 @@ export class UserDisabledError extends KoolbaseAuthError {
 }
 
 export class WeakPasswordError extends KoolbaseAuthError {
-  constructor() {
-    super('Password must be at least 8 characters', 'weak_password');
+  /**
+   * The message is optional so the server's own rule can be carried through.
+   * The SDK checks length before sending; a project may require more than
+   * that, and "must be at least 8 characters" would then be wrong as well as
+   * unhelpful.
+   */
+  constructor(message?: string) {
+    super(message ?? 'Password must be at least 8 characters', 'weak_password');
     this.name = 'WeakPasswordError';
     Object.setPrototypeOf(this, WeakPasswordError.prototype);
   }
@@ -301,6 +307,145 @@ export class GoogleSignInNotConfiguredError extends KoolbaseAuthError {
  * from it is what produced a signed-in user whose every request went out as
  * `Bearer undefined`, so the SDK refuses instead.
  */
+/**
+ * Sign-in refused because the account has not verified its email or phone.
+ *
+ * In a project with require_verified_contact on, this is the most common auth
+ * error there is — the user registered, did not click the link, and came back.
+ * It arrived untyped until 11.1.0, so apps showed "something went wrong" for
+ * the one case with an obvious remedy: offer to resend.
+ */
+export class ContactNotVerifiedError extends KoolbaseAuthError {
+  constructor(message?: string) {
+    super(message ?? 'Verify your email or phone before signing in', 'contact_not_verified');
+    this.name = 'ContactNotVerifiedError';
+    Object.setPrototypeOf(this, ContactNotVerifiedError.prototype);
+  }
+}
+
+/** The project has registration turned off. Not a credential problem. */
+export class SignupsDisabledError extends KoolbaseAuthError {
+  constructor(message?: string) {
+    super(message ?? 'Registration is disabled for this project', 'signups_disabled');
+    this.name = 'SignupsDisabledError';
+    Object.setPrototypeOf(this, SignupsDisabledError.prototype);
+  }
+}
+
+/**
+ * A verification or reset link that has expired.
+ *
+ * Distinct from TokenAlreadyUsedError because the remedy differs: expired
+ * means request another, used means it already worked and they may simply be
+ * clicking an old email.
+ */
+export class TokenExpiredError extends KoolbaseAuthError {
+  constructor(message?: string) {
+    super(message ?? 'This link has expired — request a new one', 'token_expired');
+    this.name = 'TokenExpiredError';
+    Object.setPrototypeOf(this, TokenExpiredError.prototype);
+  }
+}
+
+/** A one-shot link clicked twice. Often means it already succeeded. */
+export class TokenAlreadyUsedError extends KoolbaseAuthError {
+  constructor(message?: string) {
+    super(message ?? 'This link has already been used', 'token_used');
+    this.name = 'TokenAlreadyUsedError';
+    Object.setPrototypeOf(this, TokenAlreadyUsedError.prototype);
+  }
+}
+
+/**
+ * The current password given for a password change was wrong.
+ *
+ * Named for the operation rather than the code: the server calls this
+ * `invalid_password`, which reads like a rejected new password and is not.
+ */
+export class CurrentPasswordIncorrectError extends KoolbaseAuthError {
+  constructor(message?: string) {
+    super(message ?? 'Current password is incorrect', 'invalid_password');
+    this.name = 'CurrentPasswordIncorrectError';
+    Object.setPrototypeOf(this, CurrentPasswordIncorrectError.prototype);
+  }
+}
+
+/**
+ * An OAuth sign-in for an email that already has an account by another
+ * method. The remedy is to sign in the original way and connect the provider
+ * afterwards, which the server's message says.
+ */
+export class AccountExistsError extends KoolbaseAuthError {
+  constructor(message?: string) {
+    super(
+      message ?? 'An account with this email already exists — sign in with your existing method first',
+      'account_exists'
+    );
+    this.name = 'AccountExistsError';
+    Object.setPrototypeOf(this, AccountExistsError.prototype);
+  }
+}
+
+/** A password attempt against an account that only has Google or Apple. */
+export class OAuthOnlyAccountError extends KoolbaseAuthError {
+  constructor(message?: string) {
+    super(message ?? 'This account uses Google or Apple sign-in and has no password', 'oauth_only_account');
+    this.name = 'OAuthOnlyAccountError';
+    Object.setPrototypeOf(this, OAuthOnlyAccountError.prototype);
+  }
+}
+
+/** A provider the project has not enabled. */
+export class UnsupportedOAuthProviderError extends KoolbaseAuthError {
+  constructor(message?: string) {
+    super(message ?? 'That sign-in provider is not supported', 'unsupported_oauth_provider');
+    this.name = 'UnsupportedOAuthProviderError';
+    Object.setPrototypeOf(this, UnsupportedOAuthProviderError.prototype);
+  }
+}
+
+/** The call needs a signed-in user and did not have one. */
+export class SessionRequiredError extends KoolbaseAuthError {
+  constructor(message?: string) {
+    super(message ?? 'This action requires a signed-in user', 'session_required');
+    this.name = 'SessionRequiredError';
+    Object.setPrototypeOf(this, SessionRequiredError.prototype);
+  }
+}
+
+/** The caller is authenticated but not permitted to do this. */
+export class InsufficientAuthorityError extends KoolbaseAuthError {
+  constructor(message?: string) {
+    super(message ?? 'You do not have permission to do that', 'insufficient_authority');
+    this.name = 'InsufficientAuthorityError';
+    Object.setPrototypeOf(this, InsufficientAuthorityError.prototype);
+  }
+}
+
+/**
+ * Refused because it would remove the account's last way of signing in —
+ * unlinking the only provider, or clearing the only password.
+ */
+export class LastCredentialError extends KoolbaseAuthError {
+  constructor(message?: string) {
+    super(message ?? 'This is the account\'s only sign-in method and cannot be removed', 'last_credential');
+    this.name = 'LastCredentialError';
+    Object.setPrototypeOf(this, LastCredentialError.prototype);
+  }
+}
+
+/** Hiding account existence needs verification on; the project has it off. */
+export class HideRequiresVerificationError extends KoolbaseAuthError {
+  constructor(message?: string) {
+    super(
+      message ?? 'Hiding account existence requires verified contact to be enabled',
+      'hide_requires_verification'
+    );
+    this.name = 'HideRequiresVerificationError';
+    Object.setPrototypeOf(this, HideRequiresVerificationError.prototype);
+  }
+}
+
 export class MalformedSessionResponseError extends KoolbaseAuthError {
   constructor(missing: string) {
     super(
