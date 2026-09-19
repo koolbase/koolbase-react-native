@@ -49,3 +49,4 @@ example/node_modules/
 example/ios/Pods/
 example/android/.gradle/
 example/android/app/build/
+packages/js/probe/koolbase.js
