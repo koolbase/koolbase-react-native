@@ -251,7 +251,6 @@ export function koolbaseDataError(
     case 'vector_field_not_found':
       return attach(new KoolbaseNotFoundError(message, code));
     case 'unauthenticated':
-    case 'session_expired':
     case 'invalid_token':
       return attach(new KoolbaseUnauthenticatedError(message));
     case 'permission_denied':

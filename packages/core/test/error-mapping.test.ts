@@ -19,7 +19,16 @@ const cases: Array<[string, new (...a: never[]) => Error]> = [
   ['account_disabled', errors.UserDisabledError],
   ['account_locked', errors.AccountLockedError],
   ['invalid_refresh_token', errors.SessionExpiredError],
-  ['token_revoked', errors.TokenRevokedError],
+  // token_revoked and session_expired are deliberately NOT here. The API
+  // does not emit them — an expired or rejected session comes back as
+  // invalid_refresh_token, which maps to SessionExpiredError above. Mapping
+  // codes the server never sends makes the contract read as though it does.
+  //
+  // TokenRevokedError stays as a class for the session_revoked contract on
+  // the backlog: explicit revocation — a sign-out-everywhere, an admin
+  // killing a session — is worth distinguishing from an expiry, but only
+  // once the server can actually establish it. A generic 401 cannot, and
+  // the SDK must not infer it.
   ['invalid_unlock_token', errors.UnlockTokenInvalidError],
   ['rate_limit', errors.RateLimitError],
   ['resend_cooldown', errors.VerificationResendCooldownError],

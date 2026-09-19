@@ -287,11 +287,16 @@ export class KoolbaseAuth {
       await this.refresh(persisted.refreshToken);
       return RestoreResult.Restored;
     } catch (e) {
-      if (
-        e instanceof SessionExpiredError ||
-        e instanceof TokenRevokedError ||
-        e instanceof InvalidCredentialsError
-      ) {
+      // Only a refresh the server refused clears the stored session, and
+      // only because the refresh token is the last credential there is — once
+      // it is rejected there is nothing left to try.
+      //
+      // InvalidCredentialsError used to be in this list. It means "these
+      // credentials are wrong", which during a restore points at the project
+      // key or the request rather than the user's session — and deleting the
+      // refresh token on that reading signs someone out with no way back.
+      // Nothing reaches here with it today; it stays out so nothing does.
+      if (e instanceof SessionExpiredError) {
         await this.clearSessionInternal();
         return RestoreResult.Expired;
       }
@@ -940,8 +945,6 @@ private async parseAppleSessionResponse(res: Response): Promise<KoolbaseSession>
       case 'invalid_refresh_token':
         // Refresh token rejected — the session is unrecoverable; re-login.
         throw new SessionExpiredError();
-      case 'token_revoked':
-        throw new TokenRevokedError();
       case 'invalid_unlock_token':
         throw new UnlockTokenInvalidError();
       case 'rate_limit':
@@ -1022,14 +1025,6 @@ private async parseAppleSessionResponse(res: Response): Promise<KoolbaseSession>
     if (msg.includes('invalid or expired unlock token')) {
       throw new UnlockTokenInvalidError();
     }
-    if (
-      msg.includes('session revoked') ||
-      msg.includes('token revoked') ||
-      msg.includes('session has been revoked')
-    ) {
-      throw new TokenRevokedError();
-    }
-
     throw new KoolbaseAuthError(
       msg || `Request failed: ${res.status}`,
       code || `http_${res.status}`
