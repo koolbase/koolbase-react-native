@@ -47,6 +47,40 @@ export class KoolbaseDataError extends KoolbaseError {
  *   }
  * }
  */
+/**
+ * An upsert whose filter matched more than one record.
+ *
+ * Refused rather than resolved: picking one of several would be a silent
+ * guess about which row the caller meant, and the wrong guess overwrites data
+ * nobody asked to change. Narrow the filter, or add a unique constraint over
+ * the fields you are matching on so the ambiguity cannot arise.
+ */
+export class KoolbaseAmbiguousMatchError extends KoolbaseDataError {
+  constructor(message?: string) {
+    super(message ?? 'Upsert match resolved to more than one record', 'ambiguous_match');
+    this.name = 'KoolbaseAmbiguousMatchError';
+    Object.setPrototypeOf(this, KoolbaseAmbiguousMatchError.prototype);
+  }
+}
+
+/** A unique constraint already covers those fields. */
+export class KoolbaseConstraintExistsError extends KoolbaseDataError {
+  constructor(message?: string) {
+    super(message ?? 'A unique constraint already exists for these fields', 'constraint_exists');
+    this.name = 'KoolbaseConstraintExistsError';
+    Object.setPrototypeOf(this, KoolbaseConstraintExistsError.prototype);
+  }
+}
+
+/** No such unique constraint. */
+export class KoolbaseConstraintNotFoundError extends KoolbaseDataError {
+  constructor(message?: string) {
+    super(message ?? 'Unique constraint not found', 'constraint_not_found');
+    this.name = 'KoolbaseConstraintNotFoundError';
+    Object.setPrototypeOf(this, KoolbaseConstraintNotFoundError.prototype);
+  }
+}
+
 export class KoolbaseConflictError extends KoolbaseDataError {
   field?: string;
 
@@ -64,8 +98,15 @@ export class KoolbaseConflictError extends KoolbaseDataError {
  * `collection_not_found`.
  */
 export class KoolbaseNotFoundError extends KoolbaseDataError {
-  constructor(message?: string) {
-    super(message ?? 'The requested resource was not found', 'not_found');
+  /**
+   * The code is carried rather than fixed, because the server distinguishes
+   * what was missing — a record, a collection, a vector field — and an app
+   * reading e.code should get that answer rather than the category. Catching
+   * the class still works for anyone who only cares that something was
+   * absent.
+   */
+  constructor(message?: string, code = 'not_found') {
+    super(message ?? 'The requested resource was not found', code);
     this.name = 'KoolbaseNotFoundError';
     Object.setPrototypeOf(this, KoolbaseNotFoundError.prototype);
   }
@@ -76,8 +117,14 @@ export class KoolbaseNotFoundError extends KoolbaseDataError {
  * 400 and code `validation_error`.
  */
 export class KoolbaseValidationError extends KoolbaseDataError {
-  constructor(message?: string) {
-    super(message ?? 'The request was invalid', 'validation_error');
+  /**
+   * Carries its code for the same reason KoolbaseNotFoundError does: a
+   * dimension the platform does not support and a vector pointed at the wrong
+   * collection are both validation failures, and an app should still be able
+   * to tell which without reading the message.
+   */
+  constructor(message?: string, code = 'validation_error') {
+    super(message ?? 'The request was invalid', code);
     this.name = 'KoolbaseValidationError';
     Object.setPrototypeOf(this, KoolbaseValidationError.prototype);
   }
@@ -88,6 +135,21 @@ export class KoolbaseValidationError extends KoolbaseDataError {
  * operation — the server responds with 403 and code `permission_denied`
  * (typically a collection access rule rejecting the read/write).
  */
+/**
+ * Authenticated, and not permitted to do this — distinct from a rule denying
+ * access to a record. Its own class rather than folding into
+ * KoolbasePermissionError, which hardcodes permission_denied: an error
+ * reporting a code the server did not send is a small lie, and apps that
+ * branch on e.code rather than instanceof would act on it.
+ */
+export class KoolbaseInsufficientAuthorityError extends KoolbaseDataError {
+  constructor(message?: string) {
+    super(message ?? 'You do not have the authority to perform this action', 'insufficient_authority');
+    this.name = 'KoolbaseInsufficientAuthorityError';
+    Object.setPrototypeOf(this, KoolbaseInsufficientAuthorityError.prototype);
+  }
+}
+
 export class KoolbasePermissionError extends KoolbaseDataError {
   constructor(message?: string) {
     super(
@@ -174,12 +236,20 @@ export function koolbaseDataError(
   switch (code) {
     case 'unique_violation':
       return attach(new KoolbaseConflictError(message, field));
+    case 'ambiguous_match':
+      return attach(new KoolbaseAmbiguousMatchError(message));
+    case 'constraint_exists':
+      return attach(new KoolbaseConstraintExistsError(message));
+    case 'constraint_not_found':
+      return attach(new KoolbaseConstraintNotFoundError(message));
+    case 'insufficient_authority':
+      return attach(new KoolbaseInsufficientAuthorityError(message));
     case 'not_found':
     case 'record_not_found':
     case 'collection_not_found':
     case 'vector_not_found':
     case 'vector_field_not_found':
-      return attach(new KoolbaseNotFoundError(message));
+      return attach(new KoolbaseNotFoundError(message, code));
     case 'unauthenticated':
     case 'session_expired':
     case 'invalid_token':
@@ -191,7 +261,7 @@ export function koolbaseDataError(
     case 'validation_error':
     case 'vector_collection_mismatch':
     case 'unsupported_dimension':
-      return attach(new KoolbaseValidationError(message));
+      return attach(new KoolbaseValidationError(message, code));
     case 'vector_dimension_mismatch':
       return attach(new KoolbaseVectorDimensionMismatchError(message));
   }
