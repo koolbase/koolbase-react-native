@@ -58,3 +58,26 @@ describe('browser adapter outside a browser', () => {
     expect(browserPlatform().info.os).toBe('web');
   });
 });
+
+describe('storage tier selection', () => {
+  it('falls to memory where nothing persists, and says so', async () => {
+    // Node has neither store. The tier is the SDK's own answer to "will this
+    // survive a reload", and an app can ask before promising a user it will.
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+    const p = browserPlatform();
+    expect(await p.storageTier()).toBe('memory');
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('No persistent storage'));
+    warn.mockRestore();
+  });
+
+  it('probes once, not per call', async () => {
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+    const p = browserPlatform();
+    await p.storage.setItem('a', '1');
+    await p.storage.getItem('a');
+    await p.storageTier();
+    // One resolution, so one warning — a chatty SDK is one developers mute.
+    expect(warn).toHaveBeenCalledTimes(1);
+    warn.mockRestore();
+  });
+});

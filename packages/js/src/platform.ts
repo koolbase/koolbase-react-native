@@ -110,12 +110,86 @@ function memoryStorage(): PlatformStorage {
   };
 }
 
-export function browserPlatform(): PlatformAdapter {
-  const storage =
-    typeof indexedDB !== 'undefined' ? indexedDBStorage()
-    : typeof localStorage !== 'undefined' ? localStorageStorage()
-    : memoryStorage();
+/**
+ * What a browser is actually willing to persist, decided by trying.
+ *
+ * Feature detection is not capability detection. Safari in private browsing
+ * exposes `indexedDB` and then refuses to open a database; a browser with
+ * site data blocked exposes `localStorage` and throws on write; a storage
+ * quota can be exhausted at any point afterwards. A selector that checks
+ * `typeof` commits to a store that may never work.
+ *
+ * So the store is resolved on first use, by using it, and the result is
+ * cached. A failure at any tier falls to the next, ending in memory — which
+ * always works and persists nothing.
+ */
+type Tier = 'indexeddb' | 'localstorage' | 'memory';
+
+async function probe(store: PlatformStorage): Promise<boolean> {
+  const k = '__koolbase_probe__';
+  try {
+    await store.setItem(k, '1');
+    const v = await store.getItem(k);
+    await store.removeItem(k);
+    return v === '1';
+  } catch {
+    return false;
+  }
+}
+
+function makeResolver(): () => Promise<{ tier: Tier; store: PlatformStorage }> {
+  // Per adapter, not per module: two adapters must not share a store, or a
+  // server that built one client per request would hand one request's
+  // session to the next.
+  let resolved: { tier: Tier; store: PlatformStorage } | null = null;
+  let resolving: Promise<{ tier: Tier; store: PlatformStorage }> | null = null;
+  return () => {
+    if (resolved) return Promise.resolve(resolved);
+    resolving ??= (async () => {
+      if (typeof indexedDB !== 'undefined') {
+        const s = indexedDBStorage();
+        if (await probe(s)) return { tier: 'indexeddb' as Tier, store: s };
+      }
+      if (typeof localStorage !== 'undefined') {
+        const s = localStorageStorage();
+        if (await probe(s)) return { tier: 'localstorage' as Tier, store: s };
+      }
+      // eslint-disable-next-line no-console
+      console.warn(
+        '[Koolbase] No persistent storage available in this browser ' +
+          '(private browsing, blocked site data, or an exhausted quota). ' +
+          'The session and the offline queue will not survive a reload.',
+      );
+      return { tier: 'memory' as Tier, store: memoryStorage() };
+    })();
+    return resolving.then((r) => { resolved = r; return r; });
+  };
+}
+
+/**
+ * The browser adapter, plus what only a browser needs: which storage tier it
+ * settled on. Not on PlatformAdapter, because no other host has tiers — React
+ * Native's keychain either works or its package is absent.
+ */
+export interface BrowserPlatformAdapter extends PlatformAdapter {
+  storageTier(): Promise<Tier>;
+}
+
+export function browserPlatform(): BrowserPlatformAdapter {
+  const resolve = makeResolver();
+  // Every call resolves first, so a browser that only reveals its refusal on
+  // use is handled here rather than by the caller.
+  const storage: PlatformStorage = {
+    getItem: async (k) => (await resolve()).store.getItem(k),
+    setItem: async (k, v) => { await (await resolve()).store.setItem(k, v); },
+    removeItem: async (k) => { await (await resolve()).store.removeItem(k); },
+    getAllKeys: async () => (await resolve()).store.getAllKeys(),
+  };
+  // Which tier this adapter settled on: 'indexeddb', 'localstorage' or
+  // 'memory'. An app that cares can warn the user before they lose a session.
+  const storageTier = async (): Promise<Tier> => (await resolve()).tier;
   return {
+    storageTier,
     storage,
     network: {
       onChange: (cb) => {

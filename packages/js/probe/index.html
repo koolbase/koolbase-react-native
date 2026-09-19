@@ -39,6 +39,7 @@
   <button id="sync">Sync</button>
   <button id="subscribe">Subscribe</button>
   <button id="reload">Reload page</button>
+  <button id="tier">Storage tier</button>
 </div>
 <div class="row">
   <button id="offline">Simulate offline (patch fetch)</button>
@@ -97,6 +98,13 @@ $('subscribe').onclick = run('subscribe', () => {
   return 'listening';
 });
 $('reload').onclick = () => location.reload();
+
+// Which store this browser actually gave us. Safari private browsing is the
+// case worth checking: it exposes indexedDB and may refuse to open it.
+$('tier').onclick = run('storage tier', async () => {
+  const { browserPlatform } = KoolbaseJS;
+  return { tier: await browserPlatform().storageTier(), ua: navigator.userAgent.slice(0, 60) };
+});
 
 // Offline simulation: the sync engine discovers reachability by trying, so
 // a rejecting fetch is exactly what a dead network looks like to it.
