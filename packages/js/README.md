@@ -11,7 +11,8 @@ feature flags, remote config, and an offline write queue with conflict
 resolution — one package, one `initialize()` call, TypeScript throughout.
 
 Same core as [`@koolbase/react-native`](https://www.npmjs.com/package/@koolbase/react-native).
-Same behaviour, proven by the same test suite on both hosts.
+Same behaviour, proven by the same test suite on both hosts. The whole SDK
+is about 16 kB gzipped.
 
 ---
 
@@ -261,7 +262,10 @@ Stated here so nothing is discovered as a method that fails:
 - **Code push** — a native-bundle concept. The web already ships on deploy.
 - **Push messaging** — FCM device tokens come from a native module. Use Web
   Push through your own service worker and your backend.
-- **Native Google / Apple sign-in** — use the web OAuth flows, above.
+- **The native sign-in libraries** — `signInWithGoogle` and
+  `signInWithApple` themselves are here and work; what a browser cannot do
+  is fetch the credential from a native module. Run the provider's web
+  OAuth flow and pass the ID token, as above.
 
 ---
 
