@@ -70,10 +70,12 @@ export class KoolbaseAuth {
       this.storage = null;
       // eslint-disable-next-line no-console
       console.warn(
-        '[Koolbase] No persistent auth storage available. Sessions will not ' +
-          'survive app restarts. Install react-native-keychain for the ' +
-          'default secure backend, or provide KoolbaseConfig.authStorage ' +
-          'with your own implementation.'
+        // The host names its own remedy: core serves several, and a browser
+        // told to install react-native-keychain learns nothing.
+        `[Koolbase] No persistent auth storage on this platform ` +
+          `(${getPlatform().info.os}). Sessions will not survive a restart. ` +
+          `Provide KoolbaseConfig.authStorage with your own implementation, ` +
+          `or install the platform's optional storage dependency.`
       );
     }
   }
