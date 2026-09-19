@@ -7,6 +7,13 @@ adheres to [Semantic Versioning][semver].
 [kac]: https://keepachangelog.com/en/1.1.0/
 [semver]: https://semver.org/
 
+## 10.2.0
+
+### Changed
+
+- The platform seam gains a locking contract. React Native satisfies it by
+  running the function: one process, one store, nothing to coordinate.
+
 ## 10.1.0
 
 ### Changed

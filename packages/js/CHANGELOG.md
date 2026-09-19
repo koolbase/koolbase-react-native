@@ -7,6 +7,25 @@ is based on [Keep a Changelog][kac], and this project adheres to
 [kac]: https://keepachangelog.com/en/1.1.0/
 [semver]: https://semver.org/
 
+## 10.2.0
+
+### Added
+
+- **Multiple tabs are coordinated.** Tabs on one origin share one IndexedDB
+  and one offline queue. Two locks, through the Web Locks API, now keep them
+  honest: a short exclusive lock around every read-modify-write of the
+  offline state, so two tabs enqueueing at once cannot overwrite each other;
+  and a lease on replaying the queue, held for a whole flush including its
+  HTTP calls, so two tabs coming online together send each queued write once
+  rather than once each. A tab that cannot take the lease skips its pass and
+  rechecks once the holder is done, so a write queued during another tab's
+  flush is not stranded. A tab that closes mid-flush releases its lock
+  automatically. In a browser without Web Locks — none current — offline
+  queueing refuses with an explicit error rather than risking a double send.
+
+  Proven with a contended fake lock manager: two tabs, one queued write, one
+  HTTP request. Exercised in Chrome with real Web Locks.
+
 ## 10.1.0
 
 ### Fixed
