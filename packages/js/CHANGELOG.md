@@ -7,6 +7,44 @@ is based on [Keep a Changelog][kac], and this project adheres to
 [kac]: https://keepachangelog.com/en/1.1.0/
 [semver]: https://semver.org/
 
+## 11.2.0
+
+### Fixed
+
+- **A function that timed out was indistinguishable from one that threw.** A
+  504 fell into the generic 5xx branch and arrived as
+  `FunctionExecutionError`. Those need different answers — a timeout means
+  retry, raise the function's timeout at deploy, or move the slow part
+  elsewhere; an exception means fix the code. The server has always told them
+  apart. Now `FunctionTimeoutError`, and 429 gets `FunctionRateLimitError`
+  rather than falling through untyped.
+
+- **`upload_expired` and `cap_below_usage` were unmapped in storage.** The
+  first matters: a presigned upload URL has a lifetime, and a user who picks a
+  file, gets distracted and confirms twenty minutes later hit it as a generic
+  failure. It is a retry, not a failure — presign again and send the same
+  bytes. Now `KoolbaseUploadExpiredError`.
+
+- **Four database codes were unmapped**: `ambiguous_match`,
+  `constraint_exists`, `constraint_not_found`, `insufficient_authority`. The
+  first is the one an app hits — an upsert whose filter matched more than one
+  record is refused rather than resolved, because picking one would be a
+  silent guess about which row the caller meant.
+
+- **Errors report the code the server sent, not their category.**
+  `KoolbaseNotFoundError` and `KoolbaseValidationError` each hardcoded one
+  code while being used for several, so a `collection_not_found` response
+  produced an error reporting `not_found`. Catching the class works as
+  before; reading `e.code` now gives the server's answer.
+
+### Why these were missing
+
+The API writes error codes through four different helpers, so no single
+search finds them all — which is how twenty-two codes across four surfaces
+went unmapped without anyone noticing. Each surface now has a test asserting
+every known code maps to its own class, so a new one added without a case
+here fails the build rather than a user's upload.
+
 ## 11.1.0
 
 ### Fixed
