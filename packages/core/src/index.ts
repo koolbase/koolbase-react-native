@@ -25,7 +25,7 @@ export type { RegisterTokenOptions } from './messaging.js';
 export { getOrCreateDeviceId } from './device-id.js';
 export { koolbaseSdkVersion } from './device-metadata.js';
 export { RestoreResult } from './types.js';
-export type { AuthStateListener, FetchLike, KoolbaseAuthStorage } from './types.js';
+export type { AuthStateListener, FetchLike, KoolbaseAuthStorage, ResendVerificationResult } from './types.js';
 
 export {
   setPlatform,

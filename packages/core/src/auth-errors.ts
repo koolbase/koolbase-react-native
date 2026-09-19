@@ -125,6 +125,40 @@ export class RateLimitError extends KoolbaseAuthError {
   }
 }
 
+/**
+ * The verification email was refused because one was sent too recently.
+ *
+ * Carries when the next send becomes possible, so an app can show a countdown
+ * rather than a bare refusal — the server sends the timestamp and throwing it
+ * away would waste the only thing that makes this error actionable.
+ */
+export class VerificationResendCooldownError extends KoolbaseAuthError {
+  constructor(readonly cooldownUntil: Date | null, message?: string) {
+    super(
+      message ?? 'Please wait before requesting another verification email',
+      'resend_cooldown'
+    );
+    this.name = 'VerificationResendCooldownError';
+    Object.setPrototypeOf(this, VerificationResendCooldownError.prototype);
+  }
+}
+
+/**
+ * The day's verification-email allowance is spent. Distinct from the cooldown
+ * because the remedy differs: waiting seconds versus waiting until tomorrow,
+ * and an app should say which.
+ */
+export class VerificationResendDailyCapError extends KoolbaseAuthError {
+  constructor(message?: string) {
+    super(
+      message ?? 'Daily verification-email limit reached; try again tomorrow',
+      'resend_daily_cap'
+    );
+    this.name = 'VerificationResendDailyCapError';
+    Object.setPrototypeOf(this, VerificationResendDailyCapError.prototype);
+  }
+}
+
 // ─── Network ───────────────────────────────────────────────────────────────
 
 /**

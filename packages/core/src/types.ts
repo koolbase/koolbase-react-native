@@ -60,6 +60,24 @@ export interface KoolbaseSession {
  * unavailable), compliant encryption layers, or in-memory test mocks —
  * can implement this interface and inject it via KoolbaseConfig.authStorage.
  */
+/**
+ * What resendVerificationEmail() answers with.
+ *
+ * alreadyVerified is not an error: calling it for a verified account is a
+ * no-op that says so, which is what a "resend" button needs when the user
+ * verified in another tab.
+ *
+ * cooldownUntil is when the next send becomes possible. The server throttles
+ * sends, and a countdown is a better answer to a user than a bare refusal.
+ */
+export interface ResendVerificationResult {
+  alreadyVerified: boolean;
+  /** When the link in the email stops working. Null when nothing was sent. */
+  expiresAt: Date | null;
+  /** When another send becomes possible. Null when nothing was sent. */
+  cooldownUntil: Date | null;
+}
+
 export interface KoolbaseAuthStorage {
   saveSession(session: KoolbaseSession): Promise<void>;
   readSession(): Promise<KoolbaseSession | null>;

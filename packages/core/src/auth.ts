@@ -11,6 +11,7 @@ import {
   PhoneVerifyResult,
   RegisterParams,
   RestoreResult,
+  ResendVerificationResult,
   SendOtpParams,
   SignInWithAppleParams,
   VerifyOtpParams,
@@ -27,6 +28,8 @@ import {
   OtpRateLimitError,
   PhoneAlreadyLinkedError,
   RateLimitError,
+  VerificationResendCooldownError,
+  VerificationResendDailyCapError,
   SessionExpiredError,
   SmsConfigMissingError,
   TokenRevokedError,
@@ -597,6 +600,51 @@ private async parseAppleSessionResponse(res: Response): Promise<KoolbaseSession>
     await this.checkResponse(res);
   }
 
+  /**
+   * Complete email verification with a token from a verification link.
+   *
+   * The token comes from wherever your verification URL template pointed —
+   * your own page reads it from the query string and passes it here. Throws
+   * if the token is invalid, expired or already used.
+   */
+  async verifyEmail(token: string): Promise<void> {
+    const res = await this.authRequest('/v1/sdk/auth/verify-email', {
+      method: 'POST',
+      body: { token },
+    });
+    await this.checkResponse(res);
+  }
+
+  /**
+   * Re-send the verification email to the signed-in but unverified user.
+   *
+   * Safe to call when already verified: nothing is sent and
+   * `alreadyVerified` comes back true. The server throttles this — a short
+   * cooldown between sends and a daily cap — and the refusal arrives as
+   * VerificationResendCooldownError carrying when to retry, or
+   * VerificationResendDailyCapError when the day's allowance is spent.
+   *
+   * Requires a session, since the server verifies the caller rather than
+   * taking an email address — otherwise this would be an open mail relay.
+   */
+  async resendVerificationEmail(): Promise<ResendVerificationResult> {
+    const res = await this.authRequest('/v1/sdk/auth/resend-verification', {
+      method: 'POST',
+      includeAuth: true,
+    });
+    await this.checkResponse(res);
+    const body = (await res.json().catch(() => ({}))) as {
+      already_verified?: boolean;
+      expires_at?: string | null;
+      cooldown_until?: string | null;
+    };
+    return {
+      alreadyVerified: body.already_verified ?? false,
+      expiresAt: body.expires_at ? new Date(body.expires_at) : null,
+      cooldownUntil: body.cooldown_until ? new Date(body.cooldown_until) : null,
+    };
+  }
+
   async unlock(token: string): Promise<void> {
     const res = await this.authRequest('/v1/sdk/auth/unlock', {
       method: 'POST',
@@ -850,6 +898,13 @@ private async parseAppleSessionResponse(res: Response): Promise<KoolbaseSession>
         throw new UnlockTokenInvalidError();
       case 'rate_limit':
         throw new RateLimitError(msg || undefined);
+      case 'resend_cooldown':
+        throw new VerificationResendCooldownError(
+          body.cooldown_until ? new Date(body.cooldown_until) : null,
+          msg || undefined
+        );
+      case 'resend_daily_cap':
+        throw new VerificationResendDailyCapError(msg || undefined);
     }
 
     // ─── status fallback (pre-code servers) ───
