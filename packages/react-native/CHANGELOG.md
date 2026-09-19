@@ -7,6 +7,14 @@ adheres to [Semantic Versioning][semver].
 [kac]: https://keepachangelog.com/en/1.1.0/
 [semver]: https://semver.org/
 
+## 10.1.0
+
+### Changed
+
+- `UploadOptions.file` accepts a `Blob` in addition to `{ uri, name, type }`.
+  The React Native path is unchanged; the union exists because the same core
+  now serves a browser, where a `File` is the only form the bytes come in.
+
 ## 10.0.2
 
 ### Fixed

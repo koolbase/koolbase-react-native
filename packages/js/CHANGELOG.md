@@ -7,6 +7,29 @@ is based on [Keep a Changelog][kac], and this project adheres to
 [kac]: https://keepachangelog.com/en/1.1.0/
 [semver]: https://semver.org/
 
+## 10.1.0
+
+### Fixed
+
+- **Uploads could not work from a browser.** `upload()` required
+  `{ uri, name, type }` — a React Native shape — and fetched that URI to get
+  the bytes. A browser `File` has no `uri`, so every upload from the web
+  failed before it reached the network, while the README showed a file input
+  as if it worked. `file` now accepts a `Blob` or `File` directly and the
+  React Native form is unchanged. Round-tripped in a browser: upload,
+  download, byte-for-byte comparison.
+
+### Added
+
+- **`storageTier()`** on the browser adapter — `'indexeddb'`,
+  `'localstorage'` or `'memory'`. Storage is now chosen by *trying* each
+  store rather than checking whether the API exists: Safari in private
+  browsing exposes `indexedDB` and may refuse to open it, and a browser with
+  site data blocked exposes `localStorage` and throws on write. A failure at
+  any tier falls to the next, ending in memory with one console warning. An
+  app can read the tier and tell the user their session will not survive a
+  reload.
+
 ## 10.0.2
 
 ### Fixed
