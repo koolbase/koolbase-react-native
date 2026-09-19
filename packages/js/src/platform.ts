@@ -96,10 +96,27 @@ function browserVersion(): string {
   return m ? `${m[1]} ${m[2]}` : '';
 }
 
-export function browserPlatform(): PlatformAdapter {
-  const hasIDB = typeof indexedDB !== 'undefined';
+// Neither store exists during server-side rendering, in a Node tool, or in
+// a worker without storage access. Persisting nothing is the correct answer
+// there: a server render has no session to restore, and the client hydrates
+// with the real one. Throwing instead — which it did — crashes the render.
+function memoryStorage(): PlatformStorage {
+  const m = new Map<string, string>();
   return {
-    storage: hasIDB ? indexedDBStorage() : localStorageStorage(),
+    getItem: async (k) => m.get(k) ?? null,
+    setItem: async (k, v) => { m.set(k, v); },
+    removeItem: async (k) => { m.delete(k); },
+    getAllKeys: async () => Array.from(m.keys()),
+  };
+}
+
+export function browserPlatform(): PlatformAdapter {
+  const storage =
+    typeof indexedDB !== 'undefined' ? indexedDBStorage()
+    : typeof localStorage !== 'undefined' ? localStorageStorage()
+    : memoryStorage();
+  return {
+    storage,
     network: {
       onChange: (cb) => {
         // navigator.onLine is a hint that the interface is up, not that

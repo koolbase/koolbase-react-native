@@ -7,6 +7,12 @@ adheres to [Semantic Versioning][semver].
 [kac]: https://keepachangelog.com/en/1.1.0/
 [semver]: https://semver.org/
 
+## 10.0.1
+
+No changes to this package. Released to keep the version aligned with
+`@koolbase/core` and `@koolbase/js`, which carry a fix for running outside a
+browser.
+
 ## 10.0.0
 
 ### Read before upgrading

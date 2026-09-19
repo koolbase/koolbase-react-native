@@ -7,6 +7,22 @@ is based on [Keep a Changelog][kac], and this project adheres to
 [kac]: https://keepachangelog.com/en/1.1.0/
 [semver]: https://semver.org/
 
+## 10.0.1
+
+### Fixed
+
+- **`restoreSession()` threw in Node.** With no `indexedDB`, the adapter fell
+  through to `localStorage`, which does not exist on a server either — so a
+  Next.js server render, or any tooling that imports the SDK, crashed with
+  `ReferenceError: localStorage is not defined`. Storage now falls back to an
+  in-memory store when neither is present, and a server render reports
+  `NoSession` rather than failing.
+
+  Note what this is not: server-side authentication. This package holds one
+  session per process, which is correct for a browser tab and wrong for a
+  server handling many users. It renders without crashing; it is not a way to
+  sign users in on a server.
+
 ## 10.0.0
 
 The first release. Numbered to match `@koolbase/react-native` and
