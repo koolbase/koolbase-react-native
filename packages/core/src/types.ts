@@ -70,6 +70,34 @@ export interface KoolbaseSession {
  * cooldownUntil is when the next send becomes possible. The server throttles
  * sends, and a countdown is a better answer to a user than a bare refusal.
  */
+/**
+ * What register() answers with.
+ *
+ * A discriminated union rather than a nullable session, because registration
+ * succeeding and authentication succeeding are different outcomes and an app
+ * must handle both. A project with require_verified_contact on creates the
+ * account and issues no session — the server returns 201 with
+ * verification_required, deliberately not an error, since reporting failure
+ * for a signup that worked is worse than either alternative.
+ *
+ * Until 10.x this was typed as the user alone, and the SDK built a session
+ * from a response that had no tokens: currentUser returned someone whose
+ * every request went out as `Bearer undefined`. A nullable session would
+ * have let an app read result.user and reproduce that at one remove, so the
+ * status is the only way in.
+ */
+export type SignUpResult =
+  | {
+      status: 'authenticated';
+      user: KoolbaseUser;
+      session: KoolbaseSession;
+    }
+  | {
+      status: 'verification_required';
+      user: KoolbaseUser;
+      session: null;
+    };
+
 export interface ResendVerificationResult {
   alreadyVerified: boolean;
   /** When the link in the email stops working. Null when nothing was sent. */

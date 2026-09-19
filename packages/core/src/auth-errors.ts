@@ -291,6 +291,27 @@ export class GoogleSignInNotConfiguredError extends KoolbaseAuthError {
   }
 }
 
+/**
+ * The server answered a sign-in as though it succeeded, without the tokens a
+ * session needs.
+ *
+ * Distinct from verification_required, which is a legitimate session-less
+ * success the SDK reports through SignUpResult. This is the other case: the
+ * response claims authentication and cannot support it. Inventing a session
+ * from it is what produced a signed-in user whose every request went out as
+ * `Bearer undefined`, so the SDK refuses instead.
+ */
+export class MalformedSessionResponseError extends KoolbaseAuthError {
+  constructor(missing: string) {
+    super(
+      `The server returned a session without ${missing}. This is a protocol error, not a credential problem.`,
+      'malformed_session_response'
+    );
+    this.name = 'MalformedSessionResponseError';
+    Object.setPrototypeOf(this, MalformedSessionResponseError.prototype);
+  }
+}
+
 export class InvalidGoogleTokenError extends KoolbaseAuthError {
   constructor() {
     super('Invalid Google identity token', 'invalid_google_token');

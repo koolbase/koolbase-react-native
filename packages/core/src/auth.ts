@@ -13,6 +13,7 @@ import {
   RestoreResult,
   ResendVerificationResult,
   SendOtpParams,
+  SignUpResult,
   SignInWithAppleParams,
   VerifyOtpParams,
 } from './types.js';
@@ -27,6 +28,7 @@ import {
   OtpMaxAttemptsError,
   OtpRateLimitError,
   PhoneAlreadyLinkedError,
+  MalformedSessionResponseError,
   RateLimitError,
   VerificationResendCooldownError,
   VerificationResendDailyCapError,
@@ -287,15 +289,45 @@ export class KoolbaseAuth {
 
   // ─── Public auth API ────────────────────────────────────────────────────
 
-  async register(params: RegisterParams): Promise<KoolbaseUser> {
+  /**
+   * Create an account.
+   *
+   * Two outcomes, and the caller must tell them apart. With
+   * require_verified_contact off, the account is created and signed in.
+   * With it on, the account is created and NO session is issued — the user
+   * verifies their email before their first sign-in. Both are successes.
+   *
+   * Switch on `status` rather than checking the session for null: the point
+   * of the union is that there is no path where an app reads the user and
+   * assumes it is signed in.
+   */
+  async register(params: RegisterParams): Promise<SignUpResult> {
     if (params.password.length < 8) throw new WeakPasswordError();
     const res = await this.authRequest('/v1/sdk/auth/register', {
       method: 'POST',
       body: params,
     });
-    const session = await this.parseSessionResponse(res, false);
+    if (!res.ok) await this.throwTypedError(res); // never returns
+
+    const data = await res.json();
+
+    // The server's own discriminator. It sends this deliberately — a 201
+    // meaning "created, not signed in" — and the SDK ignored it until now,
+    // building a session out of a body with no tokens in it.
+    if (data.verification_required === true) {
+      // Nothing is persisted and no listener fires: a pending signup is not
+      // an authentication event, and an existing session on this device
+      // belongs to whoever was already signed in.
+      return {
+        status: 'verification_required',
+        user: this.mapUser(data.user),
+        session: null,
+      };
+    }
+
+    const session = this.sessionFromBody(data);
     await this.setSessionInternal(session);
-    return session.user;
+    return { status: 'authenticated', user: session.user, session };
   }
 
   async login(params: LoginParams): Promise<KoolbaseSession> {
@@ -407,13 +439,7 @@ async signInWithGoogle(params: SignInWithGoogleParams): Promise<KoolbaseSession>
  */
 private async parseGoogleSessionResponse(res: Response): Promise<KoolbaseSession> {
   if (res.status === 200) {
-    const data = await res.json();
-    return {
-      accessToken: data.access_token,
-      refreshToken: data.refresh_token,
-      expiresAt: data.expires_at,
-      user: this.mapUser(data.user),
-    };
+    return this.sessionFromBody(await res.json());
   }
 
   let body: any = {};
@@ -473,13 +499,7 @@ private async parseGoogleSessionResponse(res: Response): Promise<KoolbaseSession
  */
 private async parseAppleSessionResponse(res: Response): Promise<KoolbaseSession> {
   if (res.status === 200) {
-    const data = await res.json();
-    return {
-      accessToken: data.access_token,
-      refreshToken: data.refresh_token,
-      expiresAt: data.expires_at,
-      user: this.mapUser(data.user),
-    };
+    return this.sessionFromBody(await res.json());
   }
 
   let body: any = {};
@@ -846,7 +866,23 @@ private async parseAppleSessionResponse(res: Response): Promise<KoolbaseSession>
   ): Promise<KoolbaseSession> {
     if (!res.ok) await this.throwTypedError(res, isRefresh); // never returns
 
-    const data = await res.json();
+    return this.sessionFromBody(await res.json());
+  }
+
+  /**
+   * A session, or a refusal — never a session-shaped object with nothing in
+   * it.
+   *
+   * This used to read the fields straight off the body, so a response with no
+   * tokens produced a session whose accessToken was undefined. It persisted,
+   * currentUser returned a user, and every authenticated request went out as
+   * `Bearer undefined` and came back 401 — signed in as far as the app could
+   * tell, and unable to do anything. A user object without tokens is not a
+   * session, and refusing is the only honest answer.
+   */
+  private sessionFromBody(data: any): KoolbaseSession {
+    if (!data?.access_token) throw new MalformedSessionResponseError('an access token');
+    if (!data?.refresh_token) throw new MalformedSessionResponseError('a refresh token');
     return {
       accessToken: data.access_token,
       refreshToken: data.refresh_token,

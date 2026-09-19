@@ -7,6 +7,66 @@ is based on [Keep a Changelog][kac], and this project adheres to
 [kac]: https://keepachangelog.com/en/1.1.0/
 [semver]: https://semver.org/
 
+## 11.0.0
+
+### Read before upgrading
+
+**`register()` returns a result, not a user.** One line changes in your app,
+and the reason is a bug this fixes.
+
+Registration succeeding and authentication succeeding are different outcomes.
+A project with `require_verified_contact` enabled creates the account and
+issues **no session** — the user verifies their email before their first
+sign-in. The server has always answered that case correctly: 201 with
+`verification_required`, deliberately not an error, because reporting failure
+for a signup that worked is worse than either alternative.
+
+The SDK ignored that field. It built a session from a response body with no
+tokens in it, persisted it, and answered `currentUser` with a user whose every
+authenticated request went out as `Bearer undefined` and came back 401 —
+signed in as far as the app could tell, and unable to do anything. Silent, and
+only in the configuration that requires verification.
+
+```ts
+// Before
+const user = await Koolbase.auth.register({ email, password });
+
+// After
+const result = await Koolbase.auth.register({ email, password });
+switch (result.status) {
+  case 'authenticated':
+    // result.session is live, the user is signed in
+    break;
+  case 'verification_required':
+    // the account exists, result.session is null, they verify first
+    break;
+}
+```
+
+A discriminated union rather than a nullable session, so there is no path
+where an app reads `result.user` and assumes it is signed in. That is how the
+bug worked, and a nullable field would have allowed it at one remove.
+
+### Fixed
+
+- **A session is never fabricated from a response without tokens.** Every
+  path that builds one — register, login, refresh, Google, Apple — now refuses
+  a body claiming authentication while omitting a token, throwing
+  `MalformedSessionResponseError`. Distinct from `verification_required`,
+  which is a legitimate session-less success: this is a protocol violation and
+  says so.
+
+- **A pending signup no longer touches existing state.** It persists nothing,
+  fires no auth-state change, and leaves a session already on the device
+  alone — registering a second account does not sign out the first.
+
+### Migration
+
+Assign the result, switch on `status`. If your project does not require
+verified contact, the `authenticated` branch is the only one you will see —
+but write both, because turning that setting on later should not break your
+signup flow.
+
 ## 10.4.0
 
 ### Added
