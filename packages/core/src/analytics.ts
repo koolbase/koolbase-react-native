@@ -30,6 +30,7 @@ export class KoolbaseAnalytics {
   private queue: AnalyticsEvent[] = [];
   private deviceId = '';
   private userId?: string;
+  private getSignedInUser?: () => string | null;
   private environmentId?: string;
   private userProperties: Record<string, unknown> = {};
   private sessionId = '';
@@ -37,8 +38,22 @@ export class KoolbaseAnalytics {
   private flushTimer?: ReturnType<typeof setInterval>;
   private initialized = false;
 
-  constructor(config: KoolbaseConfig) {
+  /**
+   * getSignedInUser lets events carry the signed-in user without the app
+   * having to say so.
+   *
+   * identify() existed and nothing errored when an app never called it, so
+   * every event landed anonymous and retention, funnels and per-user
+   * analysis were quietly worthless — found in a real project as 53 events,
+   * 8 registered users and not one event carrying a user id. The Flutter SDK
+   * fixed this in 11.2.0; the TypeScript SDKs kept the bug until now.
+   *
+   * identify() still wins, for an app with its own identity system, and
+   * reset() releases that override.
+   */
+  constructor(config: KoolbaseConfig, getSignedInUser?: () => string | null) {
     this.config = config;
+    this.getSignedInUser = getSignedInUser;
   }
 
   // ─── Init ─────────────────────────────────────────────────────────────────
@@ -72,7 +87,8 @@ export class KoolbaseAnalytics {
   track(eventName: string, properties?: Record<string, unknown>): void {
     const event: AnalyticsEvent = {
       device_id: this.deviceId,
-      user_id: this.userId,
+      // The explicit override first, then whoever is signed in.
+      user_id: this.userId ?? this.getSignedInUser?.() ?? undefined,
       environment_id: this.environmentId,
       event_name: eventName,
       properties: properties ?? {},

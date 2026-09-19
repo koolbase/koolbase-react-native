@@ -74,7 +74,7 @@ export const Koolbase = {
     _flags = new KoolbaseFlags(config, deviceId);
 
     if (config.analyticsEnabled !== false) {
-      _analytics = new KoolbaseAnalytics(config);
+      _analytics = new KoolbaseAnalytics(config, () => _auth?.currentUser?.id ?? null);
       await _analytics.init(config.appVersion);
     }
 
