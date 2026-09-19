@@ -153,6 +153,20 @@ function byteLength(s: string): number {
 
 const locks = () => shared('locks', () => new Map<string, Promise<unknown>>());
 
+/**
+ * Lock names derive from the storage key they protect, so the two cannot
+ * drift apart. Note what the key does NOT carry: a project id. Two Koolbase
+ * apps on one origin with the same user id already share offline state —
+ * a pre-existing collision these locks neither create nor fix.
+ */
+export function stateLockName(userId: string): string {
+  return `${stateKey(userId)}:lock`;
+}
+
+export function flushLockName(userId: string): string {
+  return `${stateKey(userId)}:flush`;
+}
+
 async function withLock<T>(userId: string, fn: () => Promise<T>): Promise<T> {
   const previous = locks().get(userId) ?? Promise.resolve();
   let release: () => void = () => {};
@@ -160,7 +174,10 @@ async function withLock<T>(userId: string, fn: () => Promise<T>): Promise<T> {
   locks().set(userId, previous.then(() => next));
   await previous;
   try {
-    return await fn();
+    // In-process first, then across copies of the app that share this store.
+    // Both are needed: the promise chain orders callers within one runtime,
+    // the platform lock orders runtimes.
+    return await getPlatform().locks.exclusive(stateLockName(userId), fn);
   } finally {
     release();
     if (locks().get(userId) === next) locks().delete(userId);

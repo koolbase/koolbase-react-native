@@ -2,6 +2,7 @@ import {
   readOfflineState,
   mutateOfflineState,
   migrateLegacyQueue,
+  flushLockName,
   QueuedWrite,
 } from './offline-state.js';
 import { KoolbaseUnauthenticatedError } from './errors.js';
@@ -99,6 +100,38 @@ export class SyncEngine {
     const userId = this.getUserId();
     if (!userId) return;
 
+    // A lease on replaying this user's queue, held for the whole pass
+    // including its HTTP calls. isSyncing does this within one runtime; this
+    // does it across every copy sharing the store. Not waited for: a copy
+    // that cannot take it skips, because the holder is replaying the same
+    // queue — waiting would duplicate the wait, not the work.
+    const { ran } = await getPlatform().locks.tryExclusive(
+      flushLockName(userId),
+      () => this.flushHeld(userId),
+    );
+    if (!ran) {
+      // Skipped, and a write queued between the holder's last read and its
+      // release would otherwise sit until an unrelated reconnect. Re-check
+      // once, after the holder has had time to finish; if it is still
+      // running, its own recheck covers what we would have sent.
+      this.scheduleRecheck();
+    }
+  }
+
+  private recheckTimer: ReturnType<typeof setTimeout> | null = null;
+
+  private scheduleRecheck(): void {
+    // Bounded and coalesced: one pending recheck at a time, so a page with
+    // several tabs cannot turn a skipped flush into a retry storm.
+    if (this.recheckTimer) return;
+    this.recheckTimer = setTimeout(() => {
+      this.recheckTimer = null;
+      void this.flush();
+    }, 1500);
+    (this.recheckTimer as unknown as { unref?: () => void }).unref?.();
+  }
+
+  private async flushHeld(userId: string): Promise<void> {
     this.isSyncing = true;
     try {
       // Before anything is sent. Writes queued by an earlier version sit under a

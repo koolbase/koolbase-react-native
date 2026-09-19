@@ -35,5 +35,6 @@ export {
   type PlatformStorage,
   type PlatformNetwork,
   type PlatformLifecycle,
+  type PlatformLocks,
   type PlatformInfo,
 } from './platform.js';

@@ -1,4 +1,4 @@
-import type { PlatformAdapter, PlatformStorage } from '@koolbase/core';
+import type { PlatformAdapter, PlatformLocks, PlatformStorage } from '@koolbase/core';
 import { BrowserAuthStorage } from './auth-storage.js';
 
 // The browser host, expressed through the platform seam.
@@ -10,11 +10,9 @@ import { BrowserAuthStorage } from './auth-storage.js';
 //
 // What this adapter does NOT do, stated so it is not discovered later:
 //
-//  - Multi-tab coordination. Two tabs share one IndexedDB and one write
-//    queue; both may replay the same pending write. Inserts are idempotent
-//    on the server (ids are UUIDs from birth), so the damage is bounded, but
-//    a conflict resolved in one tab can be re-resolved in another. v1 is
-//    single-tab; a leader election is the fix and belongs in its own change.
+//  - Coordinate across origins. Tabs on one origin share a queue and are
+//    coordinated through Web Locks (see webLocks below); nothing coordinates
+//    two different origins, which is correct — they are different apps.
 //
 //  - Secure token storage. There is no keychain in a browser. Anything
 //    JavaScript can read, a script injected by XSS can read. The core's
@@ -175,15 +173,84 @@ export interface BrowserPlatformAdapter extends PlatformAdapter {
   storageTier(): Promise<Tier>;
 }
 
+/**
+ * Web Locks. One holder per name across every tab on the origin, with
+ * ownership released when a tab closes or crashes — which is why this and
+ * not a BroadcastChannel election with heartbeats and a dead-leader timeout.
+ *
+ * Where the API is absent there is deliberately no fallback to running the
+ * function unlocked: that is exactly the uncoordinated behaviour the lock
+ * exists to prevent, and doing it silently would be worse than refusing.
+ * Every browser current enough to run this SDK has Web Locks (Safari 15.4+,
+ * Chrome 69+, Firefox 96+), so this is a guard, not a limitation.
+ */
+function webLocks(): PlatformLocks {
+  // Tabs are what need coordinating, and a tab has a window. No window means
+  // server rendering, a build step, a Node tool, a worker — nothing else can
+  // be sharing this store, so run the work. Not navigator: Node 22 ships a
+  // navigator object without locks, and testing for it would refuse every
+  // server environment the memory fallback exists to support.
+  if (typeof window === 'undefined') {
+    return {
+      exclusive: (_name, fn) => fn(),
+      tryExclusive: async (_name, fn) => { await fn(); return { ran: true }; },
+    };
+  }
+  // A browser that has navigator but no locks is a browser too old to
+  // coordinate. That one refuses: tabs exist, and running unlocked is the
+  // duplicate-replay risk this lock was added to remove.
+  if (typeof navigator === 'undefined' || !('locks' in navigator)) {
+    const refuse = (): never => {
+      throw new Error(
+        '[Koolbase] This browser has no Web Locks API, so the SDK cannot ' +
+          'coordinate offline writes between tabs. Offline queueing is ' +
+          'disabled rather than risking a write being replayed twice.',
+      );
+    };
+    return {
+      exclusive: async () => refuse(),
+      tryExclusive: async () => refuse(),
+    };
+  }
+  const locks = (navigator as Navigator & { locks: LockManager }).locks;
+  return {
+    // request() resolves with whatever the callback resolves to; the DOM
+    // typings describe the callback's return as the result, so an async
+    // callback types as Promise<Promise<T>>. The runtime awaits it.
+    exclusive: <T>(name: string, fn: () => Promise<T>): Promise<T> =>
+      locks.request(name, fn) as unknown as Promise<T>,
+    tryExclusive: async (name, fn) => {
+      let ran = false;
+      await locks.request(name, { ifAvailable: true }, async (lock) => {
+        // A null lock means another tab holds it. Skip: it is already
+        // replaying the same queue, and waiting would only duplicate the
+        // wait, not the work.
+        if (!lock) return;
+        ran = true;
+        await fn();
+      });
+      return { ran };
+    },
+  };
+}
+
 export function browserPlatform(): BrowserPlatformAdapter {
   const resolve = makeResolver();
   // Every call resolves first, so a browser that only reveals its refusal on
   // use is handled here rather than by the caller.
-  const storage: PlatformStorage = {
+  const storage: PlatformStorage & { close(): Promise<void> } = {
     getItem: async (k) => (await resolve()).store.getItem(k),
     setItem: async (k, v) => { await (await resolve()).store.setItem(k, v); },
     removeItem: async (k) => { await (await resolve()).store.removeItem(k); },
     getAllKeys: async () => (await resolve()).store.getAllKeys(),
+    // Reaches through to the resolved tier. Only IndexedDB holds a
+    // connection worth closing; the test harness needs it released before
+    // it can delete the database between cases, and without this the
+    // façade hid the handle and every browser test hung on its hook.
+    close: async () => {
+      const r = await resolve();
+      await (r.store as PlatformStorage & { close?: () => Promise<void> }).close?.();
+    },
   };
   // Which tier this adapter settled on: 'indexeddb', 'localstorage' or
   // 'memory'. An app that cares can warn the user before they lose a session.
@@ -228,6 +295,7 @@ export function browserPlatform(): BrowserPlatformAdapter {
       os: 'web',
       version: browserVersion(),
     },
+    locks: webLocks(),
     // IndexedDB-backed; see auth-storage.ts for what that does and does not
     // protect against.
     authStorage: () => new BrowserAuthStorage(),

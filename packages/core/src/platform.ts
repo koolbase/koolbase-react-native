@@ -37,6 +37,30 @@ export interface PlatformLifecycle {
   onBackground(callback: () => void): () => void;
 }
 
+/**
+ * Coordination between copies of the SDK that share durable storage.
+ *
+ * Two locks, different problems, different durations:
+ *
+ *   exclusive     short, waited for, held across a read-modify-write of the
+ *                 offline state and never across the network. Stops one copy
+ *                 overwriting another's queued write.
+ *
+ *   tryExclusive  a lease on the responsibility to replay the queue, held for
+ *                 a whole flush pass INCLUDING its HTTP calls, and never
+ *                 waited for. Without it two tabs read the same pending write
+ *                 and both send it: the state stays consistent and the server
+ *                 is hit twice. A copy that cannot take the lease skips,
+ *                 because whoever holds it is already doing the work.
+ *
+ * A host where the SDK cannot be running twice over one store — React Native,
+ * one process — satisfies both by just running the function.
+ */
+export interface PlatformLocks {
+  exclusive<T>(name: string, fn: () => Promise<T>): Promise<T>;
+  tryExclusive(name: string, fn: () => Promise<void>): Promise<{ ran: boolean }>;
+}
+
 export interface PlatformInfo {
   /** e.g. 'ios', 'android', 'web' */
   os: string;
@@ -49,6 +73,7 @@ export interface PlatformAdapter {
   network: PlatformNetwork;
   lifecycle: PlatformLifecycle;
   info: PlatformInfo;
+  locks: PlatformLocks;
   /**
    * The host's best persistent store for the auth session, or null if it has
    * none worth the name. Used only when the app injects nothing through
@@ -82,6 +107,12 @@ export function memoryPlatform(): PlatformAdapter {
       onBackground: () => () => {},
     },
     info: { os: 'memory', version: '' },
+    // One process, one store, and the in-process promise chain in
+    // offline-state already serialises it.
+    locks: {
+      exclusive: (_n, fn) => fn(),
+      tryExclusive: async (_n, fn) => { await fn(); return { ran: true }; },
+    },
     authStorage: () => null,
   };
 }

@@ -8,9 +8,10 @@
   ],
   "scripts": {
     "build": "npm run build -w @koolbase/core && npm run build -w @koolbase/react-native && npm run build -w @koolbase/js",
-    "test": "npm test -w @koolbase/core",
+    "test": "npm run test:memory && npm run test:browser",
     "test:browser": "KOOLBASE_TEST_PLATFORM=browser npm test -w @koolbase/core",
-    "clean": "rm -rf packages/*/dist"
+    "clean": "rm -rf packages/*/dist",
+    "test:memory": "npm test -w @koolbase/core"
   },
   "devDependencies": {
     "@react-native-async-storage/async-storage": "^3.0.2",

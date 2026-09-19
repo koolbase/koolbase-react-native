@@ -35,6 +35,13 @@ export function reactNativePlatform(): PlatformAdapter {
       os: String(Platform.OS),
       version: String(Platform.Version),
     },
+    // A React Native app is one process over its own storage. Two copies of
+    // the SDK cannot be racing over one AsyncStorage, so the in-process
+    // serialisation in offline-state is the whole answer.
+    locks: {
+      exclusive: (_name, fn) => fn(),
+      tryExclusive: async (_name, fn) => { await fn(); return { ran: true }; },
+    },
     authStorage: () => (isKeychainAvailable() ? new SecureAuthStorage() : null),
   };
 }

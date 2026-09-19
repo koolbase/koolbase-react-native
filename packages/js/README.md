@@ -168,11 +168,13 @@ becomes a conflict you resolve: `resolveWithLocal()`, `resolveWithServer()`,
 `resolveWithMerge({...})`, or `abandon()`. Conflicts survive reloads and do not
 expire; surface them if you support offline editing.
 
-**Single tab, in this release.** Two tabs share one IndexedDB and one queue,
-and both may replay the same write. Inserts are idempotent so the damage is
-bounded, but a conflict resolved in one tab can be re-resolved in another.
-Multi-tab coordination is on the roadmap; until then, treat the offline queue
-as belonging to one tab.
+**Multiple tabs are coordinated.** Tabs share one IndexedDB and one queue, and
+the SDK uses the Web Locks API so that only one tab replays a queued write and
+state changes from different tabs cannot overwrite each other. A tab that
+closes mid-flush releases its lock automatically; the next tab picks up
+whatever remains. Every current browser has Web Locks; in one that does not,
+offline queueing is disabled with an explicit error rather than risking a
+write being sent twice.
 
 ---
 
