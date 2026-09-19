@@ -1,4 +1,5 @@
 import { getPlatform } from './platform';
+import { shared } from './shared';
 
 /**
  * The offline system's correctness-critical state: writes waiting to be sent,
@@ -150,19 +151,19 @@ function byteLength(s: string): number {
   return bytes;
 }
 
-const locks = new Map<string, Promise<unknown>>();
+const locks = () => shared('locks', () => new Map<string, Promise<unknown>>());
 
 async function withLock<T>(userId: string, fn: () => Promise<T>): Promise<T> {
-  const previous = locks.get(userId) ?? Promise.resolve();
+  const previous = locks().get(userId) ?? Promise.resolve();
   let release: () => void = () => {};
   const next = new Promise<void>((resolve) => { release = resolve; });
-  locks.set(userId, previous.then(() => next));
+  locks().set(userId, previous.then(() => next));
   await previous;
   try {
     return await fn();
   } finally {
     release();
-    if (locks.get(userId) === next) locks.delete(userId);
+    if (locks().get(userId) === next) locks().delete(userId);
   }
 }
 

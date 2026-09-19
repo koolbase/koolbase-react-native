@@ -1,3 +1,6 @@
+// Shared across module instances; see shared.ts for why.
+import { shared, setShared } from './shared';
+
 // The platform seam.
 //
 // Everything the SDK needs from the host that is not plain JavaScript goes
@@ -83,14 +86,13 @@ export function memoryPlatform(): PlatformAdapter {
   };
 }
 
-let current: PlatformAdapter = memoryPlatform();
 
 /** Install the host platform. Called once by the platform package's initialize. */
 export function setPlatform(adapter: PlatformAdapter): void {
-  current = adapter;
+  setShared('platform', adapter);
 }
 
 /** The installed platform. Always returns something; see memoryPlatform. */
 export function getPlatform(): PlatformAdapter {
-  return current;
+  return shared('platform', memoryPlatform) as PlatformAdapter;
 }
