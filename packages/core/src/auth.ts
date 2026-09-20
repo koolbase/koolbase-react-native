@@ -219,6 +219,22 @@ export class KoolbaseAuth {
 
   // ─── Internal session lifecycle ─────────────────────────────────────────
 
+  /**
+   * Replace the user inside the current session and persist it.
+   *
+   * A profile update or a fresh fetch changes the user, not the tokens.
+   * Without this the new values live only in the returned object: the cached
+   * `currentUser` stays stale, anything bound to `onAuthStateChange` never
+   * hears about the change, and a reload restores the old name.
+   *
+   * No session means nobody is signed in, and there is nothing to update —
+   * the caller's own request would have failed first.
+   */
+  private async updateUserAndPersist(user: KoolbaseUser): Promise<void> {
+    if (!this.session) return;
+    await this.setSessionInternal({ ...this.session, user });
+  }
+
   private async setSessionInternal(session: KoolbaseSession): Promise<void> {
     this.session = session;
     if (this.storage) {
@@ -705,6 +721,101 @@ private async parseAppleSessionResponse(res: Response): Promise<KoolbaseSession>
       expiresAt: body.expires_at ? new Date(body.expires_at) : null,
       cooldownUntil: body.cooldown_until ? new Date(body.cooldown_until) : null,
     };
+  }
+
+  /**
+   * The signed-in user, fetched fresh from the server.
+   *
+   * `currentUser` returns what was cached at sign-in; this asks. Use it when
+   * something may have changed the user server-side — a verification
+   * completing, a profile updated from another device — and persist the
+   * result so the cached copy stops being stale.
+   */
+  async getCurrentUser(): Promise<KoolbaseUser> {
+    const res = await this.authRequest('/v1/sdk/auth/me', {
+      method: 'GET',
+      includeAuth: true,
+    });
+    await this.checkResponse(res);
+    const user = this.mapUser(await res.json());
+    await this.updateUserAndPersist(user);
+    return user;
+  }
+
+  /**
+   * Update the signed-in user's profile.
+   *
+   * Only the fields given are sent, so passing one leaves the other
+   * untouched. The updated user is persisted, so `currentUser` reflects it
+   * without a refetch.
+   */
+  async updateProfile(params: {
+    fullName?: string;
+    avatarUrl?: string;
+  }): Promise<KoolbaseUser> {
+    const body: Record<string, string> = {};
+    if (params.fullName !== undefined) body.full_name = params.fullName;
+    if (params.avatarUrl !== undefined) body.avatar_url = params.avatarUrl;
+
+    const res = await this.authRequest('/v1/sdk/auth/me', {
+      method: 'PATCH',
+      body,
+      includeAuth: true,
+    });
+    await this.checkResponse(res);
+    const user = this.mapUser(await res.json());
+    await this.updateUserAndPersist(user);
+    return user;
+  }
+
+  /**
+   * Change the signed-in user's password.
+   *
+   * The current password is required: a stolen session should not be enough
+   * to lock the real owner out. A wrong one throws
+   * CurrentPasswordIncorrectError — the server returns `invalid_password`,
+   * which reads like a rejected new password and means the opposite.
+   *
+   * An account that signed up through Google or Apple has no password to
+   * change and gets the same error, deliberately, so a caller cannot probe
+   * which sign-in methods an account has.
+   */
+  async changePassword(params: {
+    currentPassword: string;
+    newPassword: string;
+  }): Promise<void> {
+    if (params.newPassword.length < 8) throw new WeakPasswordError();
+    const res = await this.authRequest('/v1/sdk/auth/me/password', {
+      method: 'PATCH',
+      body: {
+        current_password: params.currentPassword,
+        new_password: params.newPassword,
+      },
+      includeAuth: true,
+    });
+    await this.checkResponse(res);
+  }
+
+  /**
+   * Delete the signed-in user's account, and sign out.
+   *
+   * Deletes the caller only — there is no user id to pass, which is the
+   * security property. The server removes the auth record and every session
+   * on every device, then fires an `auth.user.deleted` trigger.
+   *
+   * It does NOT delete the account's records in your collections. Koolbase
+   * cannot know whether a row should be deleted, anonymised, or kept for a
+   * statutory retention period. Subscribe a Function to `auth.user.deleted`
+   * and clean up there — it runs server-side, so a tab closing mid-flow
+   * cannot strand anything.
+   */
+  async deleteAccount(): Promise<void> {
+    const res = await this.authRequest('/v1/sdk/auth/me', {
+      method: 'DELETE',
+      includeAuth: true,
+    });
+    await this.checkResponse(res);
+    await this.clearSessionInternal();
   }
 
   async unlock(token: string): Promise<void> {
