@@ -632,6 +632,28 @@ private async parseAppleSessionResponse(res: Response): Promise<KoolbaseSession>
     await this.checkResponse(res);
   }
 
+  /**
+   * Ask for a new verification email, with no session.
+   *
+   * For the state a project with verified contact required creates:
+   * registered, unverified, refused at login, and holding a link that may
+   * never have arrived or has since expired. `resendVerificationEmail()`
+   * cannot help there — it needs a session the user cannot get.
+   *
+   * Returns nothing, and throws only on a malformed request, because the
+   * server answers identically whether the address has an account, has none,
+   * or is already verified. Anything else would let anyone discover who has
+   * signed up. So there is no "we sent it" to report: show the same "check
+   * your email" either way.
+   */
+  async resendVerificationEmailToAddress(email: string): Promise<void> {
+    const res = await this.authRequest('/v1/sdk/auth/resend-verification/by-email', {
+      method: 'POST',
+      body: { email },
+    });
+    await this.checkResponse(res);
+  }
+
   async resetPassword(token: string, password: string): Promise<void> {
     const res = await this.authRequest('/v1/sdk/auth/password-reset/confirm', {
       method: 'POST',

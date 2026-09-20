@@ -7,6 +7,30 @@ is based on [Keep a Changelog][kac], and this project adheres to
 [kac]: https://keepachangelog.com/en/1.1.0/
 [semver]: https://semver.org/
 
+## 11.4.0
+
+### Added
+
+- **`auth.resendVerificationEmailToAddress(email)`** — ask for a new
+  verification email with no session.
+
+  A project requiring verified contact issues no session until the account
+  verifies, and refuses login until then. So a user whose verification email
+  went to spam, or who waited past the 24-hour link expiry, could not sign in
+  to ask for another one — `resendVerificationEmail()` needs the session they
+  cannot get. There was no way back except contacting the project's
+  developer.
+
+  Returns nothing and throws only on a malformed request. The server answers
+  identically whether the address has an account, has none, or is already
+  verified, because anything else would let anyone discover who has signed
+  up — so show the same "check your email" either way, and never say "we sent
+  it". The per-account cooldown and daily cap still apply; they are simply
+  not reported, for the same reason.
+
+  `resendVerificationEmail()` is unchanged, for a signed-in user who can
+  safely be told more.
+
 ## 11.3.0
 
 ### Fixed

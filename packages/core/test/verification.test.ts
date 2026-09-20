@@ -65,6 +65,24 @@ describe('email verification', () => {
     expect(result.cooldownUntil?.toISOString()).toBe('2026-09-19T20:01:00.000Z');
   });
 
+  it('the by-address resend needs no session and reports nothing', async () => {
+    // The signed-out path. It answers the same whether the address has an
+    // account, has none, or is already verified — so there is nothing to
+    // return, and an app shows the same "check your email" either way.
+    respond(200, { message: 'If that email needs verifying, a new link has been sent' });
+    const auth = new KoolbaseAuth(config);
+
+    await expect(
+      auth.resendVerificationEmailToAddress('someone@example.test')
+    ).resolves.toBeUndefined();
+
+    const [url, init] = (global.fetch as jest.Mock).mock.calls[0];
+    expect(url).toContain('/v1/sdk/auth/resend-verification/by-email');
+    expect(JSON.parse(init.body)).toEqual({ email: 'someone@example.test' });
+    // No Authorization header: the whole point is that there is no session.
+    expect(init.headers?.Authorization ?? init.headers?.authorization).toBeUndefined();
+  });
+
   it('a cooldown is a typed error carrying when to retry', async () => {
     respond(429, {
       code: 'resend_cooldown',
