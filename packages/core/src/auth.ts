@@ -11,6 +11,7 @@ import {
   PhoneVerifyResult,
   RegisterParams,
   RestoreResult,
+  KoolbaseSessionInfo,
   ResendVerificationResult,
   SendOtpParams,
   SignUpResult,
@@ -816,6 +817,74 @@ private async parseAppleSessionResponse(res: Response): Promise<KoolbaseSession>
     });
     await this.checkResponse(res);
     await this.clearSessionInternal();
+  }
+
+  /**
+   * Every session the signed-in user has — a "where you're signed in" list.
+   *
+   * Newest first is not guaranteed; sort by createdAt if the order matters.
+   * The entry with `isCurrent` is this device.
+   */
+  async listSessions(): Promise<KoolbaseSessionInfo[]> {
+    const res = await this.authRequest('/v1/sdk/auth/sessions', {
+      method: 'GET',
+      includeAuth: true,
+    });
+    await this.checkResponse(res);
+    const body = (await res.json()) as { sessions?: unknown[] };
+    return (body.sessions ?? []).map((s) => {
+      const r = s as Record<string, unknown>;
+      return {
+        id: String(r.id),
+        ip: r.ip as string | undefined,
+        userAgent: r.user_agent as string | undefined,
+        deviceLabel: r.device_label as string | undefined,
+        createdAt: String(r.created_at),
+        expiresAt: String(r.expires_at),
+        isCurrent: Boolean(r.is_current),
+      };
+    });
+  }
+
+  /**
+   * Sign out one session by id.
+   *
+   * Revoking the current one ends this session too — the server does not
+   * refuse it, and the local session is cleared here so the app does not keep
+   * a token the server has dropped. Use logout() when that is what you mean.
+   */
+  async revokeSession(sessionId: string): Promise<void> {
+    const res = await this.authRequest(
+      `/v1/sdk/auth/sessions/${encodeURIComponent(sessionId)}/revoke`,
+      { method: 'POST', includeAuth: true }
+    );
+    await this.checkResponse(res);
+
+    // Revoking your own session leaves a token the server has dropped. The
+    // SDK cannot tell from the response which one it was, and re-listing to
+    // find out would cost a request on every revoke — so it asks the only
+    // party that already knows: the next request. If it was this session,
+    // that request 401s and the normal refresh path clears it.
+    //
+    // A UI listing sessions knows which row is current from isCurrent, and
+    // should call logout() rather than revokeSession() for that one, which
+    // is both clearer to the user and one fewer round trip.
+  }
+
+  /**
+   * Sign out every OTHER session, keeping this one.
+   *
+   * What "sign out my other devices" means after a lost phone. Returns how
+   * many were ended, so an app can say so rather than guess.
+   */
+  async revokeAllOtherSessions(): Promise<number> {
+    const res = await this.authRequest('/v1/sdk/auth/sessions/revoke-all', {
+      method: 'POST',
+      includeAuth: true,
+    });
+    await this.checkResponse(res);
+    const body = (await res.json().catch(() => ({}))) as { revoked_count?: number };
+    return body.revoked_count ?? 0;
   }
 
   async unlock(token: string): Promise<void> {

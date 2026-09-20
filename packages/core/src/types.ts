@@ -98,6 +98,31 @@ export type SignUpResult =
       session: null;
     };
 
+/**
+ * One active session — somewhere the user is signed in.
+ *
+ * Token hashes are never included; the server excludes them deliberately.
+ */
+export interface KoolbaseSessionInfo {
+  id: string;
+  /** Where it signed in from, when the server captured it. */
+  ip?: string;
+  /** What signed in. A browser sets this; native SDKs send their own. */
+  userAgent?: string;
+  /** A per-install label, where the SDK supplied one. */
+  deviceLabel?: string;
+  createdAt: string;
+  expiresAt: string;
+  /**
+   * True for the session making the request.
+   *
+   * A device list needs this: without it a user cannot tell which row is the
+   * phone in their hand, and "sign out everywhere else" has nothing to
+   * exclude.
+   */
+  isCurrent: boolean;
+}
+
 export interface ResendVerificationResult {
   alreadyVerified: boolean;
   /** When the link in the email stops working. Null when nothing was sent. */
