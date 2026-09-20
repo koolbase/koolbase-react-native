@@ -7,6 +7,128 @@ is based on [Keep a Changelog][kac], and this project adheres to
 [kac]: https://keepachangelog.com/en/1.1.0/
 [semver]: https://semver.org/
 
+## 12.0.0
+
+### Breaking
+
+- **Fourteen error classes now report the code the server actually sends.**
+
+  `error.code` is a public field, and on these fourteen classes it carried a
+  value the Koolbase API has never emitted. Catching by type has always
+  worked and is unaffected — no class, constructor or export has changed.
+  Only the string in `code` moves.
+
+  If you compare `error.code` against a literal, update these comparisons.
+  If you assert on `code` in tests, or build fixtures from these values, the
+  same applies.
+
+  | Class | Was | Now |
+  |---|---|---|
+  | `EmailAlreadyInUseError` | `email_taken` | `email_in_use` |
+  | `UserDisabledError` | `user_disabled` | `account_disabled` |
+  | `SessionExpiredError` | `session_expired` | `invalid_refresh_token` |
+  | `UnlockTokenInvalidError` | `unlock_token_invalid` | `invalid_unlock_token` |
+  | `OtpRateLimitError` | `otp_rate_limit` | `rate_limit` |
+  | `PhoneAlreadyInUseError` | `phone_taken` | `phone_in_use` |
+  | `SmsConfigMissingError` | `sms_config_missing` | `sms_not_configured` |
+  | `AppleNotConfiguredError` | `apple_not_configured` | `oauth_not_configured` |
+  | `InvalidAppleTokenError` | `invalid_apple_token` | `invalid_oauth_token` |
+  | `AppleEmailRequiredError` | `apple_email_required` | `oauth_email_required` |
+  | `GoogleEmailRequiredError` | `google_email_required` | `oauth_email_required` |
+  | `GoogleNotConfiguredError` | `google_not_configured` | `oauth_not_configured` |
+  | `InvalidGoogleTokenError` | `invalid_google_token` | `invalid_oauth_token` |
+
+  The Apple and Google pairs are the clearest case: the SDK split them by
+  provider while the server has always sent one unified code for both.
+
+  Why this was invisible: the mapping tests checked which class a server code
+  produces, never what code that class reports. Both directions are now
+  asserted, so a class cannot report a code the API does not send.
+
+  **Nothing that worked before breaks in behaviour.** A comparison against
+  the old value could never have matched a real response — but it can match a
+  mock, which is why this is a major release rather than a patch.
+
+### Added
+
+- **Account settings.** A web application could not offer one: these existed
+  on the server and in the Flutter SDK, and not here.
+
+  - `auth.getCurrentUser()` — the signed-in user, fetched fresh rather than
+    from the cached session, and persisted so `currentUser` stops being
+    stale.
+  - `auth.updateProfile({ fullName?, avatarUrl? })` — only the fields given
+    are sent, so passing one leaves the other untouched.
+  - `auth.changePassword({ currentPassword, newPassword })` — the current
+    password is required: a stolen session should not be enough to lock the
+    real owner out. A wrong one throws `CurrentPasswordIncorrectError`.
+  - `auth.deleteAccount()` — deletes the caller only; there is no user id to
+    pass, which is the security property. It does **not** delete the
+    account's records in your collections. Subscribe a Function to
+    `auth.user.deleted` and clean up there.
+
+- **Session management.** Three endpoints had been live on the server the
+  whole time and no SDK exposed any of them.
+
+  - `auth.listSessions()` — where the user is signed in. Each entry carries
+    the device label, IP, user agent and timestamps, and `isCurrent` marks
+    this device. Token hashes are never included.
+  - `auth.revokeSession(id)` — sign one out. Revoking the current session
+    ends this one too; the next request's 401 clears it locally. A UI that
+    knows a row is current should call `logout()` instead.
+  - `auth.revokeAllOtherSessions()` — sign out every other device, keeping
+    this one, and return how many ended. What "sign out my other devices"
+    means after a lost phone.
+
+- **`auth.auditLog({ limit?, offset? })`** — the account's own security
+  history, for a "recent activity" screen: sign-ins, failures, lockouts,
+  password changes, verification. The server sanitizes each event against a
+  per-type field allowlist, so an entry carries what its type may say and
+  nothing more. Returns a page with the total across all pages.
+
+- **`db.aggregate(request)`** — count and total over a whole collection.
+
+  Not a paged query you add up in the client: the server aggregates the
+  entire authorized set with the read rule applied inside the query. And
+  never a bare number — collections are schemaless, so a sum that quietly
+  skipped three malformed rows would be a wrong number that looks right.
+  Every result carries its `accounting`: how many records contributed to each
+  measure, how many were skipped, and why.
+
+  ```ts
+  const r = await Koolbase.db.aggregate({
+    collection: 'orders',
+    groupBy: { field: 'created_at', bucket: 'month', timezone: 'Africa/Accra' },
+    measures: [{ aggregate: 'sum', field: 'total', as: 'revenue' }],
+  })
+
+  if (r.accounting.revenue.skipped > 0) {
+    // some orders had a total that was not a number — say so
+  }
+  ```
+
+  A calendar bucket requires a timezone and the types enforce it: midnight
+  means nothing without one, and Accra and UTC disagree about which day a
+  23:30 sale belongs to.
+
+### Changed
+
+- **`x-koolbase-platform-version` falls back to `unknown`** rather than being
+  sent empty. The browser version is read from the user agent, which
+  recognises Chrome, Firefox, Safari and Edge — so Brave, Opera, Samsung
+  Internet and in-app webviews reported nothing. An empty header stored
+  against a session is indistinguishable from an SDK that never reported
+  itself; `unknown` says the SDK spoke and could not identify the host.
+
+### Fixed
+
+- The six `x-koolbase-*` identity headers are now pinned by a test against
+  the set the API allows. They are sent on every request, and a browser
+  refuses a request whose preflight does not list them — which is how every
+  authenticated call from `@koolbase/js` came to be blocked on 18 September.
+  The API derives its CORS allowance from one declaration now, and this test
+  is the other end of that contract.
+
 ## 11.4.0
 
 ### Added

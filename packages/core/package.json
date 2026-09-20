@@ -1,6 +1,6 @@
 {
   "name": "@koolbase/core",
-  "version": "11.4.0",
+  "version": "12.0.0",
   "description": "Koolbase SDK core \u2014 shared behaviour behind @koolbase/react-native and @koolbase/js. Install one of those, not this.",
   "main": "./dist/cjs/index.js",
   "types": "./dist/esm/index.d.ts",
