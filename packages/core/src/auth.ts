@@ -11,6 +11,7 @@ import {
   PhoneVerifyResult,
   RegisterParams,
   RestoreResult,
+  KoolbaseAuditPage,
   KoolbaseSessionInfo,
   ResendVerificationResult,
   SendOtpParams,
@@ -885,6 +886,47 @@ private async parseAppleSessionResponse(res: Response): Promise<KoolbaseSession>
     await this.checkResponse(res);
     const body = (await res.json().catch(() => ({}))) as { revoked_count?: number };
     return body.revoked_count ?? 0;
+  }
+
+  /**
+   * What has happened to this account — sign-ins, failures, lockouts,
+   * password changes.
+   *
+   * For a "recent security activity" screen. The server sanitizes each
+   * event, so this carries what that event type is allowed to say and
+   * nothing more.
+   *
+   * @param limit up to 200; the server caps it there.
+   */
+  async auditLog(options?: {
+    limit?: number;
+    offset?: number;
+  }): Promise<KoolbaseAuditPage> {
+    const params = new URLSearchParams();
+    if (options?.limit !== undefined) params.set('limit', String(options.limit));
+    if (options?.offset !== undefined) params.set('offset', String(options.offset));
+    const qs = params.toString();
+
+    const res = await this.authRequest(
+      `/v1/sdk/auth/audit${qs ? `?${qs}` : ''}`,
+      { method: 'GET', includeAuth: true }
+    );
+    await this.checkResponse(res);
+    const body = (await res.json()) as Record<string, unknown>;
+
+    return {
+      events: ((body.events as Record<string, unknown>[]) ?? []).map((e) => ({
+        id: String(e.id),
+        eventType: String(e.event_type),
+        occurredAt: String(e.occurred_at),
+        ip: e.ip as string | undefined,
+        userAgent: e.user_agent as string | undefined,
+        eventData: (e.event_data as Record<string, unknown>) ?? {},
+      })),
+      total: Number(body.total ?? 0),
+      limit: Number(body.limit ?? 0),
+      offset: Number(body.offset ?? 0),
+    };
   }
 
   async unlock(token: string): Promise<void> {

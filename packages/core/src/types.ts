@@ -123,6 +123,42 @@ export interface KoolbaseSessionInfo {
   isCurrent: boolean;
 }
 
+/**
+ * One thing that happened to this account.
+ *
+ * The server sanitizes these: `eventData` carries only the fields allowed
+ * for that event type, so a lockout can say which address was attempted
+ * while a successful login carries nothing extra.
+ */
+export interface KoolbaseAuditEvent {
+  id: string;
+  /**
+   * What happened. One of: auth.login.success, auth.login.failed,
+   * auth.account.locked, auth.account.unlocked, auth.session.created,
+   * auth.session.refreshed, auth.session.revoked, auth.password.changed,
+   * auth.user.verified.
+   *
+   * A string rather than a union: the server may add one, and an app that
+   * stops compiling because it did would be worse than one that shows an
+   * event it does not recognise.
+   */
+  eventType: string;
+  occurredAt: string;
+  ip?: string;
+  userAgent?: string;
+  /** Whatever that event type is allowed to carry. Often empty. */
+  eventData: Record<string, unknown>;
+}
+
+/** A page of audit events, and how many there are in total. */
+export interface KoolbaseAuditPage {
+  events: KoolbaseAuditEvent[];
+  /** Across all pages, so an app knows whether to offer "show more". */
+  total: number;
+  limit: number;
+  offset: number;
+}
+
 export interface ResendVerificationResult {
   alreadyVerified: boolean;
   /** When the link in the email stops working. Null when nothing was sent. */
