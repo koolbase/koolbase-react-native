@@ -10,6 +10,11 @@ import {
   queueWrite,
   QueuedConflict,
 } from './offline-state.js';
+import {
+  KoolbaseAggregateAccounting,
+  KoolbaseAggregateRequest,
+  KoolbaseAggregateResult,
+} from './aggregate.js';
 import { KoolbaseConflict, ConflictResolver } from './conflict.js';
 import { PendingWrite, toPendingWrite } from './pending-write.js';
 import {
@@ -550,6 +555,85 @@ export class KoolbaseDatabase {
     const userId = this.requireUserId('the pending-write queue');
     const { pending } = await readOfflineState(userId);
     return pending.map(toPendingWrite);
+  }
+
+  /**
+   * Count and total over a whole collection, with the read rule applied
+   * inside the query.
+   *
+   * Not a paged query you add up yourself: the server aggregates the entire
+   * authorized set. And never a bare number — collections are schemaless, so
+   * a sum that quietly skipped three malformed rows would be a wrong number
+   * that looks right. Check `accounting` for what contributed.
+   *
+   * ```ts
+   * const r = await db.aggregate({
+   *   collection: 'orders',
+   *   groupBy: { field: 'created_at', bucket: 'month', timezone: 'Africa/Accra' },
+   *   measures: [{ aggregate: 'sum', field: 'total', as: 'revenue' }],
+   * });
+   * ```
+   *
+   * A calendar bucket requires a timezone and the types enforce it: midnight
+   * means nothing without one, and Accra and UTC disagree about which day a
+   * 23:30 sale belongs to.
+   */
+  async aggregate(
+    request: KoolbaseAggregateRequest
+  ): Promise<KoolbaseAggregateResult> {
+    const raw = await this.request<Record<string, unknown>>(
+      'POST',
+      '/v1/sdk/db/aggregate',
+      {
+        collection: request.collection,
+        ...(request.where?.length ? { where: request.where } : {}),
+        ...(request.groupBy
+          ? {
+              group_by: {
+                field: request.groupBy.field,
+                ...(request.groupBy.bucket
+                  ? {
+                      bucket: request.groupBy.bucket,
+                      timezone: request.groupBy.timezone,
+                    }
+                  : {}),
+              },
+            }
+          : {}),
+        measures: request.measures.map((m) => ({
+          aggregate: m.aggregate,
+          ...(m.field ? { field: m.field } : {}),
+          as: m.as,
+        })),
+      }
+    );
+
+    const accounting: Record<string, KoolbaseAggregateAccounting> = {};
+    for (const [name, a] of Object.entries(
+      (raw.accounting as Record<string, Record<string, unknown>>) ?? {}
+    )) {
+      accounting[name] = {
+        counted: Number(a.counted ?? 0),
+        skipped: Number(a.skipped ?? 0),
+        skippedReason: a.skipped_reason as
+          | 'missing'
+          | 'not_numeric'
+          | 'mixed'
+          | undefined,
+      };
+    }
+
+    return {
+      groups: ((raw.groups as Record<string, unknown>[]) ?? []).map((g) => ({
+        category: String(g.category ?? ''),
+        values: (g.values as Record<string, number | null>) ?? {},
+      })),
+      matched: Number(raw.matched ?? 0),
+      accounting,
+      // Explicitly boolean: a missing field must read as false, not
+      // undefined, or `if (!r.tooManyGroups)` passes on a refused request.
+      tooManyGroups: raw.too_many_groups === true,
+    };
   }
 
   async conflicts(): Promise<KoolbaseConflict[]> {

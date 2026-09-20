@@ -6,6 +6,7 @@
 
 export * from './types.js';
 export * from './errors.js';
+export * from './aggregate.js';
 export * from './conflict.js';
 export * from './pending-write.js';
 export * from './function-errors.js';
