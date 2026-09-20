@@ -7,6 +7,58 @@ is based on [Keep a Changelog][kac], and this project adheres to
 [kac]: https://keepachangelog.com/en/1.1.0/
 [semver]: https://semver.org/
 
+## 11.3.0
+
+### Fixed
+
+- **Thirty error codes the API emits were not mapped**, so they arrived as
+  generic errors and an app's `instanceof` branch silently never ran. The
+  worst of them is `revision_mismatch`: the server attaches the current
+  record and both revisions to that 409 specifically so a conflict can be
+  resolved without a second fetch, and no app could reach any of it.
+  `KoolbaseRevisionMismatchError` now carries `expectedRevision`,
+  `currentRevision` and `current` as typed fields.
+
+  Also now catchable: `plan_limit_reached` (as `KoolbasePlanLimitError`,
+  shared across database, storage and functions, carrying resource, limit
+  and plan), `insufficient_scope`, `idempotency_key_reused` /
+  `idempotency_conflict`, `batch_failed`, `duplicate_values`,
+  `identity_not_found`, `provider_identity_already_linked`,
+  `vector_field_exists`, `field_not_auto_embed`, `invalid_embedding_config`,
+  `provider_not_configured`, `provider_invalid`, `upload_url_failed`,
+  `slug_taken`, `invitation_invalid`, `project_invalid`, `invalid_body`,
+  `no_changes`, the four seed codes, and the generic conflict codes.
+
+- **Two mappings were for codes the API does not emit.** `session_expired`
+  and `token_revoked` were handled as though the server sent them; it sends
+  `invalid_refresh_token`, which already maps to `SessionExpiredError`.
+  Removed, along with three message-substring guesses at revocation.
+  `TokenRevokedError` stays as a class: explicit revocation is worth
+  distinguishing from expiry, but only once the server can establish it —
+  a generic 401 cannot, and the SDK must not infer it.
+
+- **`restoreSession` no longer clears the stored session on
+  `InvalidCredentialsError`.** It means "these credentials are wrong", which
+  during a restore points at the project key or the request rather than the
+  user's session — and deleting the refresh token on that reading signs
+  someone out with no way back. Only a refused refresh clears it now.
+
+- **Errors report the code the server sent.**
+  `KoolbaseIdempotencyKeyReusedError` hardcoded one code while serving two.
+
+### Why these were missing
+
+The API wrote error codes through four different helpers, so no single search
+found them all, and the comparison against what these SDKs map took four grep
+patterns and still missed several. The API now declares every code as a
+constant in one file, with a test that fails the build on a literal — so the
+comparison is exact. That is how these thirty were found, and three codes
+nobody had written down anywhere.
+
+Every surface here has a test asserting each code maps to its own class and
+reports its own code, so the next one added to the API without a case here
+fails the build rather than a user's upload.
+
 ## 11.2.0
 
 ### Fixed
