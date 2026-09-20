@@ -24,7 +24,7 @@ export class InvalidCredentialsError extends KoolbaseAuthError {
 
 export class EmailAlreadyInUseError extends KoolbaseAuthError {
   constructor() {
-    super('Email is already in use', 'email_taken');
+    super('Email is already in use', 'email_in_use');
     this.name = 'EmailAlreadyInUseError';
     Object.setPrototypeOf(this, EmailAlreadyInUseError.prototype);
   }
@@ -32,7 +32,7 @@ export class EmailAlreadyInUseError extends KoolbaseAuthError {
 
 export class UserDisabledError extends KoolbaseAuthError {
   constructor() {
-    super('This account has been disabled', 'user_disabled');
+    super('This account has been disabled', 'account_disabled');
     this.name = 'UserDisabledError';
     Object.setPrototypeOf(this, UserDisabledError.prototype);
   }
@@ -56,7 +56,7 @@ export class WeakPasswordError extends KoolbaseAuthError {
 
 export class SessionExpiredError extends KoolbaseAuthError {
   constructor() {
-    super('Session expired, please log in again', 'session_expired');
+    super('Session expired, please log in again', 'invalid_refresh_token');
     this.name = 'SessionExpiredError';
     Object.setPrototypeOf(this, SessionExpiredError.prototype);
   }
@@ -111,7 +111,7 @@ export class AccountLockedError extends KoolbaseAuthError {
  */
 export class UnlockTokenInvalidError extends KoolbaseAuthError {
   constructor() {
-    super('Unlock link is invalid or has expired', 'unlock_token_invalid');
+    super('Unlock link is invalid or has expired', 'invalid_unlock_token');
     this.name = 'UnlockTokenInvalidError';
     Object.setPrototypeOf(this, UnlockTokenInvalidError.prototype);
   }
@@ -225,7 +225,7 @@ export class OtpRateLimitError extends KoolbaseAuthError {
   constructor() {
     super(
       'Too many OTP requests, please wait before trying again',
-      'otp_rate_limit'
+      'rate_limit'
     );
     this.name = 'OtpRateLimitError';
     Object.setPrototypeOf(this, OtpRateLimitError.prototype);
@@ -236,7 +236,7 @@ export class PhoneAlreadyLinkedError extends KoolbaseAuthError {
   constructor() {
     super(
       'Phone number is already associated with another account',
-      'phone_taken'
+      'phone_in_use'
     );
     this.name = 'PhoneAlreadyLinkedError';
     Object.setPrototypeOf(this, PhoneAlreadyLinkedError.prototype);
@@ -245,7 +245,7 @@ export class PhoneAlreadyLinkedError extends KoolbaseAuthError {
 
 export class SmsConfigMissingError extends KoolbaseAuthError {
   constructor() {
-    super('SMS provider not configured for this project', 'sms_config_missing');
+    super('SMS provider not configured for this project', 'sms_not_configured');
     this.name = 'SmsConfigMissingError';
     Object.setPrototypeOf(this, SmsConfigMissingError.prototype);
   }
@@ -253,7 +253,7 @@ export class SmsConfigMissingError extends KoolbaseAuthError {
 
 export class AppleSignInNotConfiguredError extends KoolbaseAuthError {
   constructor() {
-    super('Apple Sign-In is not configured for this environment', 'apple_not_configured');
+    super('Apple Sign-In is not configured for this environment', 'oauth_not_configured');
     this.name = 'AppleSignInNotConfiguredError';
     Object.setPrototypeOf(this, AppleSignInNotConfiguredError.prototype);
   }
@@ -261,7 +261,7 @@ export class AppleSignInNotConfiguredError extends KoolbaseAuthError {
 
 export class InvalidAppleTokenError extends KoolbaseAuthError {
   constructor() {
-    super('Invalid Apple identity token', 'invalid_apple_token');
+    super('Invalid Apple identity token', 'invalid_oauth_token');
     this.name = 'InvalidAppleTokenError';
     Object.setPrototypeOf(this, InvalidAppleTokenError.prototype);
   }
@@ -271,7 +271,7 @@ export class AppleEmailRequiredError extends KoolbaseAuthError {
   constructor() {
     super(
       'Apple did not return email for this sign-in. Revoke this app in iOS Settings → Apple ID and retry.',
-      'apple_email_required',
+      'oauth_email_required',
     );
     this.name = 'AppleEmailRequiredError';
     Object.setPrototypeOf(this, AppleEmailRequiredError.prototype);
@@ -291,7 +291,7 @@ export class OAuthEmailConflictError extends KoolbaseAuthError {
 
 export class GoogleSignInNotConfiguredError extends KoolbaseAuthError {
   constructor() {
-    super('Google Sign-In is not configured for this environment', 'google_not_configured');
+    super('Google Sign-In is not configured for this environment', 'oauth_not_configured');
     this.name = 'GoogleSignInNotConfiguredError';
     Object.setPrototypeOf(this, GoogleSignInNotConfiguredError.prototype);
   }
@@ -500,7 +500,7 @@ export class MalformedSessionResponseError extends KoolbaseAuthError {
 
 export class InvalidGoogleTokenError extends KoolbaseAuthError {
   constructor() {
-    super('Invalid Google identity token', 'invalid_google_token');
+    super('Invalid Google identity token', 'invalid_oauth_token');
     this.name = 'InvalidGoogleTokenError';
     Object.setPrototypeOf(this, InvalidGoogleTokenError.prototype);
   }
@@ -510,7 +510,7 @@ export class GoogleEmailRequiredError extends KoolbaseAuthError {
   constructor() {
     super(
       'Google did not return email for this sign-in. Ensure the email scope is requested in the native flow.',
-      'google_email_required',
+      'oauth_email_required',
     );
     this.name = 'GoogleEmailRequiredError';
     Object.setPrototypeOf(this, GoogleEmailRequiredError.prototype);
