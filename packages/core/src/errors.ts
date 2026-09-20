@@ -74,6 +74,27 @@ export class KoolbaseUnauthenticatedError extends KoolbaseError {
  * updates are conflict-safe and some quietly are not, which is a worse guarantee
  * than a clear refusal.
  */
+/**
+ * The project's plan does not allow this — a 402 carrying which resource, the
+ * limit, and the plan.
+ *
+ * Shared rather than per-domain: creating a collection, uploading an object
+ * and deploying a function can all hit it, and an app showing an upgrade
+ * prompt wants one type to catch.
+ */
+export class KoolbasePlanLimitError extends KoolbaseError {
+  constructor(
+    message?: string,
+    readonly resource?: string,
+    readonly limit?: number,
+    readonly plan?: string
+  ) {
+    super(message ?? 'This exceeds your plan limit', 'plan_limit_reached');
+    this.name = 'KoolbasePlanLimitError';
+    Object.setPrototypeOf(this, KoolbasePlanLimitError.prototype);
+  }
+}
+
 export class KoolbaseOfflineBaselineUnavailableError extends KoolbaseError {
   constructor(message: string) {
     super(message, 'offline_baseline_unavailable');

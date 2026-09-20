@@ -50,6 +50,11 @@ const cases: Array<[string, new (...a: never[]) => Error]> = [
   ['insufficient_authority', errors.InsufficientAuthorityError],
   ['last_credential', errors.LastCredentialError],
   ['hide_requires_verification', errors.HideRequiresVerificationError],
+
+  // Mapped once the constants file made the API's full list exact.
+  ['insufficient_scope', errors.InsufficientScopeError],
+  ['identity_not_found', errors.IdentityNotFoundError],
+  ['provider_identity_already_linked', errors.ProviderIdentityAlreadyLinkedError],
 ];
 
 describe('auth error mapping', () => {

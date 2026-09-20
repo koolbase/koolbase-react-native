@@ -28,7 +28,10 @@ import {
   OtpMaxAttemptsError,
   OtpRateLimitError,
   PhoneAlreadyLinkedError,
+  IdentityNotFoundError,
+  InsufficientScopeError,
   MalformedSessionResponseError,
+  ProviderIdentityAlreadyLinkedError,
   AccountExistsError,
   ContactNotVerifiedError,
   CurrentPasswordIncorrectError,
@@ -988,6 +991,12 @@ private async parseAppleSessionResponse(res: Response): Promise<KoolbaseSession>
         throw new OAuthOnlyAccountError(msg || undefined);
       case 'unsupported_oauth_provider':
         throw new UnsupportedOAuthProviderError(msg || undefined);
+      case 'identity_not_found':
+        throw new IdentityNotFoundError(msg || undefined);
+      case 'provider_identity_already_linked':
+        throw new ProviderIdentityAlreadyLinkedError(msg || undefined);
+      case 'insufficient_scope':
+        throw new InsufficientScopeError(msg || undefined);
 
       // Authority
       case 'session_required':

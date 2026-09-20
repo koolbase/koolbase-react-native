@@ -30,6 +30,30 @@ const cases: Array<[string, new (...a: never[]) => Error]> = [
   ['constraint_exists', errors.KoolbaseConstraintExistsError],
   ['constraint_not_found', errors.KoolbaseConstraintNotFoundError],
   ['insufficient_authority', errors.KoolbaseInsufficientAuthorityError],
+
+  // Mapped once the constants file made the API's full list exact.
+  ['revision_mismatch', errors.KoolbaseRevisionMismatchError],
+  ['idempotency_key_reused', errors.KoolbaseIdempotencyKeyReusedError],
+  ['idempotency_conflict', errors.KoolbaseIdempotencyKeyReusedError],
+  ['batch_failed', errors.KoolbaseBatchFailedError],
+  ['duplicate_values', errors.KoolbaseDuplicateValuesError],
+  ['vector_field_exists', errors.KoolbaseVectorFieldExistsError],
+  ['field_not_auto_embed', errors.KoolbaseFieldNotAutoEmbedError],
+  ['invalid_embedding_config', errors.KoolbaseInvalidEmbeddingConfigError],
+  ['provider_not_configured', errors.KoolbaseProviderNotConfiguredError],
+  ['provider_invalid', errors.KoolbaseProviderInvalidError],
+  ['slug_taken', errors.KoolbaseSlugTakenError],
+  ['invitation_invalid', errors.KoolbaseInvitationInvalidError],
+  ['project_invalid', errors.KoolbaseProjectInvalidError],
+  ['invalid_body', errors.KoolbaseInvalidBodyError],
+  ['no_changes', errors.KoolbaseNoChangesError],
+  ['invalid_seed_file', errors.KoolbaseSeedError],
+  ['seed_key_not_unique', errors.KoolbaseSeedError],
+  ['seed_needs_decision', errors.KoolbaseSeedError],
+  ['seed_conflicts_require_force', errors.KoolbaseSeedError],
+  ['conflict', errors.KoolbaseStateConflictError],
+  ['duplicate', errors.KoolbaseStateConflictError],
+  ['state_conflict', errors.KoolbaseStateConflictError],
 ];
 
 describe('database error mapping', () => {

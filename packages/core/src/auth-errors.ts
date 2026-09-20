@@ -446,6 +446,47 @@ export class HideRequiresVerificationError extends KoolbaseAuthError {
   }
 }
 
+/**
+ * The API key's scope is below what the operation requires.
+ *
+ * Scopes rank read < write < admin. Not a credential problem — the key is
+ * valid, and a different key or a dashboard session is needed. Worth its own
+ * type so an app does not tell someone to sign in again when signing in will
+ * not help.
+ */
+export class InsufficientScopeError extends KoolbaseAuthError {
+  constructor(message?: string) {
+    super(message ?? "This key's scope does not permit this operation", 'insufficient_scope');
+    this.name = 'InsufficientScopeError';
+    Object.setPrototypeOf(this, InsufficientScopeError.prototype);
+  }
+}
+
+/** The provider is not connected to this account. */
+export class IdentityNotFoundError extends KoolbaseAuthError {
+  constructor(message?: string) {
+    super(message ?? 'That provider is not connected to your account', 'identity_not_found');
+    this.name = 'IdentityNotFoundError';
+    Object.setPrototypeOf(this, IdentityNotFoundError.prototype);
+  }
+}
+
+/**
+ * Connecting a Google or Apple identity that another account already holds.
+ * Distinct from AccountExistsError, which is about the email; this is about
+ * the provider identity itself.
+ */
+export class ProviderIdentityAlreadyLinkedError extends KoolbaseAuthError {
+  constructor(message?: string) {
+    super(
+      message ?? 'That provider identity is already linked to another account',
+      'provider_identity_already_linked'
+    );
+    this.name = 'ProviderIdentityAlreadyLinkedError';
+    Object.setPrototypeOf(this, ProviderIdentityAlreadyLinkedError.prototype);
+  }
+}
+
 export class MalformedSessionResponseError extends KoolbaseAuthError {
   constructor(missing: string) {
     super(

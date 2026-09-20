@@ -1,4 +1,4 @@
-import { KoolbaseError, KoolbaseUnauthenticatedError } from './errors.js';
+import { KoolbaseError, KoolbasePlanLimitError, KoolbaseUnauthenticatedError } from './errors.js';
 /**
  * Base error type for all Koolbase storage errors. Catchable via
  * `instanceof KoolbaseStorageError` to handle any storage-related failure
@@ -114,6 +114,21 @@ export class KoolbaseStoragePermissionError extends KoolbaseStorageError {
  * failure: presign again and send the same bytes. Worth catching rather than
  * showing "upload failed" to someone whose file was fine.
  */
+/**
+ * Minting a presigned upload URL failed. The message carries the underlying
+ * reason — a misconfigured bucket, or the object store refusing.
+ *
+ * Not the user's doing, and not a retry they can fix: distinct from
+ * KoolbaseUploadExpiredError, which is a retry that will work.
+ */
+export class KoolbaseUploadURLFailedError extends KoolbaseStorageError {
+  constructor(message?: string) {
+    super(message ?? 'Could not create an upload URL', 'upload_url_failed');
+    this.name = 'KoolbaseUploadURLFailedError';
+    Object.setPrototypeOf(this, KoolbaseUploadURLFailedError.prototype);
+  }
+}
+
 export class KoolbaseUploadExpiredError extends KoolbaseStorageError {
   constructor(message?: string) {
     super(message ?? 'This upload is past the confirmation window — please re-upload', 'upload_expired');
@@ -247,6 +262,10 @@ export function koolbaseStorageError(
   switch (code) {
     case 'path_conflict':
       return new KoolbaseStorageConflictError(message, body?.path);
+    case 'plan_limit_reached': {
+      const d = (body?.details ?? {}) as { resource?: string; limit?: number; plan?: string };
+      return new KoolbasePlanLimitError(message, d.resource, d.limit, d.plan);
+    }
     case 'quota_exceeded':
       return new KoolbaseStorageQuotaError(message);
     case 'upload_expired':
@@ -259,6 +278,8 @@ export function koolbaseStorageError(
       return new KoolbaseStorageMimeTypeError(message);
     case 'metadata_invalid':
       return new KoolbaseStorageMetadataInvalidError(message, body?.detail);
+    case 'upload_url_failed':
+      return new KoolbaseUploadURLFailedError(message);
   }
 
   // ─── status fallback (pre-code servers or uncoded paths) ───
