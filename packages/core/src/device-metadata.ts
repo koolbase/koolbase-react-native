@@ -55,7 +55,13 @@ export class DeviceMetadata {
     if (this.cached) return this.cached;
 
     const platform = getPlatform().info.os;
-    const platformVersion = getPlatform().info.version;
+    // 'unknown' rather than empty, matching appVersion above. A browser
+    // outside the handful browserVersion() recognises — Brave, Opera,
+    // Samsung Internet, an in-app webview — reports nothing, and an empty
+    // header stored against a session is indistinguishable from an SDK that
+    // never reported itself at all. 'unknown' says the SDK spoke and could
+    // not identify the host, which is a different and more useful fact.
+    const platformVersion = getPlatform().info.version || 'unknown';
     const deviceLabel = await this.getOrCreateDeviceLabel();
     // No User-Agent: a browser forbids setting it, and the same header set
     // now goes out from both hosts. The platform and version below carry
