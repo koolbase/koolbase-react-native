@@ -11,6 +11,7 @@ export { reactNativePlatform } from './platform.js';
 import {
   KoolbaseAuth,
   KoolbaseDatabase,
+  KoolbaseFiscal,
   KoolbaseStorage,
   KoolbaseRealtime,
   KoolbaseFunctions,
@@ -27,6 +28,7 @@ import { reactNativePlatform } from './platform.js';
 let _auth: KoolbaseAuth | null = null;
 let _db: KoolbaseDatabase | null = null;
 let _storage: KoolbaseStorage | null = null;
+let _fiscal: KoolbaseFiscal | null = null;
 let _realtime: KoolbaseRealtime | null = null;
 let _functions: KoolbaseFunctions | null = null;
 let _flags: KoolbaseFlags | null = null;
@@ -71,6 +73,11 @@ export const Koolbase = {
       async () => { await _auth?.clearStoredSession(); },
     );
     _storage = new KoolbaseStorage(
+      config,
+      () => _auth?.validAccessToken() ?? Promise.resolve(null),
+      async () => { await _auth?.clearStoredSession(); },
+    );
+    _fiscal = new KoolbaseFiscal(
       config,
       () => _auth?.validAccessToken() ?? Promise.resolve(null),
       async () => { await _auth?.clearStoredSession(); },
@@ -126,6 +133,11 @@ export const Koolbase = {
   get storage(): KoolbaseStorage {
     ensureInitialized();
     return _storage!;
+  },
+
+  get fiscal(): KoolbaseFiscal {
+    ensureInitialized();
+    return _fiscal!;
   },
 
   get realtime(): KoolbaseRealtime {

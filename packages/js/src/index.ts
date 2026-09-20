@@ -14,6 +14,7 @@ export { browserPlatform } from './platform.js';
 import {
   KoolbaseAuth,
   KoolbaseDatabase,
+  KoolbaseFiscal,
   KoolbaseStorage,
   KoolbaseRealtime,
   KoolbaseFunctions,
@@ -29,6 +30,7 @@ import { browserPlatform } from './platform.js';
 let _auth: KoolbaseAuth | null = null;
 let _db: KoolbaseDatabase | null = null;
 let _storage: KoolbaseStorage | null = null;
+let _fiscal: KoolbaseFiscal | null = null;
 let _realtime: KoolbaseRealtime | null = null;
 let _functions: KoolbaseFunctions | null = null;
 let _flags: KoolbaseFlags | null = null;
@@ -71,6 +73,11 @@ export const Koolbase = {
       () => _auth?.validAccessToken() ?? Promise.resolve(null),
       async () => { await _auth?.clearStoredSession(); },
     );
+    _fiscal = new KoolbaseFiscal(
+      config,
+      () => _auth?.validAccessToken() ?? Promise.resolve(null),
+      async () => { await _auth?.clearStoredSession(); },
+    );
     _realtime = new KoolbaseRealtime(
       config,
       () => _auth?.validAccessToken() ?? Promise.resolve(null),
@@ -104,6 +111,7 @@ export const Koolbase = {
   get auth(): KoolbaseAuth { ensureInitialized(); return _auth!; },
   get db(): KoolbaseDatabase { ensureInitialized(); return _db!; },
   get storage(): KoolbaseStorage { ensureInitialized(); return _storage!; },
+  get fiscal(): KoolbaseFiscal { ensureInitialized(); return _fiscal!; },
   get realtime(): KoolbaseRealtime { ensureInitialized(); return _realtime!; },
   get functions(): KoolbaseFunctions { ensureInitialized(); return _functions!; },
   get analytics(): KoolbaseAnalytics {
