@@ -21,9 +21,9 @@ import * as sharedErrors from '../src/errors';
 
 const API_CODES = new Set([
   'account_disabled', 'account_exists', 'account_locked', 'ambiguous_match',
-  'batch_failed', 'cap_below_usage', 'collection_not_found', 'conflict',
+  'batch_failed', 'cap_below_usage', 'collection_not_found', 'collection_referenced', 'conflict',
   'constraint_exists', 'constraint_not_found', 'contact_not_verified',
-  'duplicate', 'duplicate_values', 'email_in_use', 'email_not_verified',
+  'dangling_references', 'duplicate', 'duplicate_values', 'email_in_use', 'email_not_verified',
   'error', 'field_not_auto_embed', 'file_too_large',
   'hide_requires_verification', 'idempotency_conflict',
   'idempotency_key_reused', 'identity_not_found', 'insufficient_authority',
@@ -39,6 +39,7 @@ const API_CODES = new Set([
   'project_invalid', 'provider_identity_already_linked', 'provider_invalid',
   'provider_not_configured', 'quota_exceeded', 'rate_limit',
   'record_not_found', 'resend_cooldown', 'resend_daily_cap',
+  'reference_in_use', 'reference_invalid',
   'revision_mismatch', 'seed_conflicts_require_force', 'seed_key_not_unique',
   'seed_needs_decision', 'session_required', 'signups_disabled',
   'slug_taken', 'sms_not_configured', 'state_conflict', 'token_expired',
