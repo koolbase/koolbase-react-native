@@ -310,6 +310,68 @@ export class KoolbaseConflictError extends KoolbaseDataError {
 }
 
 /**
+ * A reference field points at a record that does not exist, is deleted, or
+ * lives in another collection — the server responds 400 `reference_invalid`.
+ *
+ * Checked when the write commits, so it can surface from an insert, an update,
+ * an upsert or a batch. In a batch the whole transaction is refused: nothing
+ * in it was written.
+ */
+export class KoolbaseReferenceInvalidError extends KoolbaseDataError {
+  constructor(message?: string) {
+    super(message ?? 'A reference points at a record that does not exist', 'reference_invalid');
+    this.name = 'KoolbaseReferenceInvalidError';
+    Object.setPrototypeOf(this, KoolbaseReferenceInvalidError.prototype);
+  }
+}
+
+/**
+ * A record could not be deleted because live records still reference it, under
+ * a reference declared `on_delete: restrict` — 409 `reference_in_use`.
+ *
+ * Delete the referencing records first, or in the same batch: the check runs at
+ * commit, so one batch may delete a parent and its children in any order.
+ */
+export class KoolbaseReferenceInUseError extends KoolbaseDataError {
+  constructor(message?: string) {
+    super(message ?? 'This record is still referenced by other records', 'reference_in_use');
+    this.name = 'KoolbaseReferenceInUseError';
+    Object.setPrototypeOf(this, KoolbaseReferenceInUseError.prototype);
+  }
+}
+
+/**
+ * A reference could not be declared because existing records already point at
+ * records that do not exist — 409 `dangling_references`.
+ *
+ * `dangling` lists the offending records so they can be repaired; Koolbase
+ * never repairs them for you. It is capped at the first 50.
+ */
+export class KoolbaseDanglingReferencesError extends KoolbaseDataError {
+  dangling: Array<{ record_id: string; value: string }>;
+
+  constructor(message?: string, dangling?: Array<{ record_id: string; value: string }>) {
+    super(message ?? 'Existing records point at records that do not exist', 'dangling_references');
+    this.dangling = dangling ?? [];
+    this.name = 'KoolbaseDanglingReferencesError';
+    Object.setPrototypeOf(this, KoolbaseDanglingReferencesError.prototype);
+  }
+}
+
+/**
+ * A collection could not be deleted because another collection has a reference
+ * field pointing at it — 409 `collection_referenced`. Remove that reference
+ * first.
+ */
+export class KoolbaseCollectionReferencedError extends KoolbaseDataError {
+  constructor(message?: string) {
+    super(message ?? 'Another collection references this one', 'collection_referenced');
+    this.name = 'KoolbaseCollectionReferencedError';
+    Object.setPrototypeOf(this, KoolbaseCollectionReferencedError.prototype);
+  }
+}
+
+/**
  * Thrown when the requested record or collection does not exist — the server
  * responds with 404 and code `not_found` / `record_not_found` /
  * `collection_not_found`.
@@ -453,6 +515,16 @@ export function koolbaseDataError(
   switch (code) {
     case 'unique_violation':
       return attach(new KoolbaseConflictError(message, field));
+    case 'reference_invalid':
+      return attach(new KoolbaseReferenceInvalidError(message));
+    case 'reference_in_use':
+      return attach(new KoolbaseReferenceInUseError(message));
+    case 'dangling_references': {
+      const d = (body?.details ?? {}) as { dangling?: Array<{ record_id: string; value: string }> };
+      return attach(new KoolbaseDanglingReferencesError(message, d.dangling));
+    }
+    case 'collection_referenced':
+      return attach(new KoolbaseCollectionReferencedError(message));
     case 'plan_limit_reached': {
       const d = (body?.details ?? {}) as { resource?: string; limit?: number; plan?: string };
       return new KoolbasePlanLimitError(message, d.resource, d.limit, d.plan);
