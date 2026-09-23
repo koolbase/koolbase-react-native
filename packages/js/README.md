@@ -98,6 +98,17 @@ If your app needs a different trade-off — an httpOnly cookie set by your own
 backend, say — implement `KoolbaseAuthStorage` and pass it as
 `config.authStorage`. The SDK will use yours instead of its own.
 
+### Email code
+
+```typescript
+await Koolbase.auth.requestEmailCode({ email: 'user@example.com' });
+await Koolbase.auth.signInWithEmailCode({ email: 'user@example.com', code: '123456' });
+```
+
+A new address becomes an account only while sign-ups are open. Each code works
+once, allows three attempts, and expires after ten minutes. Projects can switch
+this off in auth settings.
+
 ### Phone + OTP
 
 ```typescript

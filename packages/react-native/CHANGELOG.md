@@ -7,6 +7,33 @@ adheres to [Semantic Versioning][semver].
 [kac]: https://keepachangelog.com/en/1.1.0/
 [semver]: https://semver.org/
 
+## 12.1.0
+
+### Added
+
+- **Sign in with an emailed code.** `auth.requestEmailCode({ email })` sends a
+  six-digit code; `auth.signInWithEmailCode({ email, code })` signs in and
+  stores the session exactly as `login()` does. An unknown address becomes an
+  account only while the project accepts sign-ups. Each code works once and
+  allows three attempts. The request resolves the same way whether or not the
+  address has an account. A project can switch this off; requests then throw
+  `EmailCodeDisabledError`.
+- **Fiscal.** `KoolbaseFiscal` with `submit()` and `status()`, and
+  `KoolbaseFiscalError`. A timeout on `submit` means poll `status()` with the
+  same `clientRef` — do not submit again, or the sale may be recorded twice.
+- **Reference errors are catchable.** `KoolbaseReferenceInvalidError`,
+  `KoolbaseReferenceInUseError`, `KoolbaseDanglingReferencesError` (carrying
+  the offending records) and `KoolbaseCollectionReferencedError`.
+
+### Changed
+
+- The OTP errors (`OtpInvalidError`, `OtpExpiredError`,
+  `OtpMaxAttemptsError`) now come from the shared error mapping, so every path
+  that returns them throws the class an app catches.
+- `oauthLogin()`'s deprecation now points to `signInWithGoogle()` and
+  `signInWithApple()`. It said OAuth was not yet shipped and to use email and
+  password instead, which had long stopped being true.
+
 ## 12.0.0
 
 ### Breaking
