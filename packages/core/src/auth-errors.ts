@@ -194,6 +194,19 @@ export class InvalidPhoneNumberError extends KoolbaseAuthError {
   }
 }
 
+/**
+ * The project has switched off signing in with an emailed code — 403
+ * `email_code_disabled`. Applies to every address alike, so it reveals
+ * nothing about which accounts exist.
+ */
+export class EmailCodeDisabledError extends KoolbaseAuthError {
+  constructor() {
+    super('Signing in with an emailed code is switched off for this project', 'email_code_disabled');
+    this.name = 'EmailCodeDisabledError';
+    Object.setPrototypeOf(this, EmailCodeDisabledError.prototype);
+  }
+}
+
 export class OtpExpiredError extends KoolbaseAuthError {
   constructor() {
     super('OTP has expired, please request a new code', 'otp_expired');

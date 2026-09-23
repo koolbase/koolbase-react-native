@@ -38,6 +38,11 @@ const cases: Array<[string, new (...a: never[]) => Error]> = [
   ['contact_not_verified', errors.ContactNotVerifiedError],
   ['email_not_verified', errors.ContactNotVerifiedError],
   ['signups_disabled', errors.SignupsDisabledError],
+  // Sign-in codes, added with email-code sign-in (23 Sep).
+  ['email_code_disabled', errors.EmailCodeDisabledError],
+  ['otp_expired', errors.OtpExpiredError],
+  ['otp_invalid', errors.OtpInvalidError],
+  ['otp_max_attempts', errors.OtpMaxAttemptsError],
   ['weak_password', errors.WeakPasswordError],
   ['account_exists', errors.AccountExistsError],
   ['token_expired', errors.TokenExpiredError],

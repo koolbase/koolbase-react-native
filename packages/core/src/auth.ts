@@ -62,6 +62,7 @@ import {
   GoogleEmailRequiredError,
   GoogleSignInNotConfiguredError,
   InvalidGoogleTokenError,
+  EmailCodeDisabledError,
 } from './auth-errors.js';
 import type { SignInWithGoogleParams } from './types.js';
 import { getPlatform } from './platform.js';
@@ -972,12 +973,10 @@ private async parseAppleSessionResponse(res: Response): Promise<KoolbaseSession>
   // ─── OAuth (DEPRECATED — see v1.10.0) ───────────────────────────────────
 
   /**
-   * @deprecated v1.9.0: Server endpoint /v1/sdk/auth/oauth not yet
-   * shipped. This method previously routed to /v1/auth/oauth (dashboard
-   * developer OAuth) which never created project-scoped end-user
-   * sessions. Properly implemented in v1.10.0 with provider-specific
-   * server endpoints under /v1/sdk/auth/oauth/{apple,google,github}.
-   * Use email/password sign-in for now.
+   * @deprecated Never implemented; kept only so existing code compiles.
+   * Google and Apple sign-in are supported — use signInWithGoogle() or
+   * signInWithApple(). This used to say OAuth was not yet shipped and to
+   * use email and password instead, which stopped being true long ago.
    *
    * @throws Always throws KoolbaseAuthError('not_implemented').
    */
@@ -989,12 +988,50 @@ private async parseAppleSessionResponse(res: Response): Promise<KoolbaseSession>
     avatarUrl?: string;
   }): Promise<never> {
     throw new KoolbaseAuthError(
-      'OAuth sign-in is not yet implemented for the Koolbase SDK. ' +
-        'Planned for v1.10.0 (server-side endpoints under ' +
-        '/v1/sdk/auth/oauth/{provider}). Use email/password authentication ' +
-        'in the meantime.',
+      'oauthLogin() was never implemented and is kept only so existing ' +
+        'code compiles. Use signInWithGoogle() or signInWithApple().',
       'not_implemented'
     );
+  }
+
+  // ─── Email code ─────────────────────────────────────────────────────────
+
+  /**
+   * Emails a six-digit sign-in code.
+   *
+   * Resolves the same way whether or not the address has an account, so it
+   * cannot be used to check who is registered. A new address receives a code
+   * only while the project accepts sign-ups; a disabled account receives
+   * nothing.
+   *
+   * @throws EmailCodeDisabledError if the project has switched this off
+   * @throws RateLimitError after too many requests for one address
+   */
+  async requestEmailCode(params: { email: string }): Promise<void> {
+    const res = await this.authRequest('/v1/sdk/auth/email/code', {
+      method: 'POST',
+      body: { email: params.email },
+    });
+    if (!res.ok) await this.throwTypedError(res, false);
+  }
+
+  /**
+   * Signs in with a code from requestEmailCode(), storing the session exactly
+   * as login() does. An unknown address becomes an account only if the
+   * project still accepts sign-ups at this moment. Each code works once and
+   * allows three attempts.
+   *
+   * @throws OtpInvalidError, OtpExpiredError, OtpMaxAttemptsError
+   * @throws EmailCodeDisabledError if the project has switched this off
+   */
+  async signInWithEmailCode(params: { email: string; code: string }): Promise<KoolbaseSession> {
+    const res = await this.authRequest('/v1/sdk/auth/email/code/verify', {
+      method: 'POST',
+      body: { email: params.email, code: params.code },
+    });
+    const session = await this.parseSessionResponse(res, false);
+    await this.setSessionInternal(session);
+    return session;
   }
 
   // ─── Phone OTP ──────────────────────────────────────────────────────────
@@ -1206,6 +1243,17 @@ private async parseAppleSessionResponse(res: Response): Promise<KoolbaseSession>
       case 'contact_not_verified':
       case 'email_not_verified':
         throw new ContactNotVerifiedError(msg || undefined);
+
+      // Sign-in codes. The otp_* codes are shared with phone sign-in; mapped
+      // here, every path that returns them throws the class an app catches.
+      case 'email_code_disabled':
+        throw new EmailCodeDisabledError();
+      case 'otp_expired':
+        throw new OtpExpiredError();
+      case 'otp_invalid':
+        throw new OtpInvalidError();
+      case 'otp_max_attempts':
+        throw new OtpMaxAttemptsError();
 
       // Registration
       case 'signups_disabled':
