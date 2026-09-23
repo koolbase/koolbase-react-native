@@ -7,6 +7,21 @@ is based on [Keep a Changelog][kac], and this project adheres to
 [kac]: https://keepachangelog.com/en/1.1.0/
 [semver]: https://semver.org/
 
+## 12.2.0
+
+### Added
+
+- **Two-step sign-in (MFA).** Every sign-in method now throws `MfaRequiredError`
+  carrying a `challengeToken` when the person's account has an authenticator on
+  — including phone, Google and Apple, whose error parsers all map it, enforced
+  by a source test for any parser added later. `verifyMfa({ challengeToken, code
+  })` and `verifyRecoveryCode({ challengeToken, code })` finish sign-in and
+  store the session, returning `{ session, recoveryCodesRemaining }` for the
+  latter.
+- `enrollMfa()`, `confirmMfaEnrollment(code)`, `mfaStatus()`, `stepUpMfa(…)`,
+  `disableMfa()`, and `regenerateRecoveryCodes()` manage it. Six new error
+  classes in the mapping table and fidelity list.
+
 ## 12.1.0
 
 ### Added

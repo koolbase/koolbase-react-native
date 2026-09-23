@@ -98,6 +98,22 @@ If your app needs a different trade-off — an httpOnly cookie set by your own
 backend, say — implement `KoolbaseAuthStorage` and pass it as
 `config.authStorage`. The SDK will use yours instead of its own.
 
+### Two-step sign-in (MFA)
+
+```typescript
+// After login() throws MfaRequiredError:
+const session = await Koolbase.auth.verifyMfa({
+  challengeToken: err.challengeToken,
+  code: '123456',  // from the person's authenticator app
+});
+
+// Enrol (within 10 minutes of signing in):
+const { otpauthUri, secret } = await Koolbase.auth.enrollMfa();
+// show otpauthUri as a QR code, then:
+const codes = await Koolbase.auth.confirmMfaEnrollment('123456');
+// save the recovery codes — shown this once only
+```
+
 ### Email code
 
 ```typescript
