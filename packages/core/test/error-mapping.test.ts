@@ -40,6 +40,13 @@ const cases: Array<[string, new (...a: never[]) => Error]> = [
   ['signups_disabled', errors.SignupsDisabledError],
   // Sign-in codes, added with email-code sign-in (23 Sep).
   ['email_code_disabled', errors.EmailCodeDisabledError],
+  // Two-step sign-in (MFA).
+  ['mfa_required', errors.MfaRequiredError],
+  ['recent_auth_required', errors.RecentAuthRequiredError],
+  ['recent_mfa_required', errors.RecentMfaRequiredError],
+  ['mfa_already_enabled', errors.MfaAlreadyEnabledError],
+  ['mfa_enrollment_not_found', errors.MfaEnrollmentNotFoundError],
+  ['mfa_not_enabled', errors.MfaNotEnabledError],
   ['otp_expired', errors.OtpExpiredError],
   ['otp_invalid', errors.OtpInvalidError],
   ['otp_max_attempts', errors.OtpMaxAttemptsError],

@@ -63,6 +63,12 @@ import {
   GoogleSignInNotConfiguredError,
   InvalidGoogleTokenError,
   EmailCodeDisabledError,
+  MfaRequiredError,
+  RecentAuthRequiredError,
+  RecentMfaRequiredError,
+  MfaAlreadyEnabledError,
+  MfaEnrollmentNotFoundError,
+  MfaNotEnabledError,
 } from './auth-errors.js';
 import type { SignInWithGoogleParams } from './types.js';
 import { getPlatform } from './platform.js';
@@ -492,6 +498,8 @@ private async parseGoogleSessionResponse(res: Response): Promise<KoolbaseSession
 
   // ─── code-first ───
   switch (code) {
+      case 'mfa_required':
+        throw this.mfaRequired(body);
     case 'oauth_not_configured':
       throw new GoogleSignInNotConfiguredError();
     case 'invalid_oauth_token':
@@ -552,6 +560,8 @@ private async parseAppleSessionResponse(res: Response): Promise<KoolbaseSession>
 
   // ─── code-first ───
   switch (code) {
+      case 'mfa_required':
+        throw this.mfaRequired(body);
     case 'oauth_not_configured':
       throw new AppleSignInNotConfiguredError();
     case 'invalid_oauth_token':
@@ -1034,6 +1044,112 @@ private async parseAppleSessionResponse(res: Response): Promise<KoolbaseSession>
     return session;
   }
 
+  // ─── Two-step sign-in (MFA) ─────────────────────────────────────────────
+  //
+  // When an account has MFA on, every sign-in method throws MfaRequiredError.
+  // Finish with verifyMfa() or verifyRecoveryCode().
+
+  // One builder for every parser, so the four cannot drift apart in how the
+  // challenge reaches the app.
+  private mfaRequired(body: any): MfaRequiredError {
+    const d = body?.details ?? {};
+    return new MfaRequiredError(String(d.challenge_token ?? ''), d.expires_at);
+  }
+
+  /** Finishes sign-in with a code from the person's authenticator app. */
+  async verifyMfa(params: { challengeToken: string; code: string }): Promise<KoolbaseSession> {
+    const res = await this.authRequest('/v1/sdk/auth/mfa/verify', {
+      method: 'POST',
+      body: { challenge_token: params.challengeToken, code: params.code },
+    });
+    const session = await this.parseSessionResponse(res, false);
+    await this.setSessionInternal(session);
+    return session;
+  }
+
+  /**
+   * Finishes sign-in with a recovery code. Each works once; prompt the person
+   * to regenerate when recoveryCodesRemaining reaches zero.
+   */
+  async verifyRecoveryCode(params: {
+    challengeToken: string;
+    code: string;
+  }): Promise<{ session: KoolbaseSession; recoveryCodesRemaining: number }> {
+    const res = await this.authRequest('/v1/sdk/auth/mfa/verify-recovery', {
+      method: 'POST',
+      body: { challenge_token: params.challengeToken, code: params.code },
+    });
+    if (!res.ok) await this.throwTypedError(res, false);
+    // Read once: the session and the remaining count come from one body.
+    const data = await res.json();
+    if (!data?.access_token) throw new MalformedSessionResponseError('an access token');
+    if (!data?.refresh_token) throw new MalformedSessionResponseError('a refresh token');
+    const session: KoolbaseSession = {
+      accessToken: data.access_token,
+      refreshToken: data.refresh_token,
+      expiresAt: data.expires_at,
+      user: this.mapUser(data.user),
+    };
+    await this.setSessionInternal(session);
+    return { session, recoveryCodesRemaining: Number(data.recovery_codes_remaining ?? 0) };
+  }
+
+  /**
+   * Starts adding an authenticator; needs a sign-in within ten minutes. Show
+   * otpauthUri as a QR code, then call confirmMfaEnrollment with the first
+   * code the app shows.
+   */
+  async enrollMfa(): Promise<{ otpauthUri: string; secret: string }> {
+    const res = await this.authRequest('/v1/sdk/auth/mfa/enroll', { method: 'POST', includeAuth: true });
+    await this.checkResponse(res);
+    const d = await res.json();
+    return { otpauthUri: d.otpauth_uri, secret: d.secret };
+  }
+
+  /** Turns MFA on and returns ten recovery codes, shown this once only. Other devices are signed out. */
+  async confirmMfaEnrollment(code: string): Promise<string[]> {
+    const res = await this.authRequest('/v1/sdk/auth/mfa/enroll/confirm', {
+      method: 'POST',
+      body: { code },
+      includeAuth: true,
+    });
+    await this.checkResponse(res);
+    return (await res.json()).recovery_codes as string[];
+  }
+
+  async mfaStatus(): Promise<{ enabled: boolean; recoveryCodesRemaining: number }> {
+    const res = await this.authRequest('/v1/sdk/auth/mfa', { method: 'GET', includeAuth: true });
+    await this.checkResponse(res);
+    const d = await res.json();
+    return { enabled: !!d.enabled, recoveryCodesRemaining: Number(d.recovery_codes_remaining ?? 0) };
+  }
+
+  /** Re-confirms the second factor, opening ten minutes to change MFA. */
+  async stepUpMfa(params: { code?: string; recoveryCode?: string }): Promise<void> {
+    const res = await this.authRequest('/v1/sdk/auth/mfa/step-up', {
+      method: 'POST',
+      body: {
+        ...(params.code ? { code: params.code } : {}),
+        ...(params.recoveryCode ? { recovery_code: params.recoveryCode } : {}),
+      },
+      includeAuth: true,
+    });
+    await this.checkResponse(res);
+  }
+
+  /** Turns MFA off. Needs stepUpMfa() within the last ten minutes. */
+  async disableMfa(): Promise<void> {
+    const res = await this.authRequest('/v1/sdk/auth/mfa/disable', { method: 'POST', includeAuth: true });
+    await this.checkResponse(res);
+  }
+
+  /** Replaces all recovery codes; the old ones stop working. Needs stepUpMfa() within ten minutes. */
+  async regenerateRecoveryCodes(): Promise<string[]> {
+    const res = await this.authRequest('/v1/sdk/auth/mfa/recovery-codes', { method: 'POST', includeAuth: true });
+    await this.checkResponse(res);
+    return (await res.json()).recovery_codes as string[];
+  }
+
   // ─── Phone OTP ──────────────────────────────────────────────────────────
 
   async sendOtp(params: SendOtpParams): Promise<OtpSendResult> {
@@ -1218,6 +1334,18 @@ private async parseAppleSessionResponse(res: Response): Promise<KoolbaseSession>
 
     // ─── code-first ───
     switch (code) {
+      case 'mfa_required':
+        throw this.mfaRequired(body);
+      case 'recent_auth_required':
+        throw new RecentAuthRequiredError();
+      case 'recent_mfa_required':
+        throw new RecentMfaRequiredError();
+      case 'mfa_already_enabled':
+        throw new MfaAlreadyEnabledError();
+      case 'mfa_enrollment_not_found':
+        throw new MfaEnrollmentNotFoundError();
+      case 'mfa_not_enabled':
+        throw new MfaNotEnabledError();
       case 'invalid_credentials':
         throw new InvalidCredentialsError();
       case 'email_in_use':
@@ -1354,6 +1482,8 @@ private async parseAppleSessionResponse(res: Response): Promise<KoolbaseSession>
 
     // ─── code-first ───
     switch (code) {
+      case 'mfa_required':
+        throw this.mfaRequired(body);
       case 'invalid_phone':
         throw new InvalidPhoneNumberError();
       case 'otp_expired':

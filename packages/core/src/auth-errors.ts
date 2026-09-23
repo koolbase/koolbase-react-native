@@ -529,3 +529,63 @@ export class GoogleEmailRequiredError extends KoolbaseAuthError {
     Object.setPrototypeOf(this, GoogleEmailRequiredError.prototype);
   }
 }
+
+// ─── Two-step sign-in (MFA) ─────────────────────────────────────────────────
+
+/**
+ * The first factor passed and this account needs a second: sign-in is not
+ * finished. Pass `challengeToken` to `verifyMfa` with a code from the
+ * person's authenticator app, or to `verifyRecoveryCode`. Apps that never
+ * enable MFA never see this.
+ */
+export class MfaRequiredError extends KoolbaseAuthError {
+  readonly challengeToken: string;
+  readonly expiresAt?: string;
+  constructor(challengeToken: string, expiresAt?: string) {
+    super('Two-step sign-in required', 'mfa_required');
+    this.name = 'MfaRequiredError';
+    this.challengeToken = challengeToken;
+    this.expiresAt = expiresAt;
+    Object.setPrototypeOf(this, MfaRequiredError.prototype);
+  }
+}
+
+export class RecentAuthRequiredError extends KoolbaseAuthError {
+  constructor() {
+    super('Sign in again to change two-step sign-in', 'recent_auth_required');
+    this.name = 'RecentAuthRequiredError';
+    Object.setPrototypeOf(this, RecentAuthRequiredError.prototype);
+  }
+}
+
+export class RecentMfaRequiredError extends KoolbaseAuthError {
+  constructor() {
+    super('Confirm with your authenticator first', 'recent_mfa_required');
+    this.name = 'RecentMfaRequiredError';
+    Object.setPrototypeOf(this, RecentMfaRequiredError.prototype);
+  }
+}
+
+export class MfaAlreadyEnabledError extends KoolbaseAuthError {
+  constructor() {
+    super('Two-step sign-in is already on for this account', 'mfa_already_enabled');
+    this.name = 'MfaAlreadyEnabledError';
+    Object.setPrototypeOf(this, MfaAlreadyEnabledError.prototype);
+  }
+}
+
+export class MfaEnrollmentNotFoundError extends KoolbaseAuthError {
+  constructor() {
+    super('No enrolment in progress; start again', 'mfa_enrollment_not_found');
+    this.name = 'MfaEnrollmentNotFoundError';
+    Object.setPrototypeOf(this, MfaEnrollmentNotFoundError.prototype);
+  }
+}
+
+export class MfaNotEnabledError extends KoolbaseAuthError {
+  constructor() {
+    super('Two-step sign-in is not on for this account', 'mfa_not_enabled');
+    this.name = 'MfaNotEnabledError';
+    Object.setPrototypeOf(this, MfaNotEnabledError.prototype);
+  }
+}
