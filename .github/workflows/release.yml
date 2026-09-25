@@ -4,7 +4,7 @@ on:
   push:
     branches: [main]
     paths:
-      - 'package.json'
+      - 'packages/*/package.json'
       - 'CHANGELOG.md'
 
 permissions:
@@ -18,19 +18,27 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Extract version from package.json
+      # The three packages are released together at one version. It is read from
+      # them: the monorepo root has no version, which is how "vundefined" happened.
+      - name: Read the version
         id: version
         run: |
-          VERSION=$(node -p "require('./package.json').version")
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          set -eu
+          V=$(node -p "require('./packages/core/package.json').version")
+          case "$V" in ''|undefined|null) echo "::error::packages/core has no version"; exit 1;; esac
+          for p in react-native js; do
+            OTHER=$(node -p "require('./packages/$p/package.json').version")
+            if [ "$OTHER" != "$V" ]; then echo "::error::packages/$p is $OTHER but core is $V"; exit 1; fi
+          done
+          echo "version=$V" >> "$GITHUB_OUTPUT"
 
       - name: Check if tag already exists
         id: check
         run: |
           if git rev-parse "v${{ steps.version.outputs.version }}" >/dev/null 2>&1; then
-            echo "exists=true" >> $GITHUB_OUTPUT
+            echo "exists=true" >> "$GITHUB_OUTPUT"
           else
-            echo "exists=false" >> $GITHUB_OUTPUT
+            echo "exists=false" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Extract release notes from CHANGELOG.md
@@ -42,12 +50,13 @@ jobs:
             $0 == ver {found=1; next}
             found && /^## / {exit}
             found {print}
-          ' CHANGELOG.md > release_notes.txt
+          ' CHANGELOG.md > release_notes.txt 2>/dev/null || true
+          [ -s release_notes.txt ] || echo "See https://docs.koolbase.com/changelog for this release's notes." > release_notes.txt
           {
             echo 'notes<<EOF'
             cat release_notes.txt
             echo EOF
-          } >> $GITHUB_OUTPUT
+          } >> "$GITHUB_OUTPUT"
 
       - name: Create tag and GitHub release
         if: steps.check.outputs.exists == 'false'
