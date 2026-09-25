@@ -152,8 +152,11 @@ function makeResolver(): () => Promise<{ tier: Tier; store: PlatformStorage }> {
         const s = localStorageStorage();
         if (await probe(s)) return { tier: 'localstorage' as Tier, store: s };
       }
+      // Outside a browser (Node, a server rendering pages) memory is the
+      // expected store, not a symptom, so there is nothing to warn about.
+      const inBrowser = typeof window !== 'undefined' && typeof document !== 'undefined';
       // eslint-disable-next-line no-console
-      console.warn(
+      if (inBrowser) console.warn(
         '[Koolbase] No persistent storage available in this browser ' +
           '(private browsing, blocked site data, or an exhausted quota). ' +
           'The session and the offline queue will not survive a reload.',

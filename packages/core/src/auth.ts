@@ -1,3 +1,4 @@
+import { koolbaseFetch } from './network.js';
 import {
   AuthStateListener,
   FetchLike,
@@ -88,7 +89,7 @@ export class KoolbaseAuth {
   constructor(config: KoolbaseConfig) {
     this.config = config;
     this.metadata = new DeviceMetadata(config.appVersion);
-    this.fetchFn = config.fetch ?? ((url, init) => fetch(url, init));
+    this.fetchFn = config.fetch ?? ((url, init) => koolbaseFetch(url, init));
     this.timeoutMs = config.authTimeout ?? 10_000;
 
     if (config.authStorage) {

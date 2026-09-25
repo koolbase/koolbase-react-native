@@ -1,3 +1,4 @@
+import { koolbaseFetch } from './network.js';
 import {
   KoolbaseError,
   KoolbaseOfflineBaselineUnavailableError,
@@ -123,7 +124,7 @@ export class KoolbaseDatabase {
     path: string,
     body?: unknown
   ): Promise<T> {
-    const res = await fetch(`${this.config.baseUrl}${path}`, {
+    const res = await koolbaseFetch(`${this.config.baseUrl}${path}`, {
       method,
       headers: await this.buildHeaders(),
       body: body ? JSON.stringify(body) : undefined,
@@ -169,7 +170,7 @@ export class KoolbaseDatabase {
     path: string,
     body?: unknown
   ): Promise<{ status: number; data: T }> {
-    const res = await fetch(`${this.config.baseUrl}${path}`, {
+    const res = await koolbaseFetch(`${this.config.baseUrl}${path}`, {
       method,
       headers: await this.buildHeaders(),
       body: body ? JSON.stringify(body) : undefined,
@@ -260,12 +261,15 @@ export class KoolbaseDatabase {
     options: QueryOptions = {}
   ): Promise<QueryResult> {
     const userId = this.getUserId() ?? 'anonymous';
-    const queryHash = hashQuery(collection, options as Record<string, unknown>);
+    // The cache policy is how to read, not what to read: it stays out of the
+    // query's identity, so both policies share one cache entry.
+    const { cache: cachePolicy, ...queryOptions } = options;
+    const queryHash = hashQuery(collection, queryOptions as Record<string, unknown>);
 
-    const cached = await getCached(userId, collection, queryHash);
+    const cached = cachePolicy === 'network-only' ? null : await getCached(userId, collection, queryHash);
 
     if (cached) {
-      this.runQuery(collection, options)
+      this.runQuery(collection, queryOptions)
         .then(result => setCached(userId, collection, queryHash, result))
         .catch(() => {
           // Network unavailable — cached data already returned
@@ -273,9 +277,18 @@ export class KoolbaseDatabase {
       return { ...cached, isFromCache: true };
     }
 
-    const result = await this.runQuery(collection, options);
+    const result = await this.runQuery(collection, queryOptions);
     await setCached(userId, collection, queryHash, result);
     return { ...result, isFromCache: false };
+  }
+
+  /**
+   * Forget this client's cached query results for a collection, so the next
+   * `query` waits for the server. For data changed elsewhere: by a Function,
+   * a server, or another user. The SDK's own writes already do this.
+   */
+  async invalidate(collection: string): Promise<void> {
+    await invalidateCache(this.getUserId() ?? 'anonymous', collection);
   }
 
   // ─── Insert (online-first with offline fallback) ───────────────────────────
