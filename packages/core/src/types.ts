@@ -272,6 +272,13 @@ export interface QueryOptions {
   orderBy?: string;
   orderDesc?: boolean;
   populate?: string[];
+  /**
+   * How to read: 'default' is cache-first, refreshed in the background;
+   * 'network-only' skips the cache and waits for the server (the result still
+   * refreshes the cache). Use 'network-only' after a write this client did not
+   * make, by a Function or another user, when you need the server's state now.
+   */
+  cache?: 'default' | 'network-only';
 }
 
 export interface QueryResult {

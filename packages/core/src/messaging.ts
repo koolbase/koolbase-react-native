@@ -1,3 +1,4 @@
+import { koolbaseFetch } from './network.js';
 import { KoolbaseConfig } from './types.js';
 
 // ─── Models ──────────────────────────────────────────────────────────────────
@@ -26,7 +27,7 @@ export class KoolbaseMessaging {
 
   async registerToken(options: RegisterTokenOptions): Promise<boolean> {
     try {
-      const response = await fetch(`${this.config.baseUrl}/v1/messaging/register`, {
+      const response = await koolbaseFetch(`${this.config.baseUrl}/v1/messaging/register`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

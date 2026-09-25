@@ -1,3 +1,4 @@
+import { koolbaseFetch } from './network.js';
 import { BootstrapPayload, KoolbaseConfig, VersionCheckResult } from './types.js';
 
 export class KoolbaseFlags {
@@ -10,9 +11,9 @@ export class KoolbaseFlags {
     this.deviceId = deviceId;
   }
 
-  async fetch(appVersion: string, platform: string): Promise<void> {
+  async koolbaseFetch(appVersion: string, platform: string): Promise<void> {
     try {
-      const res = await fetch(
+      const res = await koolbaseFetch(
         `${this.config.baseUrl}/v1/bootstrap?public_key=${this.config.publicKey}&device_id=${this.deviceId}&app_version=${appVersion}&platform=${platform}`
       );
       if (res.ok) {

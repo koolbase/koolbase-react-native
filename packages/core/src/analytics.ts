@@ -1,3 +1,4 @@
+import { koolbaseFetch } from './network.js';
 import { getPlatform } from './platform.js';
 import { KoolbaseConfig } from './types.js';
 import { getOrCreateDeviceId } from './device-id.js';
@@ -144,7 +145,7 @@ export class KoolbaseAnalytics {
     this.queue = [];
 
     try {
-      const response = await fetch(`${this.config.baseUrl}/v1/analytics/events`, {
+      const response = await koolbaseFetch(`${this.config.baseUrl}/v1/analytics/events`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

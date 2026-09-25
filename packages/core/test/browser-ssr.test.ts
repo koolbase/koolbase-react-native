@@ -60,9 +60,20 @@ describe('browser adapter outside a browser', () => {
 });
 
 describe('storage tier selection', () => {
-  it('falls to memory where nothing persists, and says so', async () => {
-    // Node has neither store. The tier is the SDK's own answer to "will this
-    // survive a reload", and an app can ask before promising a user it will.
+  // A browser where nothing persists (private browsing, blocked site data) is
+  // simulated with the globals a page has and no storage behind them. Without
+  // them this is Node, where memory is expected and there is nothing to warn about.
+  function asBrowser() {
+    (globalThis as any).window = {};
+    (globalThis as any).document = {};
+  }
+  afterEach(() => {
+    delete (globalThis as any).window;
+    delete (globalThis as any).document;
+  });
+
+  it('in a browser where nothing persists, falls to memory and says so', async () => {
+    asBrowser();
     const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
     const p = browserPlatform();
     expect(await p.storageTier()).toBe('memory');
@@ -70,11 +81,19 @@ describe('storage tier selection', () => {
     warn.mockRestore();
   });
 
-  it('probes once, not per call', async () => {
+  it('outside a browser, falls to memory without a browser warning', async () => {
     const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
     const p = browserPlatform();
-    await p.storage.setItem('a', '1');
-    await p.storage.getItem('a');
+    expect(await p.storageTier()).toBe('memory');
+    expect(warn).not.toHaveBeenCalled();
+    warn.mockRestore();
+  });
+
+  it('probes once, not per call', async () => {
+    asBrowser();
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+    const p = browserPlatform();
+    await p.storageTier();
     await p.storageTier();
     // One resolution, so one warning — a chatty SDK is one developers mute.
     expect(warn).toHaveBeenCalledTimes(1);

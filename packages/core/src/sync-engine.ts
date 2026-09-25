@@ -1,3 +1,4 @@
+import { koolbaseFetch } from './network.js';
 import {
   readOfflineState,
   mutateOfflineState,
@@ -284,7 +285,7 @@ export class SyncEngine {
 
     let res: Response;
     if (write.operation === 'insert') {
-      res = await fetch(url, {
+      res = await koolbaseFetch(url, {
         method: 'POST',
         headers,
         // The write's own id: generated at enqueue, identical on every retry.
@@ -297,7 +298,7 @@ export class SyncEngine {
         }),
       });
     } else if (write.operation === 'update') {
-      res = await fetch(url, {
+      res = await koolbaseFetch(url, {
         method: 'PATCH',
         headers,
         // The revision the change was composed against. The server applies it
@@ -316,7 +317,7 @@ export class SyncEngine {
         write.baseRevision !== undefined
           ? `?expected_revision=${write.baseRevision}`
           : '';
-      res = await fetch(`${url}${q}`, { method: 'DELETE', headers });
+      res = await koolbaseFetch(`${url}${q}`, { method: 'DELETE', headers });
     }
 
     if (res.status === 401) throw new KoolbaseUnauthenticatedError('unauthorized');
