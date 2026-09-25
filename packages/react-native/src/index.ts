@@ -17,6 +17,7 @@ import {
   KoolbaseFunctions,
   KoolbaseFlags,
   KoolbaseAnalytics,
+  disabledAnalytics,
   KoolbaseMessaging,
   getOrCreateDeviceId,
   setPlatform,
@@ -33,6 +34,8 @@ let _realtime: KoolbaseRealtime | null = null;
 let _functions: KoolbaseFunctions | null = null;
 let _flags: KoolbaseFlags | null = null;
 let _analytics: KoolbaseAnalytics | null = null;
+// While analytics is off, calls are harmless no-ops rather than a crash.
+const analyticsOff = disabledAnalytics();
 let _messaging: KoolbaseMessaging | null = null;
 let _initialized = false;
 
@@ -99,7 +102,8 @@ export const Koolbase = {
 
     _flags = new KoolbaseFlags(config, deviceId);
     // Initialize analytics
-    if (config.analyticsEnabled !== false) {
+    // Opt-in: nothing is sent unless the app asks for it.
+    if (config.analyticsEnabled === true) {
       _analytics = new KoolbaseAnalytics(config, () => _auth?.currentUser?.id ?? null);
       await _analytics.init(config.appVersion);
     }
@@ -172,7 +176,7 @@ export const Koolbase = {
 
   get analytics(): KoolbaseAnalytics {
     ensureInitialized();
-    return _analytics!;
+    return _analytics ?? analyticsOff;
   },
 
   get messaging(): KoolbaseMessaging {

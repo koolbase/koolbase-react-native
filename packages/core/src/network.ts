@@ -11,6 +11,8 @@
  */
 export class KoolbaseNetworkError extends TypeError {
   code = 'network_error';
+  /** A short message that is safe to show to people; `message` is for developers. */
+  readonly userMessage = "We can't connect right now. Check your connection and try again.";
   readonly url: string;
   readonly origin?: string;
 

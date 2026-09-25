@@ -3,6 +3,16 @@
 Each version covers all three packages: @koolbase/core, @koolbase/react-native and
 @koolbase/js. Earlier history: https://docs.koolbase.com/changelog
 
+## 12.4.0
+
+- **Analytics is now off by default.** Pass `analyticsEnabled: true` to `initialize` to
+  send events. While it is off, `Koolbase.analytics` calls do nothing (the first logs how
+  to turn it on), so apps that track events keep working. When it is on, the SDK also
+  records `app_open`, `screen_view` and `session_end` automatically.
+- `KoolbaseNetworkError.userMessage`: a short message that is safe to show to people
+  ("We can't connect right now. Check your connection and try again."), alongside the
+  detailed `message` for developers.
+
 ## 12.3.0
 
 - `db.query(collection, { cache: 'network-only' })` skips the local cache and waits for

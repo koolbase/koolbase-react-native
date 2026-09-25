@@ -21,7 +21,7 @@ export { KoolbaseFlags } from './flags.js';
 export { KoolbaseFunctions } from './functions.js';
 export { KoolbaseRealtime } from './realtime.js';
 export { KoolbaseStorage } from './storage.js';
-export { KoolbaseAnalytics } from './analytics.js';
+export { KoolbaseAnalytics , disabledAnalytics } from './analytics.js';
 export { KoolbaseFiscal, KoolbaseFiscalError, decodeFiscalResponse, isFiscalized, isPending } from './fiscal.js';
 export type { FiscalIntentResult, FiscalStatus } from './fiscal.js';
 export { KoolbaseMessaging } from './messaging.js';
