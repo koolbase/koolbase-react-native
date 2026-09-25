@@ -170,3 +170,21 @@ export class KoolbaseAnalytics {
     await this.flush();
   }
 }
+
+/**
+ * What Koolbase.analytics is while analytics is off (the default since 12.4.0).
+ * Every call does nothing, and the first says once how to turn it on, so an app
+ * that tracks events without opting in keeps working instead of crashing.
+ */
+export function disabledAnalytics(): KoolbaseAnalytics {
+  let told = false;
+  const noop = () => {
+    if (!told) {
+      told = true;
+      // eslint-disable-next-line no-console
+      console.info('[Koolbase] Analytics is off: it is opt-in since 12.4.0. Pass analyticsEnabled: true to Koolbase.initialize to send events.');
+    }
+    return Promise.resolve();
+  };
+  return new Proxy({}, { get: (_t, prop) => (prop === 'then' ? undefined : noop) }) as unknown as KoolbaseAnalytics;
+}

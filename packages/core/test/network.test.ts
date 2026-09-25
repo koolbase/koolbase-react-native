@@ -33,3 +33,11 @@ describe('koolbaseFetch', () => {
     await expect(koolbaseFetch('https://api.example.test')).rejects.toBe(abort);
   });
 });
+
+describe('KoolbaseNetworkError.userMessage', () => {
+  it('is short and safe to show to people', () => {
+    const e = new KoolbaseNetworkError('https://api.example.test/v1/x', new TypeError('Failed to fetch'));
+    expect(e.userMessage).toBe("We can't connect right now. Check your connection and try again.");
+    expect(e.userMessage).not.toContain('api.example.test');
+  });
+});

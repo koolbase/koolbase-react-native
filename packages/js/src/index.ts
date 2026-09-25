@@ -20,6 +20,7 @@ import {
   KoolbaseFunctions,
   KoolbaseFlags,
   KoolbaseAnalytics,
+  disabledAnalytics,
   getOrCreateDeviceId,
   setPlatform,
   type KoolbaseConfig,
@@ -35,6 +36,8 @@ let _realtime: KoolbaseRealtime | null = null;
 let _functions: KoolbaseFunctions | null = null;
 let _flags: KoolbaseFlags | null = null;
 let _analytics: KoolbaseAnalytics | null = null;
+// While analytics is off, calls are harmless no-ops rather than a crash.
+const analyticsOff = disabledAnalytics();
 let _initialized = false;
 
 // The in-flight initialize, so overlapping callers await the same one.
@@ -92,7 +95,8 @@ export const Koolbase = {
     const deviceId = await getOrCreateDeviceId();
     _flags = new KoolbaseFlags(config, deviceId);
 
-    if (config.analyticsEnabled !== false) {
+    // Opt-in: nothing is sent unless the app asks for it.
+    if (config.analyticsEnabled === true) {
       _analytics = new KoolbaseAnalytics(config, () => _auth?.currentUser?.id ?? null);
       await _analytics.init(config.appVersion);
     }
@@ -116,8 +120,7 @@ export const Koolbase = {
   get functions(): KoolbaseFunctions { ensureInitialized(); return _functions!; },
   get analytics(): KoolbaseAnalytics {
     ensureInitialized();
-    if (!_analytics) throw new Error('Analytics is disabled (analyticsEnabled: false).');
-    return _analytics;
+    return _analytics ?? analyticsOff;
   },
 
   isEnabled(key: string): boolean { ensureInitialized(); return _flags!.isEnabled(key); },

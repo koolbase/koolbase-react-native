@@ -1,7 +1,7 @@
 {
   "name": "@koolbase/js",
-  "version": "12.3.0",
-  "description": "Koolbase SDK for the browser — auth, database, storage, realtime, functions, flags and offline sync in one package.",
+  "version": "12.4.0",
+  "description": "Koolbase SDK for the browser \u2014 auth, database, storage, realtime, functions, flags and offline sync in one package.",
   "main": "./dist/cjs/index.js",
   "types": "./dist/esm/index.d.ts",
   "files": [
@@ -25,7 +25,7 @@
     "url": "https://github.com/koolbase/koolbase-react-native"
   },
   "dependencies": {
-    "@koolbase/core": "12.3.0"
+    "@koolbase/core": "12.4.0"
   },
   "publishConfig": {
     "access": "public"
