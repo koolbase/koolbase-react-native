@@ -23,6 +23,8 @@ export {
   initialCollectionState,
 } from './collection-controller.js';
 export type { CollectionQuery, CollectionState, CollectionStatus } from './collection-controller.js';
+export { KoolbaseRecordController, initialRecordState } from './record-controller.js';
+export type { RecordState, RecordStatus } from './record-controller.js';
 export { KoolbaseFlags } from './flags.js';
 export { KoolbaseFunctions } from './functions.js';
 export { KoolbaseRealtime } from './realtime.js';

@@ -26,6 +26,7 @@ import {
 } from '@koolbase/core';
 import { reactNativePlatform } from './platform.js';
 import { createUseCollection } from './use-collection.js';
+import { createUseRecord } from './use-record.js';
 
 let _auth: KoolbaseAuth | null = null;
 let _db: KoolbaseDatabase | null = null;
@@ -205,3 +206,17 @@ export type { UseCollectionResult } from './use-collection.js';
  * ```
  */
 export const useCollection = createUseCollection(() => Koolbase.db);
+
+export type { UseRecordResult } from './use-record.js';
+
+/**
+ * One record, by id, as React state: loading, loaded, notFound or error,
+ * with refresh. notFound covers a missing id, a record that does not exist,
+ * one this user may not read (the API does not tell them apart) and a record
+ * from a different collection. Use it after Koolbase.initialize().
+ *
+ * ```tsx
+ * const song = useRecord('songs', songId);
+ * ```
+ */
+export const useRecord = createUseRecord(() => Koolbase.db);
