@@ -3,6 +3,13 @@
 Each version covers all three packages: @koolbase/core, @koolbase/react-native and
 @koolbase/js. Earlier history: https://docs.koolbase.com/changelog
 
+## 12.5.1
+
+- `@koolbase/react-native` accepts `@react-native-async-storage/async-storage` 2.2 as well
+  as 3.x, so it installs in an Expo SDK 57 app, which ships 2.2.0 (as does Expo Go, whose
+  native module is fixed at that version). The SDK uses only `getItem`, `setItem`,
+  `removeItem` and `getAllKeys`, which both provide.
+
 ## 12.5.0
 
 - **`useCollection` in `@koolbase/react-native`.** A collection as React state:
