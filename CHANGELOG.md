@@ -3,6 +3,15 @@
 Each version covers all three packages: @koolbase/core, @koolbase/react-native and
 @koolbase/js. Earlier history: https://docs.koolbase.com/changelog
 
+## 12.6.0
+
+- **`useRecord` in `@koolbase/react-native`.** One record by id, as React state:
+  `status` (`loading`, `loaded`, `notFound` or `error`), `record` and `refresh()`.
+  `notFound` covers a missing id, a record that does not exist, one this user may not
+  read (the API does not tell them apart), and a record from a different collection
+  than the one asked for. A failed refresh keeps the record shown.
+- `KoolbaseRecordController` in `@koolbase/core`: the same behaviour without React.
+
 ## 12.5.1
 
 - `@koolbase/react-native` accepts `@react-native-async-storage/async-storage` 2.2 as well
