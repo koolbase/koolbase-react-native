@@ -17,6 +17,12 @@ export * from './storage-errors.js';
 
 export { KoolbaseAuth } from './auth.js';
 export { KoolbaseDatabase } from './database.js';
+export {
+  KoolbaseCollectionController,
+  collectionQueryKey,
+  initialCollectionState,
+} from './collection-controller.js';
+export type { CollectionQuery, CollectionState, CollectionStatus } from './collection-controller.js';
 export { KoolbaseFlags } from './flags.js';
 export { KoolbaseFunctions } from './functions.js';
 export { KoolbaseRealtime } from './realtime.js';

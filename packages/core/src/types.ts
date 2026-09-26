@@ -279,6 +279,13 @@ export interface QueryOptions {
    * make, by a Function or another user, when you need the server's state now.
    */
   cache?: 'default' | 'network-only';
+  /**
+   * Called once with the server's result when a cache hit's background
+   * refresh lands, so a screen showing the cached result can show the fresh
+   * one. Not called on a cache miss (the awaited result is already the
+   * server's) or when the refresh fails. Not part of the query's identity.
+   */
+  onRefresh?: (result: QueryResult) => void;
 }
 
 export interface QueryResult {

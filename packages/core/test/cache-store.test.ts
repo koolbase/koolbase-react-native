@@ -7,6 +7,7 @@ import {
   getCached,
   clearUserCache,
   invalidateCache,
+  hashQuery,
 } from '../src/cache-store';
 
 /**
@@ -72,5 +73,19 @@ describe('invalidateCache', () => {
 
     expect(await getCached('user-1', 'things', 'hash')).toBeNull();
     expect(await getWriteQueue('user-1')).toHaveLength(1);
+  });
+});
+
+
+describe('hashQuery', () => {
+  it('is the same whatever the order of keys, at any depth', () => {
+    expect(hashQuery('songs', { filters: { a: 1, b: { y: 2, x: 1 } }, limit: 5 })).toBe(
+      hashQuery('songs', { limit: 5, filters: { b: { x: 1, y: 2 }, a: 1 } }),
+    );
+  });
+
+  it('still tells different queries apart, and keeps array order', () => {
+    expect(hashQuery('songs', { filters: { a: 1 } })).not.toBe(hashQuery('songs', { filters: { a: 2 } }));
+    expect(hashQuery('songs', { populate: ['a', 'b'] })).not.toBe(hashQuery('songs', { populate: ['b', 'a'] }));
   });
 });

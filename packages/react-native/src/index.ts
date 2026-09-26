@@ -25,6 +25,7 @@ import {
   type VersionCheckResult,
 } from '@koolbase/core';
 import { reactNativePlatform } from './platform.js';
+import { createUseCollection } from './use-collection.js';
 
 let _auth: KoolbaseAuth | null = null;
 let _db: KoolbaseDatabase | null = null;
@@ -191,3 +192,16 @@ export const Koolbase = {
 };
 
 export { SecureAuthStorage } from './auth-storage.js';
+
+export type { UseCollectionResult } from './use-collection.js';
+
+/**
+ * A collection as React state: loading, loaded or error, with refresh and
+ * loadMore. Equality filters only for now: `where: { field: value }`.
+ * Use it after Koolbase.initialize() (in an exported app, inside KoolbaseRoot).
+ *
+ * ```tsx
+ * const songs = useCollection('songs', { where: { genre: 'jazz' }, orderBy: 'title' });
+ * ```
+ */
+export const useCollection = createUseCollection(() => Koolbase.db);
