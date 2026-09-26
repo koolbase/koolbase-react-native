@@ -262,15 +262,21 @@ export class KoolbaseDatabase {
   ): Promise<QueryResult> {
     const userId = this.getUserId() ?? 'anonymous';
     // The cache policy is how to read, not what to read: it stays out of the
-    // query's identity, so both policies share one cache entry.
-    const { cache: cachePolicy, ...queryOptions } = options;
+    // query's identity, so both policies share one cache entry. onRefresh is
+    // who to tell, not what to read, so it stays out the same way.
+    const { cache: cachePolicy, onRefresh, ...queryOptions } = options;
     const queryHash = hashQuery(collection, queryOptions as Record<string, unknown>);
 
     const cached = cachePolicy === 'network-only' ? null : await getCached(userId, collection, queryHash);
 
     if (cached) {
       this.runQuery(collection, queryOptions)
-        .then(result => setCached(userId, collection, queryHash, result))
+        .then(async (result) => {
+          await setCached(userId, collection, queryHash, result);
+          // Told outside the catch below, which is for the network: an
+          // exception from the caller's callback is the caller's to see.
+          if (onRefresh) queueMicrotask(() => onRefresh({ ...result, isFromCache: false }));
+        })
         .catch(() => {
           // Network unavailable — cached data already returned
         });

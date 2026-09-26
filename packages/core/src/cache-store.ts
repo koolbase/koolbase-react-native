@@ -11,8 +11,26 @@ function writeQueueKey(userId: string): string {
   return `koolbase:${CACHE_VERSION}:${userId}:write_queue`;
 }
 
+/**
+ * A query's identity in the cache. Keys are sorted at every depth, so options
+ * that differ only in key order ({ a, b } and { b, a }) share one entry.
+ * Array order is kept: it can matter. Undefined values and functions are left
+ * out, as JSON.stringify does.
+ *
+ * Changing this only strands earlier entries, which are fetched again and
+ * removed by the next invalidateCache for their collection. CACHE_VERSION is
+ * not the tool for a clean start: the write queue's key carries it too.
+ */
 export function hashQuery(collection: string, options: Record<string, unknown>): string {
-  return `${collection}:${JSON.stringify(options)}`;
+  return `${collection}:${JSON.stringify(options, sortKeys)}`;
+}
+
+function sortKeys(_key: string, value: unknown): unknown {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return value;
+  const source = value as Record<string, unknown>;
+  const sorted: Record<string, unknown> = {};
+  for (const key of Object.keys(source).sort()) sorted[key] = source[key];
+  return sorted;
 }
 
 // ─── Cache ──────────────────────────────────────────────────────────────────
