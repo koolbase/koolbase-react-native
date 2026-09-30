@@ -23,6 +23,7 @@
 // from page one. Duplicates are removed; a skipped row cannot be detected.
 
 import type { KoolbaseDatabase } from './database.js';
+import { registerQueryRefresher } from './query-refresh.js';
 import type { KoolbaseRecord, QueryOptions, QueryResult } from './types.js';
 
 export type CollectionStatus = 'loading' | 'loaded' | 'error';
@@ -105,6 +106,8 @@ export class KoolbaseCollectionController {
   // Where the next page starts on the server. Not records.length: once rows
   // are de-duplicated, a shifted page could otherwise be requested forever.
   private nextOffset = 0;
+  // A write to this collection re-runs this query (query-refresh.ts).
+  private unregister: (() => void) | null = null;
 
   constructor(db: QueryReader, collection: string, query: CollectionQuery = {}) {
     this.db = db;
@@ -128,6 +131,7 @@ export class KoolbaseCollectionController {
   /** The first load. Call once; refresh() for later loads. */
   async load(): Promise<void> {
     if (this.disposed) return;
+    this.unregister ??= registerQueryRefresher(this.collection, () => this.refreshAfterWrite());
     await this.firstPage('default');
   }
 
@@ -137,6 +141,16 @@ export class KoolbaseCollectionController {
     this.set({ refreshing: true });
     const gen = await this.firstPage('network-only');
     if (!this.isStale(gen)) this.set({ refreshing: false });
+  }
+
+  /**
+   * After a write to this collection: page one again from the server,
+   * SILENTLY -- no `refreshing`, which is the user's pull-to-refresh. What is
+   * shown stays while it runs, and stays if it fails.
+   */
+  private async refreshAfterWrite(): Promise<void> {
+    if (this.disposed) return;
+    await this.firstPage('network-only');
   }
 
   /**
@@ -168,6 +182,8 @@ export class KoolbaseCollectionController {
   /** Stops all updates. Results still in flight are dropped when they land. */
   dispose(): void {
     this.disposed = true;
+    this.unregister?.();
+    this.unregister = null;
     this.listeners.clear();
   }
 
