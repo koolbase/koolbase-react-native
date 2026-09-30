@@ -3,6 +3,12 @@
 Each version covers all three packages: @koolbase/core, @koolbase/react-native and
 @koolbase/js. Earlier history: https://docs.koolbase.com/changelog
 
+## 12.8.0
+
+- **Conditional writes.** `update(id, data, { expectedRevision })` and `delete(id, { expectedRevision })` apply only if the record still carries that revision; otherwise they throw `KoolbaseRevisionMismatchError`, as the Flutter SDK's `update` and `delete` do (`expected_revision` in the body and in the URL respectively). Without the option both behave exactly as before.
+- **A write refused as stale refreshes the live lists.** On a revision mismatch the collection's open queries re-run (every one when the collection is not known), so a list already shows the newer data; the error is thrown unchanged.
+- **Post-write refreshes run in the background**, as the Flutter SDK's do. 12.7.0 awaited them, so every write waited for every live list on its collection to reload before resolving.
+
 ## 12.7.0
 
 - **Live lists refresh after a write.** Every open collection query (useCollection, KoolbaseCollectionController) re-runs after a successful insert, update, delete, upsert, batch or delete-where on its collection -- as the Flutter SDK's post-write refresh does. Silent (no `refreshing`), each query with its own filters, ordering and limit; a failure in one never stops the others. A delete of a record never read on this device refreshes every live query rather than guessing its collection. Until now a list kept what it loaded until the app was reloaded.

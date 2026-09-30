@@ -1,5 +1,6 @@
 import { koolbaseFetch } from './network.js';
 import { refreshCollectionQueries } from './query-refresh.js';
+import { KoolbaseRevisionMismatchError } from './database-errors.js';
 import {
   KoolbaseError,
   KoolbaseOfflineBaselineUnavailableError,
@@ -296,7 +297,7 @@ export class KoolbaseDatabase {
    */
   async invalidate(collection: string): Promise<void> {
     await invalidateCache(this.getUserId() ?? 'anonymous', collection);
-    await refreshCollectionQueries(collection);
+    void refreshCollectionQueries(collection);
   }
 
   // ─── Insert (online-first with offline fallback) ───────────────────────────
@@ -330,7 +331,7 @@ export class KoolbaseDatabase {
       );
       const record = recordFromWire(raw);
       await invalidateCache(userId, collection);
-      await refreshCollectionQueries(collection);
+      void refreshCollectionQueries(collection);
       // The response carries a fresh revision, so caching it keeps the
       // baseline current for whatever edits this record next.
       await cacheRecord(userId, collection, record.id, record.data, record.revision);
@@ -419,7 +420,7 @@ export class KoolbaseDatabase {
     // Keep the cache fresh, same intent as insert's post-success invalidate.
     const userId = this.getUserId() ?? 'anonymous';
     await invalidateCache(userId, collection);
-    await refreshCollectionQueries(collection);
+    void refreshCollectionQueries(collection);
     await cacheRecord(userId, collection, record.id, record.data, record.revision);
 
     return { record, created };
@@ -450,7 +451,7 @@ export class KoolbaseDatabase {
 
     const userId = this.getUserId() ?? 'anonymous';
     await invalidateCache(userId, collection);
-    await refreshCollectionQueries(collection);
+    void refreshCollectionQueries(collection);
 
     return (body.deleted as number) ?? 0;
   }
@@ -530,7 +531,7 @@ export class KoolbaseDatabase {
     }
     for (const col of touched) {
       await invalidateCache(userId, col);
-      await refreshCollectionQueries(col);
+      void refreshCollectionQueries(col);
     }
 
     return results;
@@ -813,7 +814,7 @@ export class KoolbaseDatabase {
     }
     await this.dropConflict(c.id);
     await invalidateCache(this.getUserId() ?? 'anonymous', c.collection);
-    await refreshCollectionQueries(c.collection);
+    void refreshCollectionQueries(c.collection);
   }
 
   // ─── Update (online-first with offline fallback) ───────────────────────────
@@ -873,7 +874,10 @@ export class KoolbaseDatabase {
 
   async update(
     recordId: string,
-    data: Record<string, unknown>
+    data: Record<string, unknown>,
+    /** expectedRevision: apply only if the record still carries it; refused
+     *  with KoolbaseRevisionMismatchError otherwise (as the Flutter SDK). */
+    options: { expectedRevision?: number } = {}
   ): Promise<KoolbaseRecord> {
     const userId = this.getUserId() ?? 'anonymous';
     // Resolved before the request, so a network failure has somewhere to go.
@@ -883,7 +887,7 @@ export class KoolbaseDatabase {
       const raw = await this.request<Record<string, unknown>>(
         'PATCH',
         `/v1/sdk/db/records/${recordId}`,
-        { data }
+        { data, ...(options.expectedRevision !== undefined ? { expected_revision: options.expectedRevision } : {}) }
       );
       const updated = recordFromWire(raw);
       // Its collection's live queries re-run (every one, if the record's
@@ -898,7 +902,7 @@ export class KoolbaseDatabase {
           updated.revision
         );
       }
-      await refreshCollectionQueries(refreshed);
+      void refreshCollectionQueries(refreshed);
       return updated;
     } catch (e) {
       // Server-reachable rejection: surface to caller without queuing — the
@@ -907,6 +911,9 @@ export class KoolbaseDatabase {
       // credential — must not be queued: it will be refused again on every
       // retry. Checked against the root rather than the data family, because a
       // rejected credential belongs to no single surface.
+      // Refused as stale: the server holds newer data, so show it -- the
+      // collection's live queries re-run in the background (as Flutter).
+      if (e instanceof KoolbaseRevisionMismatchError) void refreshCollectionQueries(base?.collection);
       if (e instanceof KoolbaseError) throw e;
 
       // Genuine network failure. Queueable only if the SDK knows what the
@@ -942,15 +949,24 @@ export class KoolbaseDatabase {
 
   // ─── Delete ─────────────────────────────────────────────────────────────────
 
-  async delete(recordId: string): Promise<void> {
+  async delete(
+    recordId: string,
+    /** expectedRevision: delete only if the record still carries it (as the
+     *  Flutter SDK) -- removing a record someone changed a moment ago is the
+     *  more destructive stale write. */
+    options: { expectedRevision?: number } = {}
+  ): Promise<void> {
     const userId = this.getUserId() ?? 'anonymous';
     const base = await this.resolveBaseline(userId, recordId);
     try {
-      await this.request<null>('DELETE', `/v1/sdk/db/records/${recordId}`);
+      await this.request<null>(
+        'DELETE',
+        `/v1/sdk/db/records/${recordId}${options.expectedRevision !== undefined ? `?expected_revision=${options.expectedRevision}` : ''}`
+      );
       await removeCachedRecord(userId, recordId);
       // Its collection is known from the baseline when the record was seen;
       // otherwise every live query re-runs, rather than a guess.
-      await refreshCollectionQueries(base?.collection);
+      void refreshCollectionQueries(base?.collection);
     } catch (e) {
       // A server that answered has refused: a permission denial or a missing
       // record will be refused again on every retry, so surface it rather than
@@ -960,6 +976,9 @@ export class KoolbaseDatabase {
       // credential — must not be queued: it will be refused again on every
       // retry. Checked against the root rather than the data family, because a
       // rejected credential belongs to no single surface.
+      // Refused as stale: the server holds newer data, so show it -- the
+      // collection's live queries re-run in the background (as Flutter).
+      if (e instanceof KoolbaseRevisionMismatchError) void refreshCollectionQueries(base?.collection);
       if (e instanceof KoolbaseError) throw e;
       // Genuine network failure. Queued here rather than before the request,
       // which would leave a successful delete in the queue to replay later
