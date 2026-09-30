@@ -1,4 +1,5 @@
 import { koolbaseFetch } from './network.js';
+import { refreshCollectionQueries } from './query-refresh.js';
 import {
   KoolbaseError,
   KoolbaseOfflineBaselineUnavailableError,
@@ -295,6 +296,7 @@ export class KoolbaseDatabase {
    */
   async invalidate(collection: string): Promise<void> {
     await invalidateCache(this.getUserId() ?? 'anonymous', collection);
+    await refreshCollectionQueries(collection);
   }
 
   // ─── Insert (online-first with offline fallback) ───────────────────────────
@@ -328,6 +330,7 @@ export class KoolbaseDatabase {
       );
       const record = recordFromWire(raw);
       await invalidateCache(userId, collection);
+      await refreshCollectionQueries(collection);
       // The response carries a fresh revision, so caching it keeps the
       // baseline current for whatever edits this record next.
       await cacheRecord(userId, collection, record.id, record.data, record.revision);
@@ -416,6 +419,7 @@ export class KoolbaseDatabase {
     // Keep the cache fresh, same intent as insert's post-success invalidate.
     const userId = this.getUserId() ?? 'anonymous';
     await invalidateCache(userId, collection);
+    await refreshCollectionQueries(collection);
     await cacheRecord(userId, collection, record.id, record.data, record.revision);
 
     return { record, created };
@@ -446,6 +450,7 @@ export class KoolbaseDatabase {
 
     const userId = this.getUserId() ?? 'anonymous';
     await invalidateCache(userId, collection);
+    await refreshCollectionQueries(collection);
 
     return (body.deleted as number) ?? 0;
   }
@@ -525,6 +530,7 @@ export class KoolbaseDatabase {
     }
     for (const col of touched) {
       await invalidateCache(userId, col);
+      await refreshCollectionQueries(col);
     }
 
     return results;
@@ -807,6 +813,7 @@ export class KoolbaseDatabase {
     }
     await this.dropConflict(c.id);
     await invalidateCache(this.getUserId() ?? 'anonymous', c.collection);
+    await refreshCollectionQueries(c.collection);
   }
 
   // ─── Update (online-first with offline fallback) ───────────────────────────
@@ -879,6 +886,9 @@ export class KoolbaseDatabase {
         { data }
       );
       const updated = recordFromWire(raw);
+      // Its collection's live queries re-run (every one, if the record's
+      // collection is not known).
+      const refreshed = updated.collection;
       if (updated.collection) {
         await cacheRecord(
           userId,
@@ -888,6 +898,7 @@ export class KoolbaseDatabase {
           updated.revision
         );
       }
+      await refreshCollectionQueries(refreshed);
       return updated;
     } catch (e) {
       // Server-reachable rejection: surface to caller without queuing — the
@@ -937,6 +948,9 @@ export class KoolbaseDatabase {
     try {
       await this.request<null>('DELETE', `/v1/sdk/db/records/${recordId}`);
       await removeCachedRecord(userId, recordId);
+      // Its collection is known from the baseline when the record was seen;
+      // otherwise every live query re-runs, rather than a guess.
+      await refreshCollectionQueries(base?.collection);
     } catch (e) {
       // A server that answered has refused: a permission denial or a missing
       // record will be refused again on every retry, so surface it rather than

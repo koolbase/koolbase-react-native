@@ -3,6 +3,10 @@
 Each version covers all three packages: @koolbase/core, @koolbase/react-native and
 @koolbase/js. Earlier history: https://docs.koolbase.com/changelog
 
+## 12.7.0
+
+- **Live lists refresh after a write.** Every open collection query (useCollection, KoolbaseCollectionController) re-runs after a successful insert, update, delete, upsert, batch or delete-where on its collection -- as the Flutter SDK's post-write refresh does. Silent (no `refreshing`), each query with its own filters, ordering and limit; a failure in one never stops the others. A delete of a record never read on this device refreshes every live query rather than guessing its collection. Until now a list kept what it loaded until the app was reloaded.
+
 ## 12.6.0
 
 - **`useRecord` in `@koolbase/react-native`.** One record by id, as React state:
