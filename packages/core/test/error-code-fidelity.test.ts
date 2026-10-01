@@ -52,6 +52,8 @@ const API_CODES = new Set([
 
 // Codes with no server counterpart, for one of two reasons.
 const CLIENT_ONLY = new Set([
+  // Raised by the SDK itself (storage.publicUrlFor), never sent by the server.
+  'project_identity_unavailable',
   // Raised by the SDK itself; no server was involved, or the server's
   // response was the problem.
   'network_error',              // the request never reached a server

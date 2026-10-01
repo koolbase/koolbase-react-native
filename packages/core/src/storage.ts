@@ -1,3 +1,4 @@
+import { KoolbaseStorageProjectIdentityError } from './storage-errors.js';
 import { koolbaseFetch } from './network.js';
 import { KoolbaseError, KoolbaseUnauthenticatedError } from './errors.js';
 import {
@@ -61,14 +62,23 @@ export class KoolbaseStorage {
    */
   private onSessionExpired?: () => Promise<void>;
 
+  /** The project id from the bootstrap payload, '' until it arrives. */
+  private projectIdProvider?: () => string;
+  /** A background bootstrap refresh, nudged when identity is missing. */
+  private nudgeBootstrap?: () => void;
+
   constructor(
     config: KoolbaseConfig,
     getToken: () => Promise<string | null>,
     onSessionExpired?: () => Promise<void>,
+    projectIdProvider?: () => string,
+    nudgeBootstrap?: () => void,
   ) {
     this.config = config;
     this.getToken = getToken;
     this.onSessionExpired = onSessionExpired;
+    this.projectIdProvider = projectIdProvider;
+    this.nudgeBootstrap = nudgeBootstrap;
   }
 
   /**
@@ -287,6 +297,24 @@ export class KoolbaseStorage {
     }
     const data = (await res.json()) as { url: string };
     return data.url;
+  }
+
+  /**
+   * The stable public CDN URL for a file in a public bucket, using the project
+   * identity the SDK learned at bootstrap -- the runtime form of
+   * {@link KoolbaseStorage.publicUrl}, needing no projectId (as Flutter's).
+   *
+   * Throws {@link KoolbaseStorageProjectIdentityError} while identity is
+   * unavailable, and nudges a background bootstrap refresh so a later call in
+   * the same session succeeds once connectivity returns.
+   */
+  publicUrlFor(args: { bucket: string; path: string; transform?: KoolbaseImageTransform }): string {
+    const pid = this.projectIdProvider?.() ?? '';
+    if (pid === '') {
+      this.nudgeBootstrap?.();
+      throw new KoolbaseStorageProjectIdentityError();
+    }
+    return KoolbaseStorage.publicUrl({ projectId: pid, bucket: args.bucket, path: args.path, transform: args.transform });
   }
 
   /**

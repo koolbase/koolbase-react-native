@@ -75,6 +75,10 @@ export const Koolbase = {
       config,
       () => _auth?.validAccessToken() ?? Promise.resolve(null),
       async () => { await _auth?.clearStoredSession(); },
+      // Project identity for publicUrlFor, from the bootstrap payload; a
+      // missing one nudges a refresh (as Flutter's storage client).
+      () => _flags?.projectId() ?? '',
+      () => { void _flags?.refresh(); },
     );
     _fiscal = new KoolbaseFiscal(
       config,
@@ -94,6 +98,9 @@ export const Koolbase = {
 
     const deviceId = await getOrCreateDeviceId();
     _flags = new KoolbaseFlags(config, deviceId);
+    // The bootstrap payload (flags, config, version policy, project identity),
+    // fetched in the background as Flutter's SDK does: never blocks startup.
+    void _flags.koolbaseFetch(config.appVersion ?? '0.0.0', 'web');
 
     // Opt-in: nothing is sent unless the app asks for it.
     if (config.analyticsEnabled === true) {

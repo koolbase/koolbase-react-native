@@ -510,6 +510,9 @@ export type RealtimeCallback = (event: RealtimeEvent) => void;
 
 export interface BootstrapPayload {
   payload_version: string;
+  /** The project this public key belongs to: storage's publicUrlFor builds CDN
+   *  URLs with it. Absent from servers that predate identity metadata. */
+  project_id?: string;
   flags: Record<string, {
     enabled: boolean;
     rollout_percentage: number;

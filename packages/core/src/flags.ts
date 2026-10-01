@@ -5,6 +5,10 @@ export class KoolbaseFlags {
   private config: KoolbaseConfig;
   private payload: BootstrapPayload | null = null;
   private deviceId: string;
+  // The last bootstrap's arguments, so a nudge can refresh with the same ones;
+  // and the fetch in flight, so nudges never stack.
+  private lastArgs: { appVersion: string; platform: string } | null = null;
+  private inFlight: Promise<void> | null = null;
 
   constructor(config: KoolbaseConfig, deviceId: string) {
     this.config = config;
@@ -12,6 +16,7 @@ export class KoolbaseFlags {
   }
 
   async koolbaseFetch(appVersion: string, platform: string): Promise<void> {
+    this.lastArgs = { appVersion, platform };
     try {
       const res = await koolbaseFetch(
         `${this.config.baseUrl}/v1/bootstrap?public_key=${this.config.publicKey}&device_id=${this.deviceId}&app_version=${appVersion}&platform=${platform}`
@@ -20,6 +25,26 @@ export class KoolbaseFlags {
         this.payload = await res.json();
       }
     } catch (_) {}
+  }
+
+  /**
+   * The project id learned from the bootstrap payload, or '' while the first
+   * bootstrap has not completed (storage's publicUrlFor reads it).
+   */
+  projectId(): string {
+    return this.payload?.project_id ?? '';
+  }
+
+  /**
+   * Fetch the bootstrap payload again with the last arguments -- a nudge from
+   * storage when identity is missing, so a startup failure heals within the
+   * session. One fetch at a time; never throws.
+   */
+  refresh(): Promise<void> {
+    if (this.inFlight) return this.inFlight;
+    const args = this.lastArgs ?? { appVersion: this.config.appVersion ?? '0.0.0', platform: 'unknown' };
+    this.inFlight = this.koolbaseFetch(args.appVersion, args.platform).finally(() => { this.inFlight = null; });
+    return this.inFlight;
   }
 
   isEnabled(key: string): boolean {

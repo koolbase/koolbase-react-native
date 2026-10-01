@@ -3,6 +3,11 @@
 Each version covers all three packages: @koolbase/core, @koolbase/react-native and
 @koolbase/js. Earlier history: https://docs.koolbase.com/changelog
 
+## 12.9.0
+
+- **Storage: `publicUrlFor({ bucket, path, transform })`**, the CDN URL for a file in a public bucket using the project identity the SDK learned at bootstrap -- no `projectId` argument, as Flutter's `publicUrlFor`. While identity is unavailable (the first bootstrap has not completed) it throws `KoolbaseStorageProjectIdentityError` (code `project_identity_unavailable`) and nudges a background bootstrap refresh, so a later call in the same session succeeds.
+- **Bootstrap at initialize**: `initialize` now fetches the bootstrap payload (flags, remote config, version policy, project identity) in the background, as the Flutter SDK does. It never blocks startup. Flags expose `projectId()` and `refresh()`.
+
 ## 12.8.0
 
 - **Conditional writes.** `update(id, data, { expectedRevision })` and `delete(id, { expectedRevision })` apply only if the record still carries that revision; otherwise they throw `KoolbaseRevisionMismatchError`, as the Flutter SDK's `update` and `delete` do (`expected_revision` in the body and in the URL respectively). Without the option both behave exactly as before.
