@@ -10,7 +10,7 @@ import {
   initialRecordState,
   type KoolbaseDatabase,
   type RecordState,
-} from '@koolbase/core';
+} from '../index.js';
 
 export interface UseRecordResult extends RecordState {
   /** The record again, from the server. What is shown stays while it runs, and stays if it fails. */

@@ -5,7 +5,8 @@
   "main": "./dist/cjs/index.js",
   "types": "./dist/esm/index.d.ts",
   "files": [
-    "dist"
+    "dist",
+    "react"
   ],
   "scripts": {
     "build": "node ../../scripts/build-package.js core",
@@ -39,7 +40,25 @@
         "default": "./dist/cjs/index.js"
       }
     },
+    "./react": {
+      "import": {
+        "types": "./dist/esm/react/index.d.ts",
+        "default": "./dist/esm/react/index.js"
+      },
+      "require": {
+        "types": "./dist/cjs/react/index.d.ts",
+        "default": "./dist/cjs/react/index.js"
+      }
+    },
     "./package.json": "./package.json"
   },
-  "sideEffects": false
+  "sideEffects": false,
+  "peerDependencies": {
+    "react": ">=18.0.0"
+  },
+  "peerDependenciesMeta": {
+    "react": {
+      "optional": true
+    }
+  }
 }
