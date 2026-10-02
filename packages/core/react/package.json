@@ -1,0 +1,7 @@
+{
+  "//": "For resolvers that ignore \"exports\" (TypeScript node10, older bundlers): the ./react entry.",
+  "main": "../dist/cjs/react/index.js",
+  "module": "../dist/esm/react/index.js",
+  "types": "../dist/cjs/react/index.d.ts",
+  "sideEffects": false
+}

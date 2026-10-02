@@ -12,7 +12,7 @@ import {
   type CollectionQuery,
   type CollectionState,
   type KoolbaseDatabase,
-} from '@koolbase/core';
+} from '../index.js';
 
 export interface UseCollectionResult extends CollectionState {
   /** Page one again, from the server. What is shown stays while it runs, and stays if it fails. */

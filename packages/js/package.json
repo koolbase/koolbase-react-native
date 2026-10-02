@@ -1,12 +1,13 @@
 {
   "name": "@koolbase/js",
-  "version": "12.9.0",
+  "version": "12.10.0",
   "description": "Koolbase SDK for the browser \u2014 auth, database, storage, realtime, functions, flags and offline sync in one package.",
   "main": "./dist/cjs/index.js",
   "types": "./dist/esm/index.d.ts",
   "files": [
     "dist",
-    "CHANGELOG.md"
+    "CHANGELOG.md",
+    "react"
   ],
   "scripts": {
     "build": "node ../../scripts/build-package.js js"
@@ -25,7 +26,7 @@
     "url": "https://github.com/koolbase/koolbase-react-native"
   },
   "dependencies": {
-    "@koolbase/core": "12.9.0"
+    "@koolbase/core": "12.10.0"
   },
   "publishConfig": {
     "access": "public"
@@ -42,7 +43,25 @@
         "default": "./dist/cjs/index.js"
       }
     },
+    "./react": {
+      "import": {
+        "types": "./dist/esm/react.d.ts",
+        "default": "./dist/esm/react.js"
+      },
+      "require": {
+        "types": "./dist/cjs/react.d.ts",
+        "default": "./dist/cjs/react.js"
+      }
+    },
     "./package.json": "./package.json"
   },
-  "sideEffects": false
+  "sideEffects": false,
+  "peerDependencies": {
+    "react": ">=18.0.0"
+  },
+  "peerDependenciesMeta": {
+    "react": {
+      "optional": true
+    }
+  }
 }

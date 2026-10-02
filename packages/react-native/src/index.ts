@@ -26,8 +26,7 @@ import {
   type VersionCheckResult,
 } from '@koolbase/core';
 import { reactNativePlatform } from './platform.js';
-import { createUseCollection } from './use-collection.js';
-import { createUseRecord } from './use-record.js';
+import { createUseCollection, createUseRecord } from '@koolbase/core/react';
 
 let _auth: KoolbaseAuth | null = null;
 let _db: KoolbaseDatabase | null = null;
@@ -202,7 +201,7 @@ export const Koolbase = {
 
 export { SecureAuthStorage } from './auth-storage.js';
 
-export type { UseCollectionResult } from './use-collection.js';
+export type { UseCollectionResult } from '@koolbase/core/react';
 
 /**
  * A collection as React state: loading, loaded or error, with refresh and
@@ -215,7 +214,7 @@ export type { UseCollectionResult } from './use-collection.js';
  */
 export const useCollection = createUseCollection(() => Koolbase.db);
 
-export type { UseRecordResult } from './use-record.js';
+export type { UseRecordResult } from '@koolbase/core/react';
 
 /**
  * One record, by id, as React state: loading, loaded, notFound or error,

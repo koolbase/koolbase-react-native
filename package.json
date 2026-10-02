@@ -11,7 +11,8 @@
     "test": "npm run test:memory && npm run test:browser",
     "test:browser": "KOOLBASE_TEST_PLATFORM=browser npm test -w @koolbase/core",
     "clean": "rm -rf packages/*/dist",
-    "test:memory": "npm test -w @koolbase/core"
+    "test:memory": "npm test -w @koolbase/core",
+    "check:entries": "node scripts/check-entries.js"
   },
   "devDependencies": {
     "@react-native-async-storage/async-storage": "^3.0.2",
@@ -22,6 +23,8 @@
     "@types/react": "^19.3.0",
     "fake-indexeddb": "^6.2.5",
     "jest": "^30.4.2",
+    "jest-environment-jsdom": "^30.5.2",
+    "react-dom": "^19.2.8",
     "react-native": "^0.85.3",
     "react-native-keychain": "^10.0.0",
     "ts-jest": "^29.4.12",
