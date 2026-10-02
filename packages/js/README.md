@@ -175,6 +175,33 @@ identical.
 
 ---
 
+## React
+
+`useCollection` and `useRecord` hold a collection or one record as React state,
+exactly as in `@koolbase/react-native`. They come from their own entry, so
+`@koolbase/js` itself never loads React; install `react` (18 or later) to use them.
+
+```tsx
+import { useCollection, useRecord } from '@koolbase/js/react';
+
+function Songs() {
+  const songs = useCollection('songs', { where: { genre: 'jazz' }, orderBy: 'title' });
+  if (songs.status === 'loading') return <p>Loading...</p>;
+  if (songs.status === 'error') return <button onClick={() => songs.refresh()}>Retry</button>;
+  return <ul>{songs.records.map((r) => <li key={r.id}>{String(r.data.title)}</li>)}</ul>;
+}
+
+function Song({ id }: { id: string }) {
+  const song = useRecord('songs', id);
+  if (song.status === 'notFound') return <p>No such song.</p>;
+  return song.record ? <h1>{String(song.record.data.title)}</h1> : null;
+}
+```
+
+Use them after `Koolbase.initialize()`. `useCollection` also offers `loadMore()`
+while `hasMore`; `useRecord`'s `notFound` covers a record that does not exist or
+that this user may not read.
+
 ## Offline
 
 Reads come from a local cache when the network is unavailable. `insert`,

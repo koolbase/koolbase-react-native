@@ -3,6 +3,12 @@
 Each version covers all three packages: @koolbase/core, @koolbase/react-native and
 @koolbase/js. Earlier history: https://docs.koolbase.com/changelog
 
+## 12.10.0
+
+- **`useCollection` and `useRecord` in the browser: `@koolbase/js/react`.** The same hooks React Native apps use, bound to `@koolbase/js`'s `Koolbase`: `import { useCollection, useRecord } from '@koolbase/js/react'`. A separate entry on purpose -- `import { Koolbase } from '@koolbase/js'` never loads React, and `react` is an optional peer dependency, so apps without React need nothing new.
+- **One implementation.** The hooks move from `@koolbase/react-native` to `@koolbase/core/react` (not core's root entry), which both packages export. `@koolbase/react-native` exports `useCollection`, `useRecord`, `UseCollectionResult` and `UseRecordResult` exactly as before: no import changes.
+- **Tested.** The hooks' first direct tests (loading, refresh, error, notFound, a changed query or id never showing the previous answer, unmount), and a check on the built packages that core and `@koolbase/js` never reach React, the React entries never reach React Native, and a 12.9.0 React Native app's imports still compile.
+
 ## 12.9.0
 
 - **Storage: `publicUrlFor({ bucket, path, transform })`**, the CDN URL for a file in a public bucket using the project identity the SDK learned at bootstrap -- no `projectId` argument, as Flutter's `publicUrlFor`. While identity is unavailable (the first bootstrap has not completed) it throws `KoolbaseStorageProjectIdentityError` (code `project_identity_unavailable`) and nudges a background bootstrap refresh, so a later call in the same session succeeds.
