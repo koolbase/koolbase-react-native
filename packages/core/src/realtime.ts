@@ -43,6 +43,23 @@ export class KoolbaseRealtime {
   private reconnectAttempts = 0;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private connecting = false;
+  // The open connection is a signed-out visitor's (the public key): its
+  // messages leave project_id out.
+  private anonymous = false;
+  // Whose session the open connection was made for: the user id, or null
+  // when signed out. sessionChanged compares against it.
+  private connectedAs: string | null = null;
+  // Bumped by sessionChanged: a connect still waiting for its token gives up
+  // rather than open a connection for the old session.
+  private generation = 0;
+  // Pending close of an unused connection (scheduleIdleClose); null while
+  // anyone is subscribed.
+  private idleTimer: ReturnType<typeof setTimeout> | null = null;
+
+  /** How long an unused connection stays open, in ms: a screen that comes
+   *  straight back (navigating back, React's development double start)
+   *  reuses it instead of opening another. */
+  static idleGraceMs = 1000;
 
   /**
    * Identifies whose cache a seen record belongs in.
@@ -82,6 +99,7 @@ export class KoolbaseRealtime {
   }
 
   subscribe(collection: string, callback: RealtimeCallback): () => void {
+    if (this.idleTimer) { clearTimeout(this.idleTimer); this.idleTimer = null; }
     if (!this.listeners.has(collection)) this.listeners.set(collection, []);
     this.listeners.get(collection)!.push(callback);
 
@@ -92,12 +110,14 @@ export class KoolbaseRealtime {
     }
 
     return () => {
-      const callbacks = this.listeners.get(collection) ?? [];
-      const i = callbacks.indexOf(callback);
-      if (i > -1) callbacks.splice(i, 1);
+      const callbacks = this.listeners.get(collection);
+      const i = callbacks ? callbacks.indexOf(callback) : -1;
+      if (!callbacks || i === -1) return; // already unsubscribed: a second call does nothing
+      callbacks.splice(i, 1);
       if (callbacks.length === 0) {
         this.listeners.delete(collection);
         this.sendUnsubscribe(collection);
+        if (this.listeners.size === 0) this.scheduleIdleClose();
       }
     };
   }
@@ -106,16 +126,57 @@ export class KoolbaseRealtime {
     if (this.connecting) return;
     if (this.ws && (this.ws.readyState === WebSocket.OPEN || this.ws.readyState === WebSocket.CONNECTING)) return;
 
-    const token = await this.getToken();
-    if (!token) {
-      this.scheduleReconnect(); // sign-in may be in flight
+    // Claimed BEFORE the token is awaited. Claimed after it, every subscribe
+    // arriving meanwhile -- two live lists on one screen, React's development
+    // double start -- found nobody connecting and opened its own socket; only
+    // the last was remembered, and the others stayed open for good.
+    this.connecting = true;
+    const generation = this.generation;
+    let token: string | null;
+    try {
+      token = await this.getToken();
+    } catch {
+      // A session that could not be refreshed is still a session: try again
+      // later, never as a signed-out visitor.
+      if (generation !== this.generation) return;
+      this.connecting = false;
+      this.scheduleReconnect();
       return;
     }
-    this.projectId = projectIdFromToken(token);
+    // The session changed while the token was on its way: sessionChanged
+    // has started the connection for the new one.
+    if (generation !== this.generation) return;
+    if (this.listeners.size === 0) {
+      // Everyone left while the token was on its way: nothing to connect for.
+      this.connecting = false;
+      return;
+    }
+    const userId = this.getUserId?.() ?? null;
+    if (!token && userId) {
+      // Signed in, but no usable token right now: try again later rather
+      // than drop to public-only.
+      this.connecting = false;
+      this.scheduleReconnect();
+      return;
+    }
+    // Signed out: the project's public key, and only collections anyone can
+    // read. The server pins the connection to the key's project.
+    this.anonymous = !token;
+    this.connectedAs = token ? userId : null;
+    this.projectId = token ? projectIdFromToken(token) : null;
+    const credential = token
+      ? `token=${encodeURIComponent(token)}`
+      : `public_key=${encodeURIComponent(this.config.publicKey)}`;
 
-    this.connecting = true;
     const wsUrl = this.config.baseUrl.replace('https://', 'wss://').replace('http://', 'ws://');
-    const ws = new WebSocket(`${wsUrl}/v1/realtime/ws?token=${encodeURIComponent(token)}`);
+    let ws: WebSocket;
+    try {
+      ws = new WebSocket(`${wsUrl}/v1/realtime/ws?${credential}`);
+    } catch {
+      this.connecting = false;
+      this.scheduleReconnect();
+      return;
+    }
     this.ws = ws;
 
     ws.onopen = () => {
@@ -168,13 +229,22 @@ export class KoolbaseRealtime {
   }
 
   private sendSubscribe(collection: string): void {
-    if (!this.projectId || !this.ws || this.ws.readyState !== WebSocket.OPEN) return;
-    this.ws.send(JSON.stringify({ action: 'subscribe', project_id: this.projectId, collection }));
+    this.send('subscribe', collection);
   }
 
   private sendUnsubscribe(collection: string): void {
-    if (!this.projectId || !this.ws || this.ws.readyState !== WebSocket.OPEN) return;
-    this.ws.send(JSON.stringify({ action: 'unsubscribe', project_id: this.projectId, collection }));
+    this.send('unsubscribe', collection);
+  }
+
+  /** A signed-out visitor's message leaves project_id out: it has none to
+   *  give, and the server uses the public key's project. */
+  private send(action: 'subscribe' | 'unsubscribe', collection: string): void {
+    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
+    if (this.anonymous) {
+      this.ws.send(JSON.stringify({ action, collection }));
+    } else if (this.projectId) {
+      this.ws.send(JSON.stringify({ action, project_id: this.projectId, collection }));
+    }
   }
 
   /**
@@ -203,8 +273,62 @@ export class KoolbaseRealtime {
     (this.reconnectTimer as unknown as { unref?: () => void }).unref?.();
   }
 
-  disconnect(): void {
+  /**
+   * Closes the connection once nobody is subscribed -- after a moment, not at
+   * once: a screen that unmounts and mounts again keeps the connection it had.
+   * A subscribe within the moment cancels the close. Nothing reconnects after
+   * it: reconnecting needs a subscriber.
+   */
+  private scheduleIdleClose(): void {
+    if (this.idleTimer) clearTimeout(this.idleTimer);
+    this.idleTimer = setTimeout(() => {
+      this.idleTimer = null;
+      if (this.listeners.size > 0) return;
+      if (this.reconnectTimer) { clearTimeout(this.reconnectTimer); this.reconnectTimer = null; }
+      const ws = this.ws;
+      this.ws = null;
+      this.connecting = false;
+      if (ws) {
+        // Detached first: this close is ours, not a dropped connection.
+        ws.onopen = null; ws.onmessage = null; ws.onclose = null; ws.onerror = null;
+        ws.close();
+      }
+    }, KoolbaseRealtime.idleGraceMs);
+    (this.idleTimer as unknown as { unref?: () => void }).unref?.();
+  }
+
+  /**
+   * The signed-in user changed: signed in, signed out, or another user. The
+   * open connection was made for the previous session -- signed out it sees
+   * only public collections, signed in it carries that user's access -- so it
+   * is replaced by one for the new session, resubscribing every collection.
+   * The same user again (a token refresh) changes nothing, and with nothing
+   * open there is nothing to do: the next subscribe connects as whoever is
+   * signed in then.
+   */
+  sessionChanged(): void {
+    if (!this.ws && !this.connecting && !this.reconnectTimer) return;
+    if (this.ws && !this.connecting && (this.getUserId?.() ?? null) === this.connectedAs) return;
+    this.generation += 1;
     if (this.reconnectTimer) { clearTimeout(this.reconnectTimer); this.reconnectTimer = null; }
+    const ws = this.ws;
+    this.ws = null;
+    this.connecting = false;
+    this.anonymous = false;
+    this.projectId = null;
+    this.reconnectAttempts = 0;
+    if (ws) {
+      // Detached first: this close is ours, not a dropped connection.
+      ws.onopen = null; ws.onmessage = null; ws.onclose = null; ws.onerror = null;
+      ws.close();
+    }
+    if (this.listeners.size > 0) void this.connect();
+  }
+
+  disconnect(): void {
+    if (this.idleTimer) { clearTimeout(this.idleTimer); this.idleTimer = null; }
+    if (this.reconnectTimer) { clearTimeout(this.reconnectTimer); this.reconnectTimer = null; }
+    this.connecting = false;
     this.ws?.close();
     this.ws = null;
     this.projectId = null;

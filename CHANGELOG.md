@@ -3,6 +3,13 @@
 Each version covers all three packages: @koolbase/core, @koolbase/react-native and
 @koolbase/js. Earlier history: https://docs.koolbase.com/changelog
 
+## 12.13.0
+
+- **Realtime for signed-out visitors.** With nobody signed in, live lists and live record views on a collection anyone can read (read rule `public`) now update live: the SDK connects with the project's public key. Any other collection behaves as a normal list or view until a user signs in. Needs the Koolbase API from 2026-10-04 or later.
+- **Follows sign-in and sign-out.** Signing in, signing out or switching user replaces the realtime connection with one for the new session and resubscribes everything; a token refresh for the same user changes nothing. `KoolbaseRealtime.sessionChanged()` does this; `@koolbase/js` and `@koolbase/react-native` call it from `onAuthStateChange`.
+- **Never public-only by mistake.** Signed in without a usable token right now, or a token that fails to refresh: the SDK tries again later, as before, rather than drop to public-only.
+- **Tested.** The public-key connection and its messages, events reaching subscribers, no fallback while signed in, sign-in and sign-out replacing the connection, a refresh keeping it, nothing opened with nothing subscribed, and a session change while the token is on its way.
+
 ## 12.12.0
 
 - **Live record views: `useRecord(collection, id, { live: true })`** (also `new KoolbaseRecordController(db, collection, id, { live: true })`). When Koolbase realtime reports a change to THIS record, it is read again silently -- no `refreshing` state -- and a burst of changes within 250 ms is one read. When it is deleted, the view is `notFound` at once, and a read still in flight is dropped. Changes to other records in the collection are ignored: no extra reads.

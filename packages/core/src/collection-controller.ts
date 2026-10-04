@@ -39,8 +39,9 @@ export interface CollectionQuery {
   /**
    * Re-read page one, silently, when Koolbase realtime reports a record
    * created, updated or deleted in this collection (debounced: a burst is one
-   * read). Realtime needs a signed-in user; until there is one, the list
-   * behaves as a normal list and goes live once the session exists.
+   * read). Signed out, only a collection anyone can read (read rule
+   * "public") is live; any other behaves as a normal list until a user signs
+   * in, and goes live then.
    */
   live?: boolean;
 }

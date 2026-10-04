@@ -90,6 +90,9 @@ export const Koolbase = {
       () => _auth?.validAccessToken() ?? Promise.resolve(null),
       () => _auth?.currentUser?.id ?? null,
     );
+    // Signed in, signed out, another user: the realtime connection is
+    // replaced to match (signed out, collections anyone can read only).
+    _auth?.onAuthStateChange(() => _realtime?.sessionChanged());
     _functions = new KoolbaseFunctions(
       config,
       () => _auth?.validAccessToken() ?? Promise.resolve(null),
