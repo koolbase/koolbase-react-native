@@ -23,6 +23,7 @@
 // from page one. Duplicates are removed; a skipped row cannot be detected.
 
 import type { KoolbaseDatabase } from './database.js';
+import { liveSource } from './live-source.js';
 import { registerQueryRefresher } from './query-refresh.js';
 import type { KoolbaseRecord, QueryOptions, QueryResult } from './types.js';
 
@@ -35,6 +36,13 @@ export interface CollectionQuery {
   orderDesc?: boolean;
   /** Page size; the server's default (20) when absent. */
   limit?: number;
+  /**
+   * Re-read page one, silently, when Koolbase realtime reports a record
+   * created, updated or deleted in this collection (debounced: a burst is one
+   * read). Realtime needs a signed-in user; until there is one, the list
+   * behaves as a normal list and goes live once the session exists.
+   */
+  live?: boolean;
 }
 
 export interface CollectionState {
@@ -76,6 +84,8 @@ export function collectionQueryKey(collection: string, query: CollectionQuery = 
     query.orderBy ?? null,
     query.orderDesc === true,
     query.limit ?? null,
+    // Only when live: every other query keeps the key it always had.
+    ...(query.live === true ? ['live'] : []),
   ]);
 }
 
@@ -108,6 +118,9 @@ export class KoolbaseCollectionController {
   private nextOffset = 0;
   // A write to this collection re-runs this query (query-refresh.ts).
   private unregister: (() => void) | null = null;
+  // A live list's realtime subscription, and its pending debounced re-read.
+  private unlive: (() => void) | null = null;
+  private liveTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor(db: QueryReader, collection: string, query: CollectionQuery = {}) {
     this.db = db;
@@ -132,6 +145,9 @@ export class KoolbaseCollectionController {
   async load(): Promise<void> {
     if (this.disposed) return;
     this.unregister ??= registerQueryRefresher(this.collection, () => this.refreshAfterWrite());
+    if (this.spec.live === true) {
+      this.unlive ??= liveSource()?.subscribe(this.collection, () => this.scheduleLiveRefresh()) ?? null;
+    }
     await this.firstPage('default');
   }
 
@@ -151,6 +167,20 @@ export class KoolbaseCollectionController {
   private async refreshAfterWrite(): Promise<void> {
     if (this.disposed) return;
     await this.firstPage('network-only');
+  }
+
+  /**
+   * A change someone made, reported by realtime: page one again, silently, as
+   * after a write -- once per burst (250 ms), not once per event.
+   */
+  private scheduleLiveRefresh(): void {
+    if (this.disposed || this.liveTimer) return;
+    this.liveTimer = setTimeout(() => {
+      this.liveTimer = null;
+      void this.refreshAfterWrite();
+    }, 250);
+    // A pending re-read must not be what keeps a Node process alive.
+    (this.liveTimer as unknown as { unref?: () => void }).unref?.();
   }
 
   /**
@@ -184,6 +214,9 @@ export class KoolbaseCollectionController {
     this.disposed = true;
     this.unregister?.();
     this.unregister = null;
+    this.unlive?.();
+    this.unlive = null;
+    if (this.liveTimer) { clearTimeout(this.liveTimer); this.liveTimer = null; }
     this.listeners.clear();
   }
 

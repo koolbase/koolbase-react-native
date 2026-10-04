@@ -1,6 +1,7 @@
 import { cacheRecord, removeCachedRecord } from './cache-store.js';
 import { KoolbaseConfig, RealtimeCallback, RealtimeEvent } from './types.js';
 import { recordFromWire } from './record.js';
+import { setLiveSource } from './live-source.js';
 
 type TokenProvider = () => Promise<string | null>;
 
@@ -60,6 +61,8 @@ export class KoolbaseRealtime {
     this.config = config;
     this.getToken = getToken;
     this.getUserId = getUserId;
+    // Live lists (CollectionQuery.live) subscribe through this client.
+    setLiveSource(this);
   }
 
   /** Files a record seen over the socket, if we know whose it is. */

@@ -3,6 +3,12 @@
 Each version covers all three packages: @koolbase/core, @koolbase/react-native and
 @koolbase/js. Earlier history: https://docs.koolbase.com/changelog
 
+## 12.11.0
+
+- **Live lists: `useCollection(collection, { ..., live: true })`.** When Koolbase realtime reports a record created, updated or deleted in the collection, the list re-reads its first page silently, as it does after the app's own writes -- no `refreshing` state, and a burst of changes within 250 ms is one read. The list's own query is what re-runs, so filters, order, read rules and paging stay exactly right. Also on `KoolbaseCollectionController` (`CollectionQuery.live`).
+- **Needs a signed-in user**, as realtime does. Until there is one, a live list behaves as a normal list. Without the option nothing changes, including the cache key of every existing query.
+- **Tested.** A silent re-read on an event, one read for a burst, no subscription unless live, dispose unsubscribing and cancelling a pending re-read, a live list without a realtime client, and the query key.
+
 ## 12.10.0
 
 - **`useCollection` and `useRecord` in the browser: `@koolbase/js/react`.** The same hooks React Native apps use, bound to `@koolbase/js`'s `Koolbase`: `import { useCollection, useRecord } from '@koolbase/js/react'`. A separate entry on purpose -- `import { Koolbase } from '@koolbase/js'` never loads React, and `react` is an optional peer dependency, so apps without React need nothing new.
