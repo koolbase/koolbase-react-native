@@ -12,12 +12,15 @@
 //  - refresh() keeps the record shown while it runs, and if it fails.
 //  - every fetch has a generation: a result superseded by a later refresh,
 //    or landing after dispose(), is dropped.
+//  - live (the option): realtime events for THIS record only. An update
+//    re-reads it silently, once per burst; a delete is notFound at once.
 // Not yet: an offline fallback from the record cache, which keeps data and
 // revision but not createdAt or createdBy.
 
 import type { KoolbaseDatabase } from './database.js';
 import { KoolbaseNotFoundError } from './database-errors.js';
 import type { KoolbaseRecord } from './types.js';
+import { liveSource } from './live-source.js';
 
 export type RecordStatus = 'loading' | 'loaded' | 'notFound' | 'error';
 
@@ -47,11 +50,17 @@ export class KoolbaseRecordController {
   private readonly listeners = new Set<() => void>();
   private generation = 0;
   private disposed = false;
+  /** Follow this record through Koolbase realtime (see onLive). */
+  private readonly live: boolean;
+  // The realtime subscription, and its pending debounced re-read.
+  private unlive: (() => void) | null = null;
+  private liveTimer: ReturnType<typeof setTimeout> | null = null;
 
-  constructor(db: RecordReader, collection: string, id: string) {
+  constructor(db: RecordReader, collection: string, id: string, options: { live?: boolean } = {}) {
     this.db = db;
     this.collection = collection;
     this.id = id;
+    this.live = options.live === true;
   }
 
   getState(): RecordState {
@@ -70,6 +79,10 @@ export class KoolbaseRecordController {
   /** The first load. Call once; refresh() for later loads. */
   async load(): Promise<void> {
     if (this.disposed) return;
+    // Live needs an id: with none there is nothing to follow.
+    if (this.live && this.id) {
+      this.unlive ??= liveSource()?.subscribe(this.collection, (event) => this.onLive(event)) ?? null;
+    }
     await this.fetch();
   }
 
@@ -84,7 +97,36 @@ export class KoolbaseRecordController {
   /** Stops all updates. A result still in flight is dropped when it lands. */
   dispose(): void {
     this.disposed = true;
+    this.unlive?.();
+    this.unlive = null;
+    if (this.liveTimer) { clearTimeout(this.liveTimer); this.liveTimer = null; }
     this.listeners.clear();
+  }
+
+  /**
+   * A realtime event in this record's collection. Only one naming THIS record
+   * counts: an update (or a create, for an id that reappears) re-reads it,
+   * silently -- no `refreshing` -- and once per burst (250 ms); a delete is
+   * notFound at once, and a read still in flight is dropped.
+   */
+  private onLive(event: unknown): void {
+    if (this.disposed) return;
+    const e = (event ?? {}) as { type?: unknown; recordId?: unknown; record?: { id?: unknown } };
+    const target = e.type === 'deleted' ? e.recordId : e.record?.id;
+    if (target !== this.id) return;
+    if (e.type === 'deleted') {
+      if (this.liveTimer) { clearTimeout(this.liveTimer); this.liveTimer = null; }
+      this.generation += 1;
+      this.set({ status: 'notFound', record: null, error: null, refreshing: false });
+      return;
+    }
+    if (this.liveTimer) return;
+    this.liveTimer = setTimeout(() => {
+      this.liveTimer = null;
+      void this.fetch();
+    }, 250);
+    // A pending re-read must not be what keeps a Node process alive.
+    (this.liveTimer as unknown as { unref?: () => void }).unref?.();
   }
 
   private async fetch(): Promise<number> {

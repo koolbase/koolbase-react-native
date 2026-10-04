@@ -21,14 +21,16 @@ const noop = () => {};
 const done = () => Promise.resolve();
 
 export function createUseRecord(getDb: () => Pick<KoolbaseDatabase, 'get'>) {
-  return function useRecord(collection: string, id: string | null | undefined): UseRecordResult {
-    const key = JSON.stringify([collection, id ?? '']);
+  return function useRecord(collection: string, id: string | null | undefined, options: { live?: boolean } = {}): UseRecordResult {
+    // live is part of the key: switching it starts a fresh controller.
+    const live = options.live === true;
+    const key = JSON.stringify([collection, id ?? '', ...(live ? ['live'] : [])]);
     const [current, setCurrent] = useState<{ key: string; controller: KoolbaseRecordController } | null>(null);
 
     useEffect(() => {
       // Created here, not during render: under React strict mode an effect
       // runs, cleans up and runs again, and each run gets its own controller.
-      const controller = new KoolbaseRecordController(getDb(), collection, id ?? '');
+      const controller = new KoolbaseRecordController(getDb(), collection, id ?? '', { live });
       setCurrent({ key, controller });
       void controller.load();
       return () => controller.dispose();

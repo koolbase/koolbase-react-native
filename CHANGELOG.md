@@ -3,6 +3,20 @@
 Each version covers all three packages: @koolbase/core, @koolbase/react-native and
 @koolbase/js. Earlier history: https://docs.koolbase.com/changelog
 
+## 12.12.0
+
+- **Live record views: `useRecord(collection, id, { live: true })`** (also `new KoolbaseRecordController(db, collection, id, { live: true })`). When Koolbase realtime reports a change to THIS record, it is read again silently -- no `refreshing` state -- and a burst of changes within 250 ms is one read. When it is deleted, the view is `notFound` at once, and a read still in flight is dropped. Changes to other records in the collection are ignored: no extra reads.
+- **One connection.** Live records and live lists share the app's single realtime connection (12.11.1).
+- **Needs a signed-in user**, as realtime does; until there is one, a live record view behaves as a normal one. With no id there is nothing to follow and nothing subscribes. Without the option nothing changes.
+- **Tested.** A silent re-read on a change, other records ignored, one read for a burst, a delete at once and without a read, a delete dropping a pending re-read, no subscription unless live or without an id, dispose unsubscribing and cancelling, and a live view without a realtime client.
+
+## 12.11.1
+
+- **One realtime connection per app, closed when nothing needs it.** Subscriptions made while the session token was still being read -- two live lists on one screen, React's development double start -- each opened their own connection, and every one but the last stayed open for good. The client now claims the connection before reading the token, so they all share one.
+- **An unused connection closes.** When the last subscriber leaves, the connection closes after a moment (`KoolbaseRealtime.idleGraceMs`, 1 s). A subscriber back within it -- navigating back to a screen -- keeps the same connection; one after it opens a fresh one at once. Nothing reconnects without a subscriber.
+- **Sturdier.** A token that fails to load, or a connection that cannot be created, no longer leaves the client stuck; if everyone left before the token arrived, nothing is opened; unsubscribing twice is harmless.
+- **Tested** with a stand-in WebSocket: one connection for many subscriptions, unsubscribing only when the last subscriber leaves, the close after the moment and no reconnect, reuse within the moment, a fresh connection after it, nothing opened for nobody, and recovery from a failed token.
+
 ## 12.11.0
 
 - **Live lists: `useCollection(collection, { ..., live: true })`.** When Koolbase realtime reports a record created, updated or deleted in the collection, the list re-reads its first page silently, as it does after the app's own writes -- no `refreshing` state, and a burst of changes within 250 ms is one read. The list's own query is what re-runs, so filters, order, read rules and paging stay exactly right. Also on `KoolbaseCollectionController` (`CollectionQuery.live`).
