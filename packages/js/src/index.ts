@@ -18,6 +18,7 @@ import {
   KoolbaseStorage,
   KoolbaseRealtime,
   KoolbaseFunctions,
+  KoolbaseConnectivity,
   KoolbaseFlags,
   KoolbaseAnalytics,
   disabledAnalytics,
@@ -33,6 +34,7 @@ let _db: KoolbaseDatabase | null = null;
 let _storage: KoolbaseStorage | null = null;
 let _fiscal: KoolbaseFiscal | null = null;
 let _realtime: KoolbaseRealtime | null = null;
+let _connectivity: KoolbaseConnectivity | null = null;
 let _functions: KoolbaseFunctions | null = null;
 let _flags: KoolbaseFlags | null = null;
 let _analytics: KoolbaseAnalytics | null = null;
@@ -92,7 +94,14 @@ export const Koolbase = {
     );
     // Signed in, signed out, another user: the realtime connection is
     // replaced to match (signed out, collections anyone can read only).
-    _auth?.onAuthStateChange(() => _realtime?.sessionChanged());
+    _auth?.onAuthStateChange(() => {
+      _realtime?.sessionChanged();
+      // Pending writes and conflicts are per-user: watchers read again.
+      _db?.sessionChanged();
+    });
+    // Whether the device reports a connection: unknown until it first answers.
+    _connectivity = new KoolbaseConnectivity();
+    _connectivity.start();
     _functions = new KoolbaseFunctions(
       config,
       () => _auth?.validAccessToken() ?? Promise.resolve(null),
@@ -127,6 +136,7 @@ export const Koolbase = {
   get storage(): KoolbaseStorage { ensureInitialized(); return _storage!; },
   get fiscal(): KoolbaseFiscal { ensureInitialized(); return _fiscal!; },
   get realtime(): KoolbaseRealtime { ensureInitialized(); return _realtime!; },
+  get connectivity(): KoolbaseConnectivity { ensureInitialized(); return _connectivity!; },
   get functions(): KoolbaseFunctions { ensureInitialized(); return _functions!; },
   get analytics(): KoolbaseAnalytics {
     ensureInitialized();

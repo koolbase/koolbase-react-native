@@ -18,6 +18,11 @@ export function reactNativePlatform(): PlatformAdapter {
       getAllKeys: async () => Array.from(await AsyncStorage.getAllKeys()),
     },
     network: {
+      current: async () => {
+        const state = await NetInfo.fetch();
+        if (state.isConnected === null || state.isConnected === undefined) return null;
+        return Boolean(state.isConnected) && state.isInternetReachable !== false;
+      },
       onChange: (cb) =>
         NetInfo.addEventListener(state => {
           cb(Boolean(state.isConnected) && state.isInternetReachable !== false);

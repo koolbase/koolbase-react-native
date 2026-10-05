@@ -298,3 +298,34 @@ export async function removeFromCachedQueries(
     // ignore
   }
 }
+
+/**
+ * Applies an offline edit to the record wherever a cached result holds it, so
+ * a saved list shows what the user just changed rather than what it was.
+ */
+export async function updateInCachedQueries(
+  userId: string,
+  collection: string,
+  recordId: string,
+  data: Record<string, unknown>
+): Promise<void> {
+  try {
+    const keys = await getPlatform().storage.getAllKeys();
+    const prefix = `koolbase:${CACHE_VERSION}:${userId}:${collection}:`;
+    for (const key of keys.filter(k => k.startsWith(prefix))) {
+      const raw = await getPlatform().storage.getItem(key);
+      if (!raw) continue;
+      const cached: QueryResult = JSON.parse(raw);
+      if (!Array.isArray(cached.records)) continue;
+      let changed = false;
+      cached.records = cached.records.map(r => {
+        if (r.id !== recordId) return r;
+        changed = true;
+        return { ...r, data: { ...(r.data ?? {}), ...data } };
+      });
+      if (changed) await getPlatform().storage.setItem(key, JSON.stringify(cached));
+    }
+  } catch {
+    // ignore
+  }
+}

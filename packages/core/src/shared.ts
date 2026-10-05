@@ -23,6 +23,9 @@
 const SLOT = Symbol.for('koolbase.sdk.shared.v1');
 
 interface Slot {
+  // Who is told when a user's offline state changes (offline-state.ts):
+  // one set however many copies of the core are loaded.
+  offlineStateListeners: Set<(userId: string) => void>;
   platform?: unknown;
   locks?: Map<string, Promise<unknown>>;
 }

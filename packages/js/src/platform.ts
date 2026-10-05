@@ -261,7 +261,14 @@ export function browserPlatform(): BrowserPlatformAdapter {
   return {
     storageTier,
     storage,
+    broadcast: browserBroadcast(),
     network: {
+      // navigator.onLine: false is reliable; true means an interface is up.
+      // A hint either way, like the events below. No window: cannot tell.
+      current: async () =>
+        typeof window !== 'undefined' && typeof navigator !== 'undefined' && typeof navigator.onLine === 'boolean'
+          ? navigator.onLine
+          : null,
       onChange: (cb) => {
         // navigator.onLine is a hint that the interface is up, not that
         // Koolbase is reachable. The sync engine treats a false positive as
@@ -302,5 +309,25 @@ export function browserPlatform(): BrowserPlatformAdapter {
     // IndexedDB-backed; see auth-storage.ts for what that does and does not
     // protect against.
     authStorage: () => new BrowserAuthStorage(),
+  };
+}
+
+/**
+ * Other tabs of this origin, told when offline state changes, so a sync badge
+ * in one tab moves when another tab's sync drains the queue. Absent outside a
+ * browser or where BroadcastChannel is not supported.
+ */
+function browserBroadcast(): import('@koolbase/core').PlatformBroadcast | undefined {
+  if (typeof window === 'undefined' || typeof BroadcastChannel === 'undefined') return undefined;
+  const channel = new BroadcastChannel('koolbase');
+  return {
+    post: (message) => channel.postMessage(message),
+    on: (callback) => {
+      const handler = (event: MessageEvent) => {
+        if (typeof event.data === 'string') callback(event.data);
+      };
+      channel.addEventListener('message', handler);
+      return () => channel.removeEventListener('message', handler);
+    },
   };
 }

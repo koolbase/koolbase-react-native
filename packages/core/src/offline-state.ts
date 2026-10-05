@@ -223,6 +223,7 @@ export async function mutateOfflineState(
     }
     await getPlatform().storage.setItem(stateKey(userId), serialised);
   });
+  announce(userId);
 }
 
 /** Adds a write to the queue, under the user's lock. */
@@ -336,4 +337,37 @@ export function rebaseHeldWrites(
     if (w.operation === 'update') current = { ...current, ...(w.data ?? {}) };
     else if (w.operation === 'delete') break;
   }
+}
+
+// ─── Change notification ─────────────────────────────────────────────────────
+
+const ANNOUNCE_PREFIX = 'koolbase:offline-state:';
+type StateListener = (userId: string) => void;
+
+function stateListeners(): Set<StateListener> {
+  return shared('offlineStateListeners', () => new Set<StateListener>()) as Set<StateListener>;
+}
+
+/**
+ * Tells whoever is watching that a user's offline state changed -- here, and
+ * in every other copy of the SDK sharing this storage (other tabs). A badge in
+ * one tab must move when another tab's sync drains the queue.
+ */
+function announce(userId: string): void {
+  for (const listener of [...stateListeners()]) {
+    try { listener(userId); } catch { /* one broken listener must not stop the rest */ }
+  }
+  try { getPlatform().broadcast?.post(ANNOUNCE_PREFIX + userId); } catch { /* best effort */ }
+}
+
+/** Called with the user id whenever that user's offline state changes. */
+export function onOfflineStateChange(listener: StateListener): () => void {
+  stateListeners().add(listener);
+  const off = getPlatform().broadcast?.on((message) => {
+    if (message.startsWith(ANNOUNCE_PREFIX)) listener(message.slice(ANNOUNCE_PREFIX.length));
+  });
+  return () => {
+    stateListeners().delete(listener);
+    off?.();
+  };
 }

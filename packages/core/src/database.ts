@@ -13,7 +13,9 @@ import {
   queueWrite,
   QueuedConflict,
   rebaseHeldWrites,
+  onOfflineStateChange,
 } from './offline-state.js';
+import { removeFromCachedQueries, updateInCachedQueries } from './cache-store.js';
 import {
   KoolbaseAggregateAccounting,
   KoolbaseAggregateRequest,
@@ -562,6 +564,29 @@ export class KoolbaseDatabase {
     return record;
   }
 
+  /**
+   * The device's saved copy of a record: what this device last read, with the
+   * changes queued on it applied. Never contacts the server. Null when there is
+   * none: never read here, or deleted on this device.
+   *
+   * For showing something at once while get() asks the server -- saved-first,
+   * never saved-only. Kept data and revision, not createdAt or createdBy, which
+   * the saved copy does not hold (empty strings here).
+   */
+  async getSaved(recordId: string): Promise<KoolbaseRecord | null> {
+    const userId = this.getUserId() ?? 'anonymous';
+    const base = await this.resolveBaseline(userId, recordId);
+    if (!base) return null;
+    return {
+      id: recordId,
+      collection: base.collection,
+      data: { ...base.baseline },
+      createdAt: '',
+      updatedAt: '',
+      revision: base.revision,
+    };
+  }
+
   // ─── Conflicts ──────────────────────────────────────────────────────────────
 
   /**
@@ -582,6 +607,73 @@ export class KoolbaseDatabase {
     const userId = this.requireUserId('the pending-write queue');
     const { pending } = await readOfflineState(userId);
     return pending.map(toPendingWrite);
+  }
+
+  /**
+   * The pending writes now, and again whenever they change -- here, in another
+   * tab, or because the signed-in user changed. For a sync badge that reflects
+   * reality. null while signed out: per-user state has no answer then, and a
+   * fake empty list is how a badge says "all synced" while a user's changes
+   * sit queued. Returns the unsubscribe.
+   */
+  watchPendingWrites(listener: (writes: PendingWrite[] | null) => void): () => void {
+    return this.watchState(async (userId) => {
+      if (!userId) return () => listener(null);
+      const { pending } = await readOfflineState(userId);
+      const writes = pending.map(toPendingWrite);
+      return () => listener(writes);
+    });
+  }
+
+  /** The unresolved conflicts now, and again whenever they change. null while signed out. */
+  watchConflicts(listener: (conflicts: KoolbaseConflict[] | null) => void): () => void {
+    return this.watchState(async (userId) => {
+      if (!userId) return () => listener(null);
+      const list = await this.conflicts();
+      return () => listener(list);
+    });
+  }
+
+  /**
+   * The signed-in user changed: every watcher reads again, for the new user
+   * (or null, signed out). Koolbase.initialize wires it to auth changes.
+   */
+  sessionChanged(): void {
+    for (const emit of [...this.stateWatchers]) emit();
+  }
+
+  private readonly stateWatchers = new Set<() => void>();
+  private offStateChange: (() => void) | null = null;
+
+  /**
+   * One watcher: reads at once, then on every change to the signed-in user's
+   * offline state. Reads can finish out of order; only the latest delivers.
+   */
+  private watchState(read: (userId: string | null) => Promise<() => void>): () => void {
+    let latest = 0;
+    let active = true;
+    const emit = () => {
+      const mine = ++latest;
+      read(this.getUserId()).then(
+        (deliver) => { if (active && mine === latest) deliver(); },
+        () => { /* an unreadable state is not a change worth reporting */ },
+      );
+    };
+    this.stateWatchers.add(emit);
+    if (!this.offStateChange) {
+      this.offStateChange = onOfflineStateChange((userId) => {
+        if (userId === this.getUserId()) for (const w of [...this.stateWatchers]) w();
+      });
+    }
+    emit();
+    return () => {
+      active = false;
+      this.stateWatchers.delete(emit);
+      if (this.stateWatchers.size === 0 && this.offStateChange) {
+        this.offStateChange();
+        this.offStateChange = null;
+      }
+    };
   }
 
   /**
@@ -885,7 +977,10 @@ export class KoolbaseDatabase {
       let projected: Record<string, unknown> | null = null;
       for (const w of queued) {
         if (w.operation === 'insert') projected = { ...(w.data ?? {}) };
-        else if (w.operation === 'update') projected = { ...(projected ?? {}), ...(w.data ?? {}) };
+        // An edit applies to the record as it was: the queued add's state, or
+        // -- first in a chain with no add -- the baseline the edit was made
+        // against. Starting from nothing dropped every field it did not touch.
+        else if (w.operation === 'update') projected = { ...(projected ?? w.baseline ?? {}), ...(w.data ?? {}) };
         else if (w.operation === 'delete') projected = null;
       }
       // A chain ending in a delete leaves nothing to build on: editing a record
@@ -966,6 +1061,8 @@ export class KoolbaseDatabase {
       });
       const merged = { ...base.baseline, ...data };
       await cacheRecord(userId, base.collection, recordId, merged, base.revision);
+      // And in the saved lists, so they show what the user just changed.
+      await updateInCachedQueries(userId, base.collection, recordId, data);
       // Optimistic: durable locally and queued to send, not yet accepted.
       return {
         id: recordId,
@@ -1032,8 +1129,9 @@ export class KoolbaseDatabase {
       });
       // The queued write holds its own copy of the baseline, so removing the
       // cached record costs nothing and keeps local reads consistent with what
-      // the user just did.
+      // the user just did -- saved lists included.
       await removeCachedRecord(userId, recordId);
+      await removeFromCachedQueries(userId, base.collection, recordId);
     }
   }
 

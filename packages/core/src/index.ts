@@ -28,6 +28,8 @@ export type { RecordState, RecordStatus } from './record-controller.js';
 export { KoolbaseFlags } from './flags.js';
 export { KoolbaseFunctions } from './functions.js';
 export { KoolbaseRealtime } from './realtime.js';
+export { KoolbaseConnectivity } from './connectivity.js';
+export type { ConnectivityState } from './connectivity.js';
 export { KoolbaseStorage } from './storage.js';
 export { KoolbaseAnalytics , disabledAnalytics } from './analytics.js';
 export { KoolbaseFiscal, KoolbaseFiscalError, decodeFiscalResponse, isFiscalized, isPending } from './fiscal.js';
@@ -44,6 +46,7 @@ export {
   getPlatform,
   memoryPlatform,
   type PlatformAdapter,
+  type PlatformBroadcast,
   type PlatformStorage,
   type PlatformNetwork,
   type PlatformLifecycle,

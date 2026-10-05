@@ -3,6 +3,17 @@
 Each version covers all three packages: @koolbase/core, @koolbase/react-native and
 @koolbase/js. Earlier history: https://docs.koolbase.com/changelog
 
+## 12.14.0
+
+Offline observability: what an app needs to show offline state honestly.
+
+- **`Koolbase.connectivity`** -- `'unknown' | 'online' | 'offline'`, with `getState()` and `subscribe()` (the shape `useSyncExternalStore` takes). Whether the device reports a connection: a hint, not a promise the server is reachable. `unknown` until the platform first answers, so an app neither flashes "offline" nor runs online-only logic on a guess. Browser: `navigator.onLine` and its events; React Native: NetInfo.
+- **`db.watchPendingWrites(listener)` and `db.watchConflicts(listener)`** -- the current list at once, and again on every change, including changes made by another tab (BroadcastChannel) and a sign-in or sign-out. `null` while signed out, never a fake empty list.
+- **Saved-first record views.** `db.getSaved(id)` returns the device's saved copy of a record (with changes queued on this device applied) without the network. `useRecord` / `KoolbaseRecordController` show it at once with `isSaved: true` while the server is asked: success replaces it (`isSaved: false`), failure keeps it (`isSaved` stays true), not found is `notFound`. Opening a record offline now shows the saved copy instead of an error.
+- **Fix: a second offline edit no longer drops fields.** A record with queued edits was projected from the edits alone, so a second offline edit to it lost every field neither edit touched -- in what the app was handed back and in the saved copy -- until the next sync. The chain now starts from the record as it was read.
+- **Saved lists follow offline changes.** An offline edit updates the record in saved lists; an offline delete removes it from them.
+- **Tested**: connectivity's unknown/answer/event order, watchers (at once, on change, across tabs, signed out), saved-first in each outcome, and saved lists after offline edits and deletes.
+
 ## 12.13.1
 
 Offline correctness fixes.

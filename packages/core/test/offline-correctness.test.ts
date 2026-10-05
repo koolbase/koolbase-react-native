@@ -1,6 +1,7 @@
 import { KoolbaseDatabase } from '../src/database';
 import { setPlatform } from '../src/platform';
 import { mutateOfflineState, readOfflineState } from '../src/offline-state';
+import { cacheRecord } from '../src/cache-store';
 import { testPlatform } from './platform';
 
 /**
@@ -115,6 +116,20 @@ describe('offline correctness', () => {
     await client.syncPendingWrites();
     expect(bodies).toEqual([{ data: { amount: 3 }, expected_revision: 5 }].map((b) => expect.objectContaining(b)));
     expect((await readOfflineState('u1')).pending).toHaveLength(0);
+  });
+
+  it('two offline edits keep the fields neither touched', async () => {
+    const client = db();
+    await cacheRecord('u1', 'songs', 'r9', { title: 'Accra Nights', plays: 1 }, 3);
+
+    global.fetch = jest.fn().mockRejectedValue(new TypeError('Network request failed'));
+    await client.update('r9', { plays: 2 });
+    const second = await client.update('r9', { plays: 3 });
+
+    expect(second.data).toEqual({ title: 'Accra Nights', plays: 3 });
+    const state = await readOfflineState('u1');
+    expect(state.pending[1].baseline).toEqual({ title: 'Accra Nights', plays: 2 });
+    expect((await client.getSaved('r9'))?.data).toEqual({ title: 'Accra Nights', plays: 3 });
   });
 
   it('abandon rebases like keep theirs', async () => {

@@ -30,6 +30,23 @@ export interface PlatformNetwork {
    * Koolbase is unreachable is handled the same as any failed request.
    */
   onChange(callback: (online: boolean) => void): () => void;
+
+  /**
+   * What the host believes right now: true online, false offline, null when
+   * it cannot tell. Optional: a host without it reports nothing until its
+   * first change, and connectivity stays 'unknown' until then.
+   */
+  current?(): Promise<boolean | null>;
+}
+
+/**
+ * A message to every other copy of the SDK sharing this storage -- other tabs
+ * of the same origin in a browser. Optional: one process (React Native) has no
+ * other copies to tell.
+ */
+export interface PlatformBroadcast {
+  post(message: string): void;
+  on(callback: (message: string) => void): () => void;
 }
 
 export interface PlatformLifecycle {
@@ -74,6 +91,7 @@ export interface PlatformAdapter {
   lifecycle: PlatformLifecycle;
   info: PlatformInfo;
   locks: PlatformLocks;
+  broadcast?: PlatformBroadcast;
   /**
    * The host's best persistent store for the auth session, or null if it has
    * none worth the name. Used only when the app injects nothing through

@@ -14,8 +14,10 @@
 //    or landing after dispose(), is dropped.
 //  - live (the option): realtime events for THIS record only. An update
 //    re-reads it silently, once per burst; a delete is notFound at once.
-// Not yet: an offline fallback from the record cache, which keeps data and
-// revision but not createdAt or createdBy.
+//  - saved-first, never saved-only: the device's saved copy (db.getSaved)
+//    shows at once with isSaved true while the server is asked. Success
+//    replaces it (isSaved false); failure keeps it (isSaved stays true); not
+//    found is notFound. No saved copy: the ordinary loading/error states.
 
 import type { KoolbaseDatabase } from './database.js';
 import { KoolbaseNotFoundError } from './database-errors.js';
@@ -31,6 +33,11 @@ export interface RecordState {
   readonly error: unknown;
   /** True while refresh() runs. */
   readonly refreshing: boolean;
+  /**
+   * True while the record shown is the device's saved copy and the server has
+   * not confirmed it on this load. Stays true if the server cannot be reached.
+   */
+  readonly isSaved: boolean;
 }
 
 export const initialRecordState: RecordState = Object.freeze<RecordState>({
@@ -38,9 +45,10 @@ export const initialRecordState: RecordState = Object.freeze<RecordState>({
   record: null,
   error: null,
   refreshing: false,
+  isSaved: false,
 });
 
-type RecordReader = Pick<KoolbaseDatabase, 'get'>;
+type RecordReader = Pick<KoolbaseDatabase, 'get'> & Partial<Pick<KoolbaseDatabase, 'getSaved'>>;
 
 export class KoolbaseRecordController {
   readonly collection: string;
@@ -83,7 +91,23 @@ export class KoolbaseRecordController {
     if (this.live && this.id) {
       this.unlive ??= liveSource()?.subscribe(this.collection, (event) => this.onLive(event)) ?? null;
     }
+    await this.showSaved();
     await this.fetch();
+  }
+
+  /** The device's saved copy, shown at once while the server is asked. */
+  private async showSaved(): Promise<void> {
+    if (!this.id || !this.db.getSaved) return;
+    const gen = this.generation;
+    let saved: KoolbaseRecord | null = null;
+    try {
+      saved = await this.db.getSaved(this.id);
+    } catch {
+      return;
+    }
+    if (!saved || this.isStale(gen) || this.state.status !== 'loading') return;
+    if (saved.collection !== undefined && saved.collection !== this.collection) return;
+    this.set({ status: 'loaded', record: saved, error: null, isSaved: true });
   }
 
   /** The record again, from the server. What is shown stays while it runs, and stays if it fails. */
@@ -117,7 +141,7 @@ export class KoolbaseRecordController {
     if (e.type === 'deleted') {
       if (this.liveTimer) { clearTimeout(this.liveTimer); this.liveTimer = null; }
       this.generation += 1;
-      this.set({ status: 'notFound', record: null, error: null, refreshing: false });
+      this.set({ status: 'notFound', record: null, error: null, refreshing: false, isSaved: false });
       return;
     }
     if (this.liveTimer) return;
@@ -132,21 +156,21 @@ export class KoolbaseRecordController {
   private async fetch(): Promise<number> {
     const gen = ++this.generation;
     if (!this.id) {
-      this.set({ status: 'notFound', record: null, error: null });
+      this.set({ status: 'notFound', record: null, error: null, isSaved: false });
       return gen;
     }
     try {
       const record = await this.db.get(this.id);
       if (this.isStale(gen)) return gen;
       if (record.collection !== undefined && record.collection !== this.collection) {
-        this.set({ status: 'notFound', record: null, error: null });
+        this.set({ status: 'notFound', record: null, error: null, isSaved: false });
       } else {
-        this.set({ status: 'loaded', record, error: null });
+        this.set({ status: 'loaded', record, error: null, isSaved: false });
       }
     } catch (error) {
       if (this.isStale(gen)) return gen;
       if (error instanceof KoolbaseNotFoundError) {
-        this.set({ status: 'notFound', record: null, error: null });
+        this.set({ status: 'notFound', record: null, error: null, isSaved: false });
       } else if (this.state.record === null) {
         this.set({ status: 'error', error });
       }

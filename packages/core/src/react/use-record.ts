@@ -20,7 +20,7 @@ export interface UseRecordResult extends RecordState {
 const noop = () => {};
 const done = () => Promise.resolve();
 
-export function createUseRecord(getDb: () => Pick<KoolbaseDatabase, 'get'>) {
+export function createUseRecord(getDb: () => Pick<KoolbaseDatabase, 'get'> & Partial<Pick<KoolbaseDatabase, 'getSaved'>>) {
   return function useRecord(collection: string, id: string | null | undefined, options: { live?: boolean } = {}): UseRecordResult {
     // live is part of the key: switching it starts a fresh controller.
     const live = options.live === true;
