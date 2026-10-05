@@ -11,6 +11,7 @@ import { getPlatform } from './platform.js';
 import {
   invalidateCache,
   removeCachedRecord,
+  removeFromCachedQueries,
 } from './cache-store.js';
 import { KoolbaseConfig } from './types.js';
 
@@ -141,13 +142,19 @@ export class SyncEngine {
       // the old key when done, so later calls find nothing and return.
       await migrateLegacyQueue(userId);
 
-      const { pending } = await readOfflineState(userId);
+      const { pending, conflicts } = await readOfflineState(userId);
       if (pending.length === 0) return;
 
       // Records whose chain stopped this pass. Writes queued after a conflicted
       // one were composed against the state it would have produced, so applying
       // them now would write against a state their baseline never described.
       const blocked = new Set<string>();
+      // And records whose chain stopped in an EARLIER pass: a conflict waits
+      // for a decision across restarts, and so must the writes behind it.
+      // Seeded only from this pass's finds, the next pass replayed them
+      // against a state their baselines never described -- each becoming its
+      // own conflict. Deciding the conflict rebases and releases them.
+      for (const c of conflicts) if (c.recordId) blocked.add(c.recordId);
 
       for (const queued of pending) {
         if (queued.recordId && blocked.has(queued.recordId)) continue;
@@ -240,10 +247,15 @@ export class SyncEngine {
             // — cached at enqueue for a record the server refused to create.
             // Left alone it is a phantom: it renders as saved, and an offline
             // edit against it queues a write to a record that does not exist.
-            // Evict it, and invalidate the collection so cached queries stop
-            // serving it. The conflict above keeps the user's data and the
-            // server's verdict; the cache stops testifying to a fiction.
-            // MUTATION: phantom eviction removed
+            // Evict it from the record cache and from every cached query that
+            // holds it -- precisely, not by dropping the collection's saved
+            // results, which a device still offline needs. The conflict above
+            // keeps the user's data and the server's verdict; the cache stops
+            // testifying to a fiction.
+            if (write.operation === 'insert' && write.recordId) {
+              await removeCachedRecord(userId, write.recordId);
+              await removeFromCachedQueries(userId, write.collection, write.recordId);
+            }
             if (write.recordId) blocked.add(write.recordId);
             continue;
           }

@@ -302,3 +302,38 @@ export async function migrateLegacyQueue(userId: string): Promise<void> {
 
   await getPlatform().storage.removeItem(legacyQueueKey(userId));
 }
+
+/**
+ * Points the writes still queued for a record at the state it is now in.
+ *
+ * When a conflict is decided, the writes held behind it carry baselines
+ * describing the state the conflicted write would have produced -- a state
+ * that no longer exists, and may never have. Released unchanged they would
+ * replay against a revision that has moved on, and each would conflict in
+ * turn: one disagreement multiplying into as many conflicts as the user had
+ * queued. The same rule as the Flutter SDK's rebaseAfterResolution.
+ *
+ * Refreshing the baseline is enough because every operation is an absolute
+ * assignment: a patch says what a field becomes, not what to do to it. If a
+ * relative operation is ever added (an increment, an append), the chain must
+ * be replayed through its projected states instead.
+ */
+export function rebaseHeldWrites(
+  state: OfflineState,
+  recordId: string,
+  resolved: Record<string, unknown>,
+  revision: number | undefined
+): void {
+  let current: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(resolved)) {
+    if (!k.startsWith('$')) current[k] = v;
+  }
+  for (const w of state.pending) {
+    if (w.recordId !== recordId) continue;
+    w.baseline = { ...current };
+    w.baseRevision = revision;
+    // Each write is composed against the one before it.
+    if (w.operation === 'update') current = { ...current, ...(w.data ?? {}) };
+    else if (w.operation === 'delete') break;
+  }
+}

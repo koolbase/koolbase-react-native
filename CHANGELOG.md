@@ -3,6 +3,15 @@
 Each version covers all three packages: @koolbase/core, @koolbase/react-native and
 @koolbase/js. Earlier history: https://docs.koolbase.com/changelog
 
+## 12.13.1
+
+Offline correctness fixes.
+
+- **A refused offline add no longer lingers in saved lists.** When the server refuses an add made offline (a unique value taken, a rule not met), the record is now removed from the device's saved record and from every saved list that held it; the conflict keeps the user's data. Before, it stayed in saved lists until a later refresh happened to replace them. (An earlier release described this fix but did not contain it.)
+- **Writes held behind a conflict stay held.** Later queued changes to a record with an undecided conflict now wait across sync passes and restarts, instead of being sent on the next pass against a state they were not made for, each becoming its own conflict.
+- **Deciding a conflict releases what was held behind it correctly.** Keep mine, merge, keep theirs and abandon now rebase the record's other queued changes onto the state it is now in, in the same step that removes the conflict -- as the Flutter SDK does.
+- **Tested** without relying on timing: the refused add with a server that never answers a list, held writes on a later pass, and each resolution's rebase.
+
 ## 12.13.0
 
 - **Realtime for signed-out visitors.** With nobody signed in, live lists and live record views on a collection anyone can read (read rule `public`) now update live: the SDK connects with the project's public key. Any other collection behaves as a normal list or view until a user signs in. Needs the Koolbase API from 2026-10-04 or later.

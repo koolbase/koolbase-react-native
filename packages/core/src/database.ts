@@ -12,6 +12,7 @@ import {
   mutateOfflineState,
   queueWrite,
   QueuedConflict,
+  rebaseHeldWrites,
 } from './offline-state.js';
 import {
   KoolbaseAggregateAccounting,
@@ -704,12 +705,15 @@ export class KoolbaseDatabase {
     resolveWithServer: async (id) => {
       const c = await this.requireConflict(id);
       // The server's version stands. Recorded as a decision by removing the
-      // conflict, rather than the change quietly disappearing.
-      await this.dropConflict(c.id);
+      // conflict, rather than the change quietly disappearing -- and what
+      // stands is what the writes held behind it now build on.
+      await this.settleConflict(c, c.server, c.serverRevision);
     },
     abandon: async (id) => {
       const c = await this.requireConflict(id);
-      await this.dropConflict(c.id);
+      // Neither version claimed to win, so the record stands as the server
+      // has it: what anything still queued must build on.
+      await this.settleConflict(c, c.server, c.serverRevision);
     },
   };
 
@@ -741,6 +745,30 @@ export class KoolbaseDatabase {
     return found;
   }
 
+  /**
+   * Removes a decided conflict and points the writes held behind it at the
+   * state the record is now in -- in one transaction, so the conflict can
+   * never be gone while its held writes still describe the old world.
+   *
+   * Without a known state (a refused add, a delete) there is nothing to
+   * rebase onto: the conflict is removed and the held writes stay as they are.
+   */
+  private async settleConflict(
+    c: QueuedConflict,
+    resolved: Record<string, unknown> | undefined,
+    revision: number | undefined,
+  ): Promise<void> {
+    if (!resolved || !c.recordId) {
+      await this.dropConflict(c.id);
+      return;
+    }
+    const userId = this.requireUserId('conflict resolution');
+    await mutateOfflineState(userId, (s) => {
+      s.conflicts = s.conflicts.filter((x) => x.id !== c.id);
+      rebaseHeldWrites(s, c.recordId, resolved, revision);
+    });
+  }
+
   private async dropConflict(id: string): Promise<void> {
     const userId = this.requireUserId('conflict resolution');
     await mutateOfflineState(userId, (s) => {
@@ -759,6 +787,8 @@ export class KoolbaseDatabase {
     payload: Record<string, unknown>,
   ): Promise<void> {
     const rev = c.serverRevision;
+    // What the server now holds, from its answer: the state held writes build on.
+    let landed: Record<string, unknown> | null = null;
     try {
       if (c.operation === 'insert') {
         // Resolving a rejected insert IS the insert, retried — with amended
@@ -769,7 +799,7 @@ export class KoolbaseDatabase {
         // original on retry rather than duplicating — the queue's own
         // lost-response discipline, extended to the one insert path that
         // lacked it.
-        await this.request<Record<string, unknown>>('POST', '/v1/sdk/db/insert', {
+        landed = await this.request<Record<string, unknown>>('POST', '/v1/sdk/db/insert', {
           collection: c.collection,
           data: payload,
           idempotency_key: c.id,
@@ -778,7 +808,7 @@ export class KoolbaseDatabase {
         const q = rev !== undefined ? `?expected_revision=${rev}` : '';
         await this.request<null>('DELETE', `/v1/sdk/db/records/${c.recordId}${q}`);
       } else {
-        await this.request<Record<string, unknown>>(
+        landed = await this.request<Record<string, unknown>>(
           'PATCH',
           `/v1/sdk/db/records/${c.recordId}`,
           { data: payload, ...(rev !== undefined ? { expected_revision: rev } : {}) },
@@ -812,7 +842,8 @@ export class KoolbaseDatabase {
       }
       throw e;
     }
-    await this.dropConflict(c.id);
+    const landedRevision = landed && typeof landed.$revision === 'number' ? landed.$revision : undefined;
+    await this.settleConflict(c, landed ?? undefined, landedRevision);
     await invalidateCache(this.getUserId() ?? 'anonymous', c.collection);
     void refreshCollectionQueries(c.collection);
   }

@@ -265,3 +265,36 @@ export async function optimisticallyInsert(
     // ignore
   }
 }
+
+/**
+ * The reverse of optimisticallyInsert: takes one record out of every cached
+ * result of a collection.
+ *
+ * Precise on purpose. Dropping the collection's cached results instead would
+ * leave a device that is still offline with no saved lists to show at all,
+ * to get rid of one record.
+ */
+export async function removeFromCachedQueries(
+  userId: string,
+  collection: string,
+  recordId: string
+): Promise<void> {
+  try {
+    const keys = await getPlatform().storage.getAllKeys();
+    const prefix = `koolbase:${CACHE_VERSION}:${userId}:${collection}:`;
+    for (const key of keys.filter(k => k.startsWith(prefix))) {
+      const raw = await getPlatform().storage.getItem(key);
+      if (!raw) continue;
+      const cached: QueryResult = JSON.parse(raw);
+      if (!Array.isArray(cached.records)) continue;
+      const kept = cached.records.filter(r => r.id !== recordId);
+      const removed = cached.records.length - kept.length;
+      if (removed === 0) continue;
+      cached.records = kept;
+      cached.total = Math.max(0, cached.total - removed);
+      await getPlatform().storage.setItem(key, JSON.stringify(cached));
+    }
+  } catch {
+    // ignore
+  }
+}
