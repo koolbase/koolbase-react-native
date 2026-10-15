@@ -198,6 +198,14 @@ export enum RestoreResult {
 export type AuthStateListener = (user: KoolbaseUser | null) => void;
 
 /**
+ * Why the last session ended (#104): the person signed out, or the session
+ * ended on its own -- revoked, expired past renewal, signed out elsewhere.
+ * An app tells them apart to say "You were signed out" only when they did
+ * not ask to be.
+ */
+export type SignOutReason = 'signed_out' | 'session_ended';
+
+/**
  * Drop-in replacement for the global `fetch` function. Inject via
  * KoolbaseConfig.fetch for testing (mock fetch), proxying, or
  * monitoring. Matches the standard fetch signature.

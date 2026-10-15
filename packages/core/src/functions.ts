@@ -1,4 +1,4 @@
-import { koolbaseFetch } from './network.js';
+import { sessionFetch } from './network.js';
 import { functionInvokeError } from './function-errors.js';
 import { KoolbaseUnauthenticatedError } from './errors.js';
 import {
@@ -36,7 +36,7 @@ export class KoolbaseFunctions {
   async deploy(options: DeployOptions): Promise<DeployResult> {
     const runtime = options.runtime ?? FunctionRuntime.Deno;
 
-    const res = await koolbaseFetch(
+    const res = await sessionFetch(
       `${this.config.baseUrl}/v1/sdk/functions/deploy`,
       {
         method: 'POST',
@@ -93,7 +93,7 @@ export class KoolbaseFunctions {
       headers['Authorization'] = `Bearer ${userToken}`;
     }
 
-    const res = await koolbaseFetch(
+    const res = await sessionFetch(
       `${this.config.baseUrl}/v1/sdk/functions/${name}`,
       {
         method: 'POST',
