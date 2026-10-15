@@ -1,4 +1,4 @@
-import { koolbaseFetch } from './network.js';
+import { sessionFetch } from './network.js';
 import { refreshCollectionQueries } from './query-refresh.js';
 import { KoolbaseRevisionMismatchError } from './database-errors.js';
 import {
@@ -129,7 +129,7 @@ export class KoolbaseDatabase {
     path: string,
     body?: unknown
   ): Promise<T> {
-    const res = await koolbaseFetch(`${this.config.baseUrl}${path}`, {
+    const res = await sessionFetch(`${this.config.baseUrl}${path}`, {
       method,
       headers: await this.buildHeaders(),
       body: body ? JSON.stringify(body) : undefined,
@@ -175,7 +175,7 @@ export class KoolbaseDatabase {
     path: string,
     body?: unknown
   ): Promise<{ status: number; data: T }> {
-    const res = await koolbaseFetch(`${this.config.baseUrl}${path}`, {
+    const res = await sessionFetch(`${this.config.baseUrl}${path}`, {
       method,
       headers: await this.buildHeaders(),
       body: body ? JSON.stringify(body) : undefined,

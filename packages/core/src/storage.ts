@@ -1,5 +1,5 @@
 import { KoolbaseStorageProjectIdentityError } from './storage-errors.js';
-import { koolbaseFetch } from './network.js';
+import { sessionFetch } from './network.js';
 import { KoolbaseError, KoolbaseUnauthenticatedError } from './errors.js';
 import {
   KoolbaseConfig,
@@ -135,7 +135,7 @@ export class KoolbaseStorage {
       : (options.file as { type: string }).type;
 
     // ─── Step 1: Get presigned upload URL ───
-    const urlRes = await koolbaseFetch(
+    const urlRes = await sessionFetch(
       `${this.config.baseUrl}/v1/sdk/storage/upload-url`,
       {
         method: 'POST',
@@ -165,10 +165,10 @@ export class KoolbaseStorage {
     // the two hosts differ here and nowhere else in this method.
     const fileBlob = isBlob
       ? (options.file as Blob)
-      : await (await koolbaseFetch((options.file as { uri: string }).uri)).blob();
+      : await (await sessionFetch((options.file as { uri: string }).uri)).blob();
     const fileSize = fileBlob.size;
 
-    const uploadRes = await koolbaseFetch(upload_url, {
+    const uploadRes = await sessionFetch(upload_url, {
       method: 'PUT',
       headers: { 'Content-Type': contentType },
       body: fileBlob,
@@ -199,7 +199,7 @@ export class KoolbaseStorage {
       confirmBody.metadata = options.metadata;
     }
 
-    const confirmRes = await koolbaseFetch(
+    const confirmRes = await sessionFetch(
       `${this.config.baseUrl}/v1/sdk/storage/confirm`,
       {
         method: 'POST',
@@ -263,7 +263,7 @@ export class KoolbaseStorage {
     path: string,
     metadata: Record<string, string | null>
   ): Promise<KoolbaseObject> {
-    const res = await koolbaseFetch(
+    const res = await sessionFetch(
       `${this.config.baseUrl}/v1/sdk/storage/objects/metadata`,
       {
         method: 'PATCH',
@@ -291,7 +291,7 @@ export class KoolbaseStorage {
     if (versionId) {
       url += `&version_id=${encodeURIComponent(versionId)}`;
     }
-    const res = await koolbaseFetch(url, { headers: await this.buildHeaders() });
+    const res = await sessionFetch(url, { headers: await this.buildHeaders() });
     if (!res.ok) {
       throw await this.error(res, 'Failed to get download URL');
     }
@@ -431,7 +431,7 @@ export class KoolbaseStorage {
     const url = forcePurge
       ? `${this.config.baseUrl}/v1/sdk/storage/object?force_purge=true`
       : `${this.config.baseUrl}/v1/sdk/storage/object`;
-    const res = await koolbaseFetch(url, {
+    const res = await sessionFetch(url, {
       method: 'DELETE',
       headers: {
         ...(await this.buildHeaders()),
@@ -459,7 +459,7 @@ export class KoolbaseStorage {
     const url =
       `${this.config.baseUrl}/v1/sdk/storage/object-versions` +
       `?bucket=${encodeURIComponent(bucket)}&path=${encodeURIComponent(path)}`;
-    const res = await koolbaseFetch(url, { headers: await this.buildHeaders() });
+    const res = await sessionFetch(url, { headers: await this.buildHeaders() });
     if (!res.ok) {
       throw await this.error(res, 'Failed to list versions');
     }
@@ -481,7 +481,7 @@ export class KoolbaseStorage {
     const url =
       `${this.config.baseUrl}/v1/sdk/storage/object-versions/${encodeURIComponent(versionId)}` +
       `?bucket=${encodeURIComponent(bucket)}&path=${encodeURIComponent(path)}`;
-    const res = await koolbaseFetch(url, { headers: await this.buildHeaders() });
+    const res = await sessionFetch(url, { headers: await this.buildHeaders() });
     if (!res.ok) {
       throw await this.error(res, 'Failed to fetch version');
     }
@@ -506,7 +506,7 @@ export class KoolbaseStorage {
     const url =
       `${this.config.baseUrl}/v1/sdk/storage/object-versions/${encodeURIComponent(versionId)}/restore` +
       `?bucket=${encodeURIComponent(bucket)}&path=${encodeURIComponent(path)}`;
-    const res = await koolbaseFetch(url, {
+    const res = await sessionFetch(url, {
       method: 'POST',
       headers: await this.buildHeaders(),
     });
@@ -526,7 +526,7 @@ export class KoolbaseStorage {
     const url =
       `${this.config.baseUrl}/v1/sdk/storage/object-versions/${encodeURIComponent(versionId)}` +
       `?bucket=${encodeURIComponent(bucket)}&path=${encodeURIComponent(path)}`;
-    const res = await koolbaseFetch(url, {
+    const res = await sessionFetch(url, {
       method: 'DELETE',
       headers: await this.buildHeaders(),
     });

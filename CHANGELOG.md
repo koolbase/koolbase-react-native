@@ -3,6 +3,17 @@
 Each version covers all three packages: @koolbase/core, @koolbase/react-native and
 @koolbase/js. Earlier history: https://docs.koolbase.com/changelog
 
+## 12.15.0
+
+Sessions that last, and end cleanly (#96, #104). Same contract as koolbase_flutter 12.21.0.
+
+- **A restart asks the server.** `auth.restoreSession()` checks a saved session whose token has not expired yet, instead of trusting it. A session ended on the server (signed out elsewhere, revoked) restores as `RestoreResult.Expired` and the saved copy is removed, so the app opens signed out. No network restores as `Offline` and keeps the session.
+- **A refused request renews the session and goes again.** Database, storage, functions, sync and fiscal requests that the server refuses as unauthenticated renew the session once and are sent again with the new token; the caller never sees it.
+- **Only a refused renewal ends a session.** No network, or a server error, keeps it: the request fails and the session is renewed when the network returns.
+- **`auth.lastSignOutReason`**: `'signed_out'` when the person signed out (or deleted the account), `'session_ended'` when the session ended on its own, `null` while signed in.
+- **Two tabs renewing at once** share the winner's session from the storage they share instead of both being signed out. Needs the Koolbase API from October 2026.
+- **Tested** on both adapters: restart after signing out, a revoked session, a good session, offline, an expired token renewed, a refused request renewed and sent again, a refused renewal signing out, no network keeping the session, and two tabs.
+
 ## 12.14.0
 
 Offline observability: what an app needs to show offline state honestly.

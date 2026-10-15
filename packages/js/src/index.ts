@@ -25,8 +25,7 @@ import {
   getOrCreateDeviceId,
   setPlatform,
   type KoolbaseConfig,
-  type VersionCheckResult,
-} from '@koolbase/core';
+  type VersionCheckResult, setSessionRenewal } from '@koolbase/core';
 import { browserPlatform } from './platform.js';
 
 let _auth: KoolbaseAuth | null = null;
@@ -67,16 +66,19 @@ export const Koolbase = {
     setPlatform(config.platform ?? browserPlatform());
 
     _auth = new KoolbaseAuth(config);
+    // A data request refused with the signed-in person's token renews the
+    // session once and goes again (#96); only a refused renewal ends it.
+    setSessionRenewal((refused) => (_auth ? _auth.renewRejected(refused) : Promise.resolve(null)));
     _db = new KoolbaseDatabase(
       config,
       () => _auth?.currentUser?.id ?? null,
       () => _auth?.validAccessToken() ?? Promise.resolve(null),
-      async () => { await _auth?.clearStoredSession(); },
+      async () => { await _auth?.sessionRejected(); },
     );
     _storage = new KoolbaseStorage(
       config,
       () => _auth?.validAccessToken() ?? Promise.resolve(null),
-      async () => { await _auth?.clearStoredSession(); },
+      async () => { await _auth?.sessionRejected(); },
       // Project identity for publicUrlFor, from the bootstrap payload; a
       // missing one nudges a refresh (as Flutter's storage client).
       () => _flags?.projectId() ?? '',
@@ -85,7 +87,7 @@ export const Koolbase = {
     _fiscal = new KoolbaseFiscal(
       config,
       () => _auth?.validAccessToken() ?? Promise.resolve(null),
-      async () => { await _auth?.clearStoredSession(); },
+      async () => { await _auth?.sessionRejected(); },
     );
     _realtime = new KoolbaseRealtime(
       config,
@@ -105,7 +107,7 @@ export const Koolbase = {
     _functions = new KoolbaseFunctions(
       config,
       () => _auth?.validAccessToken() ?? Promise.resolve(null),
-      async () => { await _auth?.clearStoredSession(); },
+      async () => { await _auth?.sessionRejected(); },
     );
 
     const deviceId = await getOrCreateDeviceId();

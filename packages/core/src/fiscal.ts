@@ -1,4 +1,4 @@
-import { koolbaseFetch } from './network.js';
+import { sessionFetch } from './network.js';
 import { KoolbaseConfig } from './types.js';
 import { KoolbaseError, KoolbaseUnauthenticatedError } from './errors.js';
 
@@ -206,7 +206,7 @@ export class KoolbaseFiscal {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), params.timeoutMs ?? 30_000);
     try {
-      const res = await koolbaseFetch(`${this.config.baseUrl}/v1/sdk/fiscal/submit`, {
+      const res = await sessionFetch(`${this.config.baseUrl}/v1/sdk/fiscal/submit`, {
         method: 'POST',
         headers: await this.buildHeaders(),
         signal: controller.signal,
@@ -249,7 +249,7 @@ export class KoolbaseFiscal {
         device_id: params.deviceId,
         client_ref: params.clientRef,
       });
-      const res = await koolbaseFetch(
+      const res = await sessionFetch(
         `${this.config.baseUrl}/v1/sdk/fiscal/status?${q.toString()}`,
         { method: 'GET', headers: await this.buildHeaders(), signal: controller.signal }
       );

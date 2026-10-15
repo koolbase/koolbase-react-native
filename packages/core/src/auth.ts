@@ -71,7 +71,7 @@ import {
   MfaEnrollmentNotFoundError,
   MfaNotEnabledError,
 } from './auth-errors.js';
-import type { SignInWithGoogleParams } from './types.js';
+import type { SignInWithGoogleParams, SignOutReason } from './types.js';
 import { getPlatform } from './platform.js';
 import { DeviceMetadata } from './device-metadata.js';
 
@@ -85,6 +85,10 @@ export class KoolbaseAuth {
 
   private ongoingRefresh: Promise<KoolbaseSession> | null = null;
   private listeners: Set<AuthStateListener> = new Set();
+  /** Why the last session ended (#104); null while signed in or never signed in. */
+  private signOutReason: SignOutReason | null = null;
+  /** The last renewal failed for want of a connection, not because the server refused it (#96). */
+  private renewalUnavailable = false;
 
   constructor(config: KoolbaseConfig) {
     this.config = config;
@@ -247,6 +251,7 @@ export class KoolbaseAuth {
 
   private async setSessionInternal(session: KoolbaseSession): Promise<void> {
     this.session = session;
+    this.signOutReason = null;
     if (this.storage) {
       try {
         await this.storage.saveSession(session);
@@ -276,10 +281,51 @@ export class KoolbaseAuth {
    * need to.
    */
   async clearStoredSession(): Promise<void> {
-    await this.clearSessionInternal();
+    await this.clearSessionInternal('session_ended');
   }
 
-  private async clearSessionInternal(): Promise<void> {
+  /**
+   * Why the last session ended (#104): `'signed_out'` when the person signed
+   * out (or deleted their account), `'session_ended'` when it ended on its own
+   * -- revoked, past renewal, signed out on another device. null while signed
+   * in. Read it in an onAuthStateChange listener to say "You were signed out"
+   * only when they did not ask to be.
+   */
+  get lastSignOutReason(): SignOutReason | null {
+    return this.signOutReason;
+  }
+
+  /**
+   * A data request carrying `refused` came back unauthenticated. Renews the
+   * session and returns the token to send again with, or null when there is
+   * none -- nobody is signed in, or the server refused the renewal too, which
+   * ends the session (#96).
+   */
+  async renewRejected(refused: string): Promise<string | null> {
+    if (!this.session) return null;
+    // Another request renewed it while this one was out.
+    if (this.session.accessToken !== refused) return this.session.accessToken;
+    try {
+      return (await this.refresh()).accessToken;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * A data request was refused as unauthenticated and renewing could not
+   * help: the session is over, so it ends here and every listener hears it.
+   * Unless the renewal failed only for want of a connection -- then the
+   * session may well be good, and signing someone out for a dropped network
+   * would be wrong (#96).
+   */
+  async sessionRejected(): Promise<void> {
+    if (!this.session || this.renewalUnavailable) return;
+    await this.clearSessionInternal('session_ended');
+  }
+
+  private async clearSessionInternal(reason: SignOutReason = 'session_ended'): Promise<void> {
+    if (this.session) this.signOutReason = reason;
     this.session = null;
     if (this.storage) {
       try {
@@ -309,7 +355,25 @@ export class KoolbaseAuth {
       : 0;
     const oneMinuteMs = 60 * 1000;
     if (expiresAt > Date.now() + oneMinuteMs) {
-      return RestoreResult.Restored;
+      // Valid by the clock is not valid: the session may have been signed out
+      // on another device, revoked, or the account disabled since. Ask the
+      // server before saying it is restored (#104). No answer -- offline, a
+      // timeout, a server error -- keeps the optimistic session: Offline.
+      try {
+        const res = await this.authRequest('/v1/sdk/auth/me', { method: 'GET', includeAuth: true });
+        if (res.ok) {
+          try {
+            await this.updateUserAndPersist(this.mapUser(await res.json()));
+          } catch {
+            // The session is good; a user that will not parse keeps the stored one.
+          }
+          return RestoreResult.Restored;
+        }
+        if (res.status !== 401) return RestoreResult.Offline;
+        // Refused: the access token is done. The refresh token decides.
+      } catch {
+        return RestoreResult.Offline;
+      }
     }
 
     try {
@@ -325,8 +389,8 @@ export class KoolbaseAuth {
       // key or the request rather than the user's session — and deleting the
       // refresh token on that reading signs someone out with no way back.
       // Nothing reaches here with it today; it stays out so nothing does.
-      if (e instanceof SessionExpiredError) {
-        await this.clearSessionInternal();
+      if (isRejection(e)) {
+        await this.clearSessionInternal('session_ended');
         return RestoreResult.Expired;
       }
       return RestoreResult.Offline;
@@ -620,17 +684,72 @@ private async parseAppleSessionResponse(res: Response): Promise<KoolbaseSession>
   }
 
   private async _doRefresh(refreshToken?: string): Promise<KoolbaseSession> {
-    const token = refreshToken ?? this.session?.refreshToken;
+    // The newest refresh token is the stored one: another tab of the same app
+    // may have renewed the session, and its in-memory copy here is spent.
+    const stored = refreshToken ? null : await this.readStored();
+    const token = refreshToken ?? stored?.refreshToken ?? this.session?.refreshToken;
     if (!token) {
       throw new SessionExpiredError();
     }
-    const res = await this.authRequest('/v1/sdk/auth/refresh', {
-      method: 'POST',
-      body: { refresh_token: token },
-    });
-    const session = await this.parseSessionResponse(res, true);
-    await this.setSessionInternal(session);
-    return session;
+    try {
+      const res = await this.authRequest('/v1/sdk/auth/refresh', {
+        method: 'POST',
+        body: { refresh_token: token },
+      });
+      const session = await this.parseSessionResponse(res, true);
+      this.renewalUnavailable = false;
+      await this.setSessionInternal(session);
+      return session;
+    } catch (e) {
+      if (!isRejection(e)) {
+        // No answer, or a server error: the session may be fine. Keep it.
+        this.renewalUnavailable = true;
+        throw e;
+      }
+      this.renewalUnavailable = false;
+      // Two tabs renewing at the same moment send the same token; the
+      // server renews one and refuses the other. The winner's session is in
+      // storage: take it rather than signing out (#96).
+      const adopted = await this.adoptNewer(token);
+      if (adopted) return adopted;
+      await this.clearSessionInternal('session_ended');
+      throw e;
+    }
+  }
+
+  private async readStored(): Promise<KoolbaseSession | null> {
+    if (!this.storage) return null;
+    try {
+      return await this.storage.readSession();
+    } catch {
+      return null;
+    }
+  }
+
+  /** A newer session another tab stored after renewing `spent`, made current; null if none. */
+  private async adoptNewer(spent: string): Promise<KoolbaseSession | null> {
+    for (const wait of [0, 400]) {
+      if (wait) await new Promise((r) => setTimeout(r, wait));
+      const stored = await this.readStored();
+      if (!stored || stored.refreshToken === spent) continue;
+      const expiresAt = stored.expiresAt ? new Date(stored.expiresAt).getTime() : 0;
+      if (expiresAt > Date.now() + 60 * 1000) {
+        await this.setSessionInternal(stored);
+        return stored;
+      }
+      try {
+        const res = await this.authRequest('/v1/sdk/auth/refresh', {
+          method: 'POST',
+          body: { refresh_token: stored.refreshToken },
+        });
+        const session = await this.parseSessionResponse(res, true);
+        await this.setSessionInternal(session);
+        return session;
+      } catch {
+        return null;
+      }
+    }
+    return null;
   }
 
   async logout(): Promise<boolean> {
@@ -649,7 +768,7 @@ private async parseAppleSessionResponse(res: Response): Promise<KoolbaseSession>
     } catch {
       serverSucceeded = false;
     } finally {
-      await this.clearSessionInternal();
+      await this.clearSessionInternal('signed_out');
     }
     return serverSucceeded;
   }
@@ -829,7 +948,7 @@ private async parseAppleSessionResponse(res: Response): Promise<KoolbaseSession>
       includeAuth: true,
     });
     await this.checkResponse(res);
-    await this.clearSessionInternal();
+    await this.clearSessionInternal('signed_out');
   }
 
   /**
@@ -968,8 +1087,13 @@ private async parseAppleSessionResponse(res: Response): Promise<KoolbaseSession>
     if (!this.session) return null;
     try {
       return await this._ensureValidToken();
-    } catch {
-      return null;
+    } catch (e) {
+      // Refused: the session has ended (and been cleared); go api-key-only.
+      if (isRejection(e)) return null;
+      // No answer: the session may be fine, so the request must not go out
+      // as a signed-out visitor (whose refusal would end it). It fails as
+      // the network failure it is, and the caller retries (#96).
+      throw e;
     }
   }
 
@@ -1254,8 +1378,9 @@ private async parseAppleSessionResponse(res: Response): Promise<KoolbaseSession>
       const session = await this.refresh();
       return session.accessToken;
     } catch (e) {
-      if (e instanceof KoolbaseAuthError) throw e;
-      throw new SessionExpiredError();
+      // A refusal stays a refusal; a network failure stays one too, rather
+      // than being reported as an ended session (#96).
+      throw e;
     }
   }
 
@@ -1523,4 +1648,16 @@ private async parseAppleSessionResponse(res: Response): Promise<KoolbaseSession>
 
     throw new KoolbaseAuthError(msg || 'An unexpected error occurred', code || undefined);
   }
+}
+
+/**
+ * Whether an error is the server refusing the session -- it ended -- rather
+ * than no answer at all (#96). Only a refusal signs anyone out.
+ */
+function isRejection(e: unknown): boolean {
+  if (e instanceof SessionExpiredError || e instanceof TokenRevokedError || e instanceof UserDisabledError) return true;
+  if (e instanceof KoolbaseAuthError) {
+    return ['invalid_refresh_token', 'token_revoked', 'account_disabled', 'mfa_session_insufficient', 'unauthenticated'].includes(e.code ?? '');
+  }
+  return false;
 }
