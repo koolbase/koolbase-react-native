@@ -13,6 +13,11 @@ describe('storage error mapping', () => {
     ['upload_expired', errors.KoolbaseUploadExpiredError],
     ['cap_below_usage', errors.KoolbaseCapBelowUsageError],
     ['upload_url_failed', errors.KoolbaseUploadURLFailedError],
+    ['upload_not_found', errors.KoolbaseUploadNotFoundError],
+    ['bucket_busy', errors.KoolbaseStorageBusyError],
+    ['invalid_cursor', errors.KoolbaseStorageInvalidCursorError],
+    ['sign_in_required', errors.KoolbaseStorageSignInRequiredError],
+    ['not_allowed', errors.KoolbaseStoragePermissionError],
     ['plan_limit_reached', KoolbasePlanLimitError],
   ])('%s maps to its own class', (code, Expected) => {
     expect(koolbaseStorageError(400, { code, error: 'server message' })).toBeInstanceOf(Expected);

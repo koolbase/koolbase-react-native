@@ -48,6 +48,9 @@ const API_CODES = new Set([
   'upload_url_failed', 'validation_error', 'vector_collection_mismatch',
   'vector_dimension_mismatch', 'vector_field_exists', 'vector_field_not_found',
   'vector_not_found', 'weak_password',
+  // Storage, S0/S1.
+  'upload_not_found', 'bucket_busy', 'invalid_cursor', 'sign_in_required',
+  'not_allowed',
 ]);
 
 // Codes with no server counterpart, for one of two reasons.
@@ -57,6 +60,7 @@ const CLIENT_ONLY = new Set([
   // Raised by the SDK itself; no server was involved, or the server's
   // response was the problem.
   'network_error',              // the request never reached a server
+  'upload_cancelled',           // the app cancelled its own upload
   'malformed_session_response', // a response that claimed a session and had none
   'offline_baseline_unavailable',
 

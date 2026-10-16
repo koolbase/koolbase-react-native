@@ -413,7 +413,18 @@ export interface UploadOptions {
    * for post-upload merge changes.
    */
   metadata?: Record<string, string>;
-  onProgress?: (percent: number) => void;
+  /**
+   * Called as the upload goes: `percent` is 0 to 100 of the bytes sent;
+   * `progress` says where the upload is (uploading, verifying, completed,
+   * ...). For a cancellable upload use `KoolbaseStorage.startUpload`.
+   */
+  onProgress?: (percent: number, progress: import('./storage-transfer.js').KoolbaseUploadProgress) => void;
+  /**
+   * Aborting this signal cancels the upload, if the server has not begun
+   * checking it yet; the upload then rejects with
+   * `KoolbaseUploadCancelledError`.
+   */
+  signal?: AbortSignal;
 }
 
 /**

@@ -3,6 +3,16 @@
 Each version covers all three packages: @koolbase/core, @koolbase/react-native and
 @koolbase/js. Earlier history: https://docs.koolbase.com/changelog
 
+## 12.16.0
+
+Uploads you can follow and cancel, and a bucket's files (storage S1). Same contract as koolbase_flutter 12.26.0.
+
+- **`storage.startUpload(options)`** returns a `KoolbaseUploadTask`: `onProgress(listener)` (`pending`, `uploading` with `bytesSent` of `bytesTotal`, `verifying`, then `completed`, `failed` or `cancelled`), `cancel()` until the server begins checking the bytes, and `result`. In the browser and React Native the bytes go through XMLHttpRequest, which reports them as they are sent.
+- **`upload` calls `onProgress(percent, progress)`** (it was declared and never called) and takes an `AbortSignal` as `signal`. The confirm now names its upload (`upload_id`).
+- **`storage.listFiles({ bucket, prefix, limit, cursor, sort, descending })`**: a page of the files you may view -- the bucket's view rule is checked on every file; pass `nextCursor` back for the next page. **`storage.getFileInfo(bucket, path)`**: one file's details.
+- **Typed errors**: `KoolbaseUploadCancelledError`, `KoolbaseUploadNotFoundError`, `KoolbaseStorageBusyError`, `KoolbaseStorageInvalidCursorError`, `KoolbaseStorageSignInRequiredError` (nobody signed in; the session is left alone); `not_allowed` is a `KoolbaseStoragePermissionError`. Needs the Koolbase API from October 2026.
+- **Tested** on both adapters: progress through every state, a cancel mid-transfer (the transfer aborted, nothing confirmed), a cancel before the bytes, an AbortSignal, a dropped connection, fetch where there is no XMLHttpRequest, a React Native file URI, the listing, and each new error.
+
 ## 12.15.0
 
 Sessions that last, and end cleanly (#96, #104). Same contract as koolbase_flutter 12.21.0.

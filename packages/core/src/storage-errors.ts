@@ -263,6 +263,70 @@ export class KoolbaseStorageMetadataInvalidError extends KoolbaseStorageError {
 }
 
 /**
+ * An upload that was cancelled -- by `KoolbaseUploadTask.cancel()` or the
+ * upload's `signal` -- before the server began checking it. Nothing was
+ * stored. Code: `upload_cancelled`.
+ */
+export class KoolbaseUploadCancelledError extends KoolbaseStorageError {
+  constructor(message?: string) {
+    super(message ?? 'The upload was cancelled', 'upload_cancelled');
+    this.name = 'KoolbaseUploadCancelledError';
+    Object.setPrototypeOf(this, KoolbaseUploadCancelledError.prototype);
+  }
+}
+
+/**
+ * The confirm named an upload the server does not have: it expired, was
+ * confirmed already, or belongs to someone else. Upload the file again.
+ * Code: `upload_not_found`.
+ */
+export class KoolbaseUploadNotFoundError extends KoolbaseStorageError {
+  constructor(message?: string) {
+    super(message ?? 'This upload was not found -- please upload the file again', 'upload_not_found');
+    this.name = 'KoolbaseUploadNotFoundError';
+    Object.setPrototypeOf(this, KoolbaseUploadNotFoundError.prototype);
+  }
+}
+
+/**
+ * The bucket is busy with other changes (a large move, many uploads at
+ * once). Nothing was changed; retry shortly. Code: `bucket_busy`.
+ */
+export class KoolbaseStorageBusyError extends KoolbaseStorageError {
+  constructor(message?: string) {
+    super(message ?? 'The bucket is busy -- try again shortly', 'bucket_busy');
+    this.name = 'KoolbaseStorageBusyError';
+    Object.setPrototypeOf(this, KoolbaseStorageBusyError.prototype);
+  }
+}
+
+/**
+ * A listing's cursor was not one this listing issued -- made up, or from a
+ * listing with another sort or order. Start again from the first page.
+ * Code: `invalid_cursor`.
+ */
+export class KoolbaseStorageInvalidCursorError extends KoolbaseStorageError {
+  constructor(message?: string) {
+    super(message ?? 'The cursor is not valid for this listing', 'invalid_cursor');
+    this.name = 'KoolbaseStorageInvalidCursorError';
+    Object.setPrototypeOf(this, KoolbaseStorageInvalidCursorError.prototype);
+  }
+}
+
+/**
+ * The bucket's rules allow this only to someone signed in, and nobody is.
+ * Not a session that ended: the SDK's session is left alone. Code:
+ * `sign_in_required`.
+ */
+export class KoolbaseStorageSignInRequiredError extends KoolbaseStorageError {
+  constructor(message?: string) {
+    super(message ?? 'Sign in to do this', 'sign_in_required');
+    this.name = 'KoolbaseStorageSignInRequiredError';
+    Object.setPrototypeOf(this, KoolbaseStorageSignInRequiredError.prototype);
+  }
+}
+
+/**
  * Maps a non-2xx storage-layer response to a typed
  * {@link KoolbaseStorageError}, preferring the server's stable `code` and
  * falling back to the HTTP status for older or uncoded responses. Always
@@ -304,6 +368,16 @@ export function koolbaseStorageError(
       return new KoolbaseStorageMetadataInvalidError(message, body?.detail);
     case 'upload_url_failed':
       return new KoolbaseUploadURLFailedError(message);
+    case 'upload_not_found':
+      return new KoolbaseUploadNotFoundError(message);
+    case 'bucket_busy':
+      return new KoolbaseStorageBusyError(message);
+    case 'invalid_cursor':
+      return new KoolbaseStorageInvalidCursorError(message);
+    case 'sign_in_required':
+      return new KoolbaseStorageSignInRequiredError(message);
+    case 'not_allowed':
+      return new KoolbaseStoragePermissionError(message);
   }
 
   // ─── status fallback (pre-code servers or uncoded paths) ───

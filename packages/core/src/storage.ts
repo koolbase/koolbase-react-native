@@ -13,6 +13,15 @@ import {
   KoolbaseStorageError,
   koolbaseStorageErrorFromResponse,
 } from './storage-errors.js';
+import { KoolbaseUploadTask, putWithProgress, runUploadTask } from './storage-transfer.js';
+import {
+  KoolbaseFileInfo,
+  KoolbaseFilePage,
+  ListFilesOptions,
+  fileInfoFromJson,
+  filePageFromJson,
+  listFilesQuery,
+} from './storage-files.js';
 
 
 // --- Cloudflare image-transform URL helpers -------------------------------
@@ -124,6 +133,45 @@ export class KoolbaseStorage {
    * overwriting silently, pass `overwrite: true` explicitly.
    */
   async upload(options: UploadOptions): Promise<UploadResult> {
+    const task = this.startUpload(options);
+    const signal = options.signal;
+    const onAbort = () => task.cancel();
+    if (signal) {
+      if (signal.aborted) task.cancel();
+      else signal.addEventListener('abort', onAbort);
+    }
+    const stop = options.onProgress
+      ? task.onProgress((p) => options.onProgress?.(Math.round(p.fraction * 100), p))
+      : null;
+    try {
+      return await task.result;
+    } finally {
+      stop?.();
+      signal?.removeEventListener('abort', onAbort);
+    }
+  }
+
+  /**
+   * Starts an upload you can follow and cancel: the same upload as
+   * {@link upload}, returned at once as a {@link KoolbaseUploadTask}.
+   *
+   * The task goes pending -> uploading (bytes sent of total) -> verifying
+   * -> completed, or failed / cancelled. `cancel()` stops it until the
+   * server begins checking the bytes (verifying); nothing is stored. Only
+   * completed means the file can be referenced from a record.
+   *
+   * @example
+   * const task = Koolbase.storage.startUpload({ bucket: 'posters', path: 'gig.png', file });
+   * const stop = task.onProgress((p) => setPercent(Math.round(p.fraction * 100)));
+   * cancelButton.onclick = () => task.cancel();
+   * const { object } = await task.result;
+   */
+  startUpload(options: UploadOptions): KoolbaseUploadTask {
+    return runUploadTask((task) => this.runUpload(options, task));
+  }
+
+  private async runUpload(options: UploadOptions, task: KoolbaseUploadTask): Promise<UploadResult> {
+    task.checkCancelled();
     const overwrite = options.overwrite ?? false;
     // A Blob (browser File included) knows its own type; the React Native
     // URI form carries it alongside. Falling back to octet-stream keeps a
@@ -133,6 +181,7 @@ export class KoolbaseStorage {
     const contentType = isBlob
       ? (options.file as Blob).type || 'application/octet-stream'
       : (options.file as { type: string }).type;
+    if (isBlob) task.setTotal((options.file as Blob).size);
 
     // ─── Step 1: Get presigned upload URL ───
     const urlRes = await sessionFetch(
@@ -154,7 +203,8 @@ export class KoolbaseStorage {
     if (!urlRes.ok) {
       throw await this.error(urlRes, 'Failed to get upload URL');
     }
-    const { upload_url } = (await urlRes.json()) as { upload_url: string };
+    const { upload_url, upload_id } = (await urlRes.json()) as { upload_url: string; upload_id?: string };
+    task.checkCancelled();
 
     // ─── Step 2: Upload directly to R2 ───
     // R2 presigned URLs expect raw binary, NOT multipart/form-data.
@@ -167,20 +217,21 @@ export class KoolbaseStorage {
       ? (options.file as Blob)
       : await (await sessionFetch((options.file as { uri: string }).uri)).blob();
     const fileSize = fileBlob.size;
+    task.setTotal(fileSize);
 
-    const uploadRes = await sessionFetch(upload_url, {
-      method: 'PUT',
-      headers: { 'Content-Type': contentType },
-      body: fileBlob,
-    });
-    if (!uploadRes.ok) {
+    const uploadRes = await putWithProgress(task, upload_url, fileBlob, contentType);
+    if (uploadRes.status < 200 || uploadRes.status >= 300) {
       // R2 PUT errors don't follow the Koolbase error shape — surface as a
       // generic storage error rather than trying to decode a Koolbase body.
       throw new KoolbaseStorageError(
         `Upload to storage failed: ${uploadRes.status}`
       );
     }
-    const etag = uploadRes.headers.get('etag') ?? '';
+    const etag = uploadRes.etag;
+
+    // From here the server checks the bytes and puts them in place; the
+    // upload can no longer be cancelled.
+    task.verifying();
 
     // ─── Step 3: Confirm upload ───
     // Build the body conditionally so the `metadata` field is only sent
@@ -195,6 +246,10 @@ export class KoolbaseStorage {
       etag,
       overwrite,
     };
+    // The confirm names its upload, so it takes exactly these bytes.
+    if (upload_id) {
+      confirmBody.upload_id = upload_id;
+    }
     if (options.metadata !== undefined) {
       confirmBody.metadata = options.metadata;
     }
@@ -223,6 +278,48 @@ export class KoolbaseStorage {
     const downloadUrl = await this.getDownloadUrl(options.bucket, options.path);
 
     return { object, downloadUrl };
+  }
+
+  /**
+   * One page of a bucket's files. The bucket's view rule is applied to every
+   * file: the page holds only files the signed-in person may view. Pass the
+   * page's `nextCursor` back as `cursor` for the next one; a page can hold
+   * fewer files than `limit` and still have a next.
+   *
+   * @example
+   * let cursor: string | undefined;
+   * do {
+   *   const page = await Koolbase.storage.listFiles({ bucket: 'posters', prefix: 'events/', cursor });
+   *   show(page.files);
+   *   cursor = page.nextCursor ?? undefined;
+   * } while (cursor);
+   */
+  async listFiles(options: ListFilesOptions): Promise<KoolbaseFilePage> {
+    const res = await sessionFetch(
+      `${this.config.baseUrl}/v1/sdk/storage/files?${listFilesQuery(options)}`,
+      { headers: await this.buildHeaders() },
+    );
+    if (!res.ok) {
+      throw await this.error(res, 'Failed to list files');
+    }
+    return filePageFromJson((await res.json()) as Record<string, unknown>);
+  }
+
+  /**
+   * One file's details -- size, type, metadata, who uploaded it, and its
+   * permanent link while its bucket is public. Throws
+   * `KoolbaseStorageNotFoundError` for a file that is not there or that
+   * the bucket's view rule hides from the caller.
+   */
+  async getFileInfo(bucket: string, path: string): Promise<KoolbaseFileInfo> {
+    const res = await sessionFetch(
+      `${this.config.baseUrl}/v1/sdk/storage/file?bucket=${encodeURIComponent(bucket)}&path=${encodeURIComponent(path)}`,
+      { headers: await this.buildHeaders() },
+    );
+    if (!res.ok) {
+      throw await this.error(res, 'Failed to get the file');
+    }
+    return fileInfoFromJson((await res.json()) as Record<string, unknown>);
   }
 
   /**
