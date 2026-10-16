@@ -26,7 +26,7 @@ import {
   type KoolbaseConfig,
   type VersionCheckResult, setSessionRenewal } from '@koolbase/core';
 import { reactNativePlatform } from './platform.js';
-import { createUseCollection, createUseFiles, createUseRecord } from '@koolbase/core/react';
+import { createUseCollection, createUseFile, createUseFiles, createUseRecord } from '@koolbase/core/react';
 
 let _auth: KoolbaseAuth | null = null;
 let _db: KoolbaseDatabase | null = null;
@@ -261,3 +261,19 @@ export type { UseFilesResult } from '@koolbase/core/react';
  * ```
  */
 export const useFiles = createUseFiles(() => Koolbase.storage);
+
+export type { UseFileResult } from '@koolbase/core/react';
+
+/**
+ * One file's details as React state (storage S4): loading, loaded, notFound
+ * or error, with refresh -- only a file the signed-in person may view. Reads
+ * it again by itself after a change made through this SDK in the bucket: a
+ * deleted or moved file is notFound. An empty path is notFound, with no
+ * request. Use it after Koolbase.initialize().
+ *
+ * ```tsx
+ * const photo = useFile('photos', path);
+ * if (photo.status === 'loaded') return <Text>{photo.file.name}</Text>;
+ * ```
+ */
+export const useFile = createUseFile(() => Koolbase.storage);

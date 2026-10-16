@@ -5,3 +5,4 @@
 export { createUseCollection, type UseCollectionResult } from './use-collection.js';
 export { createUseRecord, type UseRecordResult } from './use-record.js';
 export { createUseFiles, type UseFilesResult } from './use-files.js';
+export { createUseFile, type UseFileResult } from './use-file.js';

@@ -3,6 +3,16 @@
 Each version covers all three packages: @koolbase/core, @koolbase/react-native and
 @koolbase/js. Earlier history: https://docs.koolbase.com/changelog
 
+## 12.20.0
+
+One file's details as state (storage S4). Same contract as koolbase_flutter 12.30.0.
+
+- **`useFile(bucket, path)`** from `@koolbase/react-native` and `@koolbase/js/react`: `status` (`'loading' | 'loaded' | 'notFound' | 'error'`), `file`, `error`, `refreshing` and `refresh()` -- for a file detail screen. Its data half, **`KoolbaseFileController`**, is in `@koolbase/core`.
+- An empty path is not found, with no request; not found is not an error.
+- **Shows changes by itself**: after an upload, delete, move, metadata change or restore made through the SDK in its bucket, the file is read again -- deleted or moved away, it is notFound.
+- Stale beats blank; an answer a later load superseded is dropped.
+- **Tested** on both adapters.
+
 ## 12.19.0
 
 A bucket's files as list state (storage S4). Same contract as koolbase_flutter 12.29.0.

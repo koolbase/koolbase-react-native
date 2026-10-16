@@ -37,6 +37,9 @@ export type { KoolbaseFileInfo, KoolbaseFilePage, KoolbaseFileSort, ListFilesOpt
 // A bucket's files as list state (storage S4).
 export { KoolbaseFilesController, initialFilesState, filesQueryKey } from './files-controller.js';
 export type { FilesQuery, FilesState, FilesStatus } from './files-controller.js';
+// One file's details as state (storage S4).
+export { KoolbaseFileController, initialFileState } from './file-controller.js';
+export type { FileState, FileStatus } from './file-controller.js';
 export { KoolbaseAnalytics , disabledAnalytics } from './analytics.js';
 export { KoolbaseFiscal, KoolbaseFiscalError, decodeFiscalResponse, isFiscalized, isPending } from './fiscal.js';
 export type { FiscalIntentResult, FiscalStatus } from './fiscal.js';
