@@ -323,6 +323,46 @@ export class KoolbaseStorage {
   }
 
   /**
+   * Move a file to `to`, in its bucket or into `toBucket` (S1b). Nothing is
+   * uploaded again. The bucket's rules decide: delete on the file, and
+   * upload at the destination, whose limits apply as to an upload. The
+   * destination must be free.
+   *
+   * Within one bucket the file keeps its kept versions. Refused with
+   * `KoolbaseStorageFileInUseError` while records point at the file: change
+   * them first, or {@link copy} it.
+   *
+   * @example
+   * await Koolbase.storage.move({ bucket: 'inbox', from: 'scan.png', toBucket: 'vault', to: '2026/scan.png' });
+   */
+  async move(options: { bucket: string; from: string; to: string; toBucket?: string }): Promise<KoolbaseObject> {
+    return this.transfer('move', options);
+  }
+
+  /**
+   * Copy a file to `to`, in its bucket or into `toBucket` (S1b): a new file,
+   * the caller's, with the same bytes. The bucket's rules decide: view on
+   * the file, and upload at the destination.
+   */
+  async copy(options: { bucket: string; from: string; to: string; toBucket?: string }): Promise<KoolbaseObject> {
+    return this.transfer('copy', options);
+  }
+
+  private async transfer(op: 'move' | 'copy', o: { bucket: string; from: string; to: string; toBucket?: string }): Promise<KoolbaseObject> {
+    const body: Record<string, string> = { bucket: o.bucket, from: o.from, to: o.to };
+    if (o.toBucket && o.toBucket !== o.bucket) body.to_bucket = o.toBucket;
+    const res = await sessionFetch(`${this.config.baseUrl}/v1/sdk/storage/${op}`, {
+      method: 'POST',
+      headers: { ...(await this.buildHeaders()), 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) {
+      throw await this.error(res, op === 'move' ? 'Failed to move the file' : 'Failed to copy the file');
+    }
+    return mapObjectFromServer(await res.json());
+  }
+
+  /**
    * Apply a partial metadata update to an existing object. Returns the
    * post-update {@link KoolbaseObject} with the merged metadata.
    *

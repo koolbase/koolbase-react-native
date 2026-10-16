@@ -3,6 +3,14 @@
 Each version covers all three packages: @koolbase/core, @koolbase/react-native and
 @koolbase/js. Earlier history: https://docs.koolbase.com/changelog
 
+## 12.17.0
+
+Move and copy a file (storage S1b). Same contract as koolbase_flutter 12.27.0.
+
+- **`storage.move({ bucket, from, to, toBucket? })`** and **`storage.copy(...)`**: within a bucket or into another, without uploading again. The bucket's rules decide (a copy needs view on the file, a move needs delete on it; both need upload at the destination, whose limits apply as to an upload). The destination must be free. Within one bucket a move keeps the file's kept versions.
+- **`KoolbaseStorageFileInUseError`** (`field`, `records`) and **`KoolbaseStorageNameHasHistoryError`**. Needs the Koolbase API from October 2026.
+- **Tested** on both adapters: each request, the file that comes back, and the refusals.
+
 ## 12.16.0
 
 Uploads you can follow and cancel, and a bucket's files (storage S1). Same contract as koolbase_flutter 12.26.0.

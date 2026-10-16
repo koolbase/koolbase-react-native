@@ -327,6 +327,37 @@ export class KoolbaseStorageSignInRequiredError extends KoolbaseStorageError {
 }
 
 /**
+ * A move refused while records point at the file (S1b): `field` holds its
+ * path in `records` records. Change those first, or copy the file. Code:
+ * `file_in_use`.
+ */
+export class KoolbaseStorageFileInUseError extends KoolbaseStorageError {
+  field?: string;
+  records: number;
+
+  constructor(message?: string, field?: string, records = 0) {
+    super(message ?? 'Records still point at this file', 'file_in_use');
+    this.field = field;
+    this.records = records;
+    this.name = 'KoolbaseStorageFileInUseError';
+    Object.setPrototypeOf(this, KoolbaseStorageFileInUseError.prototype);
+  }
+}
+
+/**
+ * A move, within a bucket, to a name a deleted file's kept versions still
+ * use (S1b): the two histories would become one. Choose another name.
+ * Code: `name_has_history`.
+ */
+export class KoolbaseStorageNameHasHistoryError extends KoolbaseStorageError {
+  constructor(message?: string) {
+    super(message ?? 'A deleted file by that name still has kept versions; choose another name', 'name_has_history');
+    this.name = 'KoolbaseStorageNameHasHistoryError';
+    Object.setPrototypeOf(this, KoolbaseStorageNameHasHistoryError.prototype);
+  }
+}
+
+/**
  * Maps a non-2xx storage-layer response to a typed
  * {@link KoolbaseStorageError}, preferring the server's stable `code` and
  * falling back to the HTTP status for older or uncoded responses. Always
@@ -378,6 +409,12 @@ export function koolbaseStorageError(
       return new KoolbaseStorageSignInRequiredError(message);
     case 'not_allowed':
       return new KoolbaseStoragePermissionError(message);
+    case 'file_in_use': {
+      const d = (body?.details ?? {}) as { field?: string; records?: number };
+      return new KoolbaseStorageFileInUseError(message, d.field, Number(d.records ?? 0));
+    }
+    case 'name_has_history':
+      return new KoolbaseStorageNameHasHistoryError(message);
   }
 
   // ─── status fallback (pre-code servers or uncoded paths) ───
