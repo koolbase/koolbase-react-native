@@ -51,6 +51,8 @@ const API_CODES = new Set([
   // Storage, S0/S1.
   'upload_not_found', 'bucket_busy', 'invalid_cursor', 'sign_in_required',
   'not_allowed', 'file_in_use', 'name_has_history', 'upload_incomplete',
+  // Storage, S6.
+  'malware_found', 'quarantined',
 ]);
 
 // Codes with no server counterpart, for one of two reasons.

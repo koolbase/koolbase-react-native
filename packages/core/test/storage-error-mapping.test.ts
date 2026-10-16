@@ -21,8 +21,20 @@ describe('storage error mapping', () => {
     ['file_in_use', errors.KoolbaseStorageFileInUseError],
     ['name_has_history', errors.KoolbaseStorageNameHasHistoryError],
     ['upload_incomplete', errors.KoolbaseUploadIncompleteError],
-    ['plan_limit_reached', KoolbasePlanLimitError],
-  ])('%s maps to its own class', (code, Expected) => {
+    ['malware_found', errors.KoolbaseStorageMalwareError],
+    ['quarantined', errors.KoolbaseStorageQuarantinedError],
+    ['plan_limit_reached', KoolbasePlanLimitError]])('%s maps to its own class', (code, Expected) => {
     expect(koolbaseStorageError(400, { code, error: 'server message' })).toBeInstanceOf(Expected);
+  });
+
+  it('storage S6: malware keeps the server message; a 423 with no code is quarantined', () => {
+    const m = koolbaseStorageError(422, { code: 'malware_found', error: 'malware found: Eicar-Signature' });
+    expect(m).toBeInstanceOf(errors.KoolbaseStorageMalwareError);
+    expect(m.message).toBe('malware found: Eicar-Signature');
+    expect(m.code).toBe('malware_found');
+    const q = koolbaseStorageError(423, { error: 'locked' });
+    expect(q).toBeInstanceOf(errors.KoolbaseStorageQuarantinedError);
+    expect(q.code).toBe('quarantined');
+    expect(q).toBeInstanceOf(errors.KoolbaseStorageError);
   });
 });

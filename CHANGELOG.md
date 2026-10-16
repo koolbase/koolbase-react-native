@@ -3,6 +3,15 @@
 Each version covers all three packages: @koolbase/core, @koolbase/react-native and
 @koolbase/js. Earlier history: https://docs.koolbase.com/changelog
 
+## 12.22.0
+
+Malware scanning (storage S6) and declared-field codes (#116, #117). Same contract as koolbase_flutter 12.32.0.
+
+- **`KoolbaseStorageMalwareError`** (`malware_found`): an upload refused because malware was found in it. Nothing of it was kept; the message names what was found.
+- **`KoolbaseStorageQuarantinedError`** (`quarantined`, 423): a file found to contain malware after it was stored. No link is given for it.
+- A refused write's field `code` may also be `too_small` or `too_large` (a number outside its declared minimum or maximum) and `user` (a user field given something that is not a user's id).
+- **Tested**: both codes map to their errors, and 423 without a code to quarantined.
+
 ## 12.21.0
 
 Several uploads in a queue (storage S4). Same contract as koolbase_flutter 12.31.0.

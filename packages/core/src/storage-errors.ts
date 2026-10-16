@@ -384,6 +384,32 @@ export class KoolbaseStorageNameHasHistoryError extends KoolbaseStorageError {
 }
 
 /**
+ * An upload refused because malware was found in it (storage S6). Nothing of
+ * it was kept; the message names what was found. Trying again with the same
+ * file will be refused again. Code: `malware_found`.
+ */
+export class KoolbaseStorageMalwareError extends KoolbaseStorageError {
+  constructor(message?: string) {
+    super(message ?? 'This file contains malware and was not uploaded', 'malware_found');
+    this.name = 'KoolbaseStorageMalwareError';
+    Object.setPrototypeOf(this, KoolbaseStorageMalwareError.prototype);
+  }
+}
+
+/**
+ * A file found to contain malware after it was stored (storage S6): it is
+ * quarantined, and no link to it is given. The server answers 423. Code:
+ * `quarantined`.
+ */
+export class KoolbaseStorageQuarantinedError extends KoolbaseStorageError {
+  constructor(message?: string) {
+    super(message ?? 'This file is quarantined: malware was found in it', 'quarantined');
+    this.name = 'KoolbaseStorageQuarantinedError';
+    Object.setPrototypeOf(this, KoolbaseStorageQuarantinedError.prototype);
+  }
+}
+
+/**
  * Maps a non-2xx storage-layer response to a typed
  * {@link KoolbaseStorageError}, preferring the server's stable `code` and
  * falling back to the HTTP status for older or uncoded responses. Always
@@ -441,6 +467,10 @@ export function koolbaseStorageError(
     }
     case 'name_has_history':
       return new KoolbaseStorageNameHasHistoryError(message);
+    case 'malware_found':
+      return new KoolbaseStorageMalwareError(message);
+    case 'quarantined':
+      return new KoolbaseStorageQuarantinedError(message);
     case 'upload_incomplete': {
       const d = (body?.details ?? {}) as { missing?: number[] };
       return new KoolbaseUploadIncompleteError(message, Array.isArray(d.missing) ? d.missing : []);
@@ -455,6 +485,8 @@ export function koolbaseStorageError(
       return new KoolbaseStorageFileTooLargeError(message);
     case 415:
       return new KoolbaseStorageMimeTypeError(message);
+    case 423:
+      return new KoolbaseStorageQuarantinedError(message);
     case 404:
       return new KoolbaseStorageNotFoundError(message);
     case 401:
