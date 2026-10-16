@@ -40,6 +40,9 @@ export type { FilesQuery, FilesState, FilesStatus } from './files-controller.js'
 // One file's details as state (storage S4).
 export { KoolbaseFileController, initialFileState } from './file-controller.js';
 export type { FileState, FileStatus } from './file-controller.js';
+// Several uploads in a queue (storage S4).
+export { KoolbaseUploadQueue, initialUploadQueueState } from './upload-queue.js';
+export type { KoolbaseUploader, QueuedUpload, QueuedUploadStatus, QueueFile, UploadQueueState } from './upload-queue.js';
 export { KoolbaseAnalytics , disabledAnalytics } from './analytics.js';
 export { KoolbaseFiscal, KoolbaseFiscalError, decodeFiscalResponse, isFiscalized, isPending } from './fiscal.js';
 export type { FiscalIntentResult, FiscalStatus } from './fiscal.js';

@@ -3,10 +3,10 @@
 // React entry), bound to this package's Koolbase. A separate entry on purpose:
 // `import { Koolbase } from '@koolbase/js'` never loads React.
 
-import { createUseCollection, createUseFile, createUseFiles, createUseRecord } from '@koolbase/core/react';
+import { createUseCollection, createUseFile, createUseFiles, createUseRecord, createUseUploadQueue } from '@koolbase/core/react';
 import { Koolbase } from './index.js';
 
-export type { UseCollectionResult, UseFileResult, UseFilesResult, UseRecordResult } from '@koolbase/core/react';
+export type { UseCollectionResult, UseFileResult, UseFilesResult, UseRecordResult, UseUploadQueueResult } from '@koolbase/core/react';
 
 /** A collection as React state: loading, loaded or error, with refresh and loadMore. Use it after Koolbase.initialize(). */
 export const useCollection = createUseCollection(() => Koolbase.db);
@@ -19,3 +19,6 @@ export const useFiles = createUseFiles(() => Koolbase.storage);
 
 /** One file's details as React state, with refresh; read again after changes made through this SDK, a deleted file notFound (storage S4). Use it after Koolbase.initialize(). */
 export const useFile = createUseFile(() => Koolbase.storage);
+
+/** Several uploads as React state: a few at a time, each file with its own status, progress, cancel and retry (storage S4). Use it after Koolbase.initialize(). */
+export const useUploadQueue = createUseUploadQueue(() => Koolbase.storage);

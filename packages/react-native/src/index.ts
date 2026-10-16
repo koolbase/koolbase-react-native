@@ -26,7 +26,7 @@ import {
   type KoolbaseConfig,
   type VersionCheckResult, setSessionRenewal } from '@koolbase/core';
 import { reactNativePlatform } from './platform.js';
-import { createUseCollection, createUseFile, createUseFiles, createUseRecord } from '@koolbase/core/react';
+import { createUseCollection, createUseFile, createUseFiles, createUseRecord, createUseUploadQueue } from '@koolbase/core/react';
 
 let _auth: KoolbaseAuth | null = null;
 let _db: KoolbaseDatabase | null = null;
@@ -277,3 +277,20 @@ export type { UseFileResult } from '@koolbase/core/react';
  * ```
  */
 export const useFile = createUseFile(() => Koolbase.storage);
+
+export type { UseUploadQueueResult } from '@koolbase/core/react';
+
+/**
+ * Several uploads as React state (storage S4): three at a time unless set,
+ * each file with its own status ('queued' | 'uploading' | 'verifying' |
+ * 'done' | 'failed' | 'cancelled'), progress and error, and cancel and retry
+ * by id. A failed file never stops the others. Use it after
+ * Koolbase.initialize().
+ *
+ * ```tsx
+ * const queue = useUploadQueue();
+ * queue.add(picked.map((f) => ({ bucket: 'photos', path: `trips/${f.name}`, file: f })));
+ * queue.items.map((u) => <Row key={u.id} name={u.name} progress={u.progress} />);
+ * ```
+ */
+export const useUploadQueue = createUseUploadQueue(() => Koolbase.storage);

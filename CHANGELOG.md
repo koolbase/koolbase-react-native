@@ -3,6 +3,16 @@
 Each version covers all three packages: @koolbase/core, @koolbase/react-native and
 @koolbase/js. Earlier history: https://docs.koolbase.com/changelog
 
+## 12.21.0
+
+Several uploads in a queue (storage S4). Same contract as koolbase_flutter 12.31.0.
+
+- **`useUploadQueue({ concurrency })`** from `@koolbase/react-native` and `@koolbase/js/react`: `items` (each with its own `status`, `progress` and `error`), `progress`, `running`, `done`, `failed`; `add(files)`, `cancel(id)`, `cancelAll()`, `retry(id)`, `clearFinished()`, `whenIdle()`. Its data half, **`KoolbaseUploadQueue`**, is in `@koolbase/core`.
+- Three at a time unless set, in the order added; each file is its own upload task.
+- A queued file cancelled never starts; one uploading stops; once verifying it lands or fails on its own. A failed or cancelled file can be tried again. A failure never stops the others.
+- `progress` is the files' average, a cancelled one left out.
+- **Tested** on both adapters.
+
 ## 12.20.0
 
 One file's details as state (storage S4). Same contract as koolbase_flutter 12.30.0.
