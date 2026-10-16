@@ -16,6 +16,7 @@ import {
 import { KoolbaseUploadTask, putWithProgress, runUploadTask } from './storage-transfer.js';
 import { MultipartPlan, sendParts } from './storage-multipart.js';
 import { KoolbaseDownloadCancelledError } from './storage-errors.js';
+import { refreshBucketFiles } from './files-refresh.js';
 import { KoolbaseNetworkError } from './network.js';
 import {
   KoolbaseFileInfo,
@@ -26,6 +27,12 @@ import {
   listFilesQuery,
 } from './storage-files.js';
 
+
+/** An upload task whose success reloads the bucket's file lists (storage S4). */
+function listsReload(task: KoolbaseUploadTask, bucket: string): KoolbaseUploadTask {
+  task.result.then(() => { void refreshBucketFiles(bucket); }, () => {});
+  return task;
+}
 
 // --- Cloudflare image-transform URL helpers -------------------------------
 // Module-private — callers use KoolbaseStorage.publicUrl / publicUrlForObject.
@@ -170,7 +177,7 @@ export class KoolbaseStorage {
    * const { object } = await task.result;
    */
   startUpload(options: UploadOptions): KoolbaseUploadTask {
-    return runUploadTask((task) => this.runUpload(options, task));
+    return listsReload(runUploadTask((task) => this.runUpload(options, task)), options.bucket);
   }
 
   private async runUpload(options: UploadOptions, task: KoolbaseUploadTask): Promise<UploadResult> {
@@ -313,14 +320,14 @@ export class KoolbaseStorage {
     metadata?: Record<string, string>;
     overwrite?: boolean;
   }): KoolbaseUploadTask {
-    return runUploadTask(async (task) => {
+    return listsReload(runUploadTask(async (task) => {
       const isBlob = typeof Blob !== 'undefined' && options.file instanceof Blob;
       const blob = isBlob
         ? (options.file as Blob)
         : await (await sessionFetch((options.file as { uri: string }).uri)).blob();
       task.setTotal(blob.size);
       return this.runInParts(options.bucket, options, task, blob, '', options.uploadId);
-    });
+    }), options.bucket);
   }
 
   private async runInParts(
@@ -554,7 +561,9 @@ export class KoolbaseStorage {
     if (!res.ok) {
       throw await this.error(res, op === 'move' ? 'Failed to move the file' : 'Failed to copy the file');
     }
-    return mapObjectFromServer(await res.json());
+    const moved = mapObjectFromServer(await res.json());
+    void refreshBucketFiles(o.bucket, ...(o.toBucket && o.toBucket !== o.bucket ? [o.toBucket] : []));
+    return moved;
   }
 
   /**
@@ -610,6 +619,7 @@ export class KoolbaseStorage {
       throw await this.error(res, 'Failed to update metadata');
     }
     const raw = await res.json();
+    void refreshBucketFiles(bucket);
     return mapObjectFromServer(raw);
   }
 
@@ -771,10 +781,11 @@ export class KoolbaseStorage {
       },
       body: JSON.stringify({ bucket, path }),
     });
-    if (res.status === 204) return;
-    if (!res.ok) {
-      throw await this.error(res, 'Failed to delete file');
+    if (res.ok) {
+      void refreshBucketFiles(bucket);
+      return;
     }
+    throw await this.error(res, 'Failed to delete file');
   }
 
   /**
@@ -845,7 +856,9 @@ export class KoolbaseStorage {
     if (!res.ok) {
       throw await this.error(res, 'Failed to restore version');
     }
-    return mapObjectFromServer(await res.json());
+    const restored = mapObjectFromServer(await res.json());
+    void refreshBucketFiles(bucket);
+    return restored;
   }
 
   /**

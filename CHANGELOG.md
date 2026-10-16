@@ -3,6 +3,15 @@
 Each version covers all three packages: @koolbase/core, @koolbase/react-native and
 @koolbase/js. Earlier history: https://docs.koolbase.com/changelog
 
+## 12.19.0
+
+A bucket's files as list state (storage S4). Same contract as koolbase_flutter 12.29.0.
+
+- **`useFiles(bucket, { prefix, sort, descending, limit })`** from `@koolbase/react-native` and `@koolbase/js/react`: `status`, `files`, `error`, `refreshing`, `loadingMore`, `hasMore`, `refresh()` and `loadMore()` -- the files the signed-in person may view, a page at a time. Its data half, **`KoolbaseFilesController`**, is in `@koolbase/core`.
+- **Lists reload by themselves** after an upload, delete, move, copy, metadata change or restore made through the SDK in their bucket.
+- Stale beats blank: a failed refresh or loadMore keeps what is shown; a file is never shown twice; an answer a later load superseded is dropped.
+- **Tested** on both adapters.
+
 ## 12.18.0
 
 Large uploads in parts, resumable; downloads you can follow (storage S3). Same contract as koolbase_flutter 12.28.0.

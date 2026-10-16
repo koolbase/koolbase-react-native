@@ -26,7 +26,7 @@ import {
   type KoolbaseConfig,
   type VersionCheckResult, setSessionRenewal } from '@koolbase/core';
 import { reactNativePlatform } from './platform.js';
-import { createUseCollection, createUseRecord } from '@koolbase/core/react';
+import { createUseCollection, createUseFiles, createUseRecord } from '@koolbase/core/react';
 
 let _auth: KoolbaseAuth | null = null;
 let _db: KoolbaseDatabase | null = null;
@@ -246,3 +246,18 @@ export type { UseRecordResult } from '@koolbase/core/react';
  * ```
  */
 export const useRecord = createUseRecord(() => Koolbase.db);
+
+export type { UseFilesResult } from '@koolbase/core/react';
+
+/**
+ * A bucket's files as React state (storage S4): loading, loaded or error,
+ * with refresh and loadMore -- only the files the signed-in person may view.
+ * Reloads by itself after an upload, delete, move, copy, metadata change or
+ * restore made through this SDK in the bucket. Use it after
+ * Koolbase.initialize().
+ *
+ * ```tsx
+ * const photos = useFiles('photos', { prefix: 'trips/', sort: 'createdAt', descending: true });
+ * ```
+ */
+export const useFiles = createUseFiles(() => Koolbase.storage);
