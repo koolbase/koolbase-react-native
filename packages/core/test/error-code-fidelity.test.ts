@@ -50,7 +50,7 @@ const API_CODES = new Set([
   'vector_not_found', 'weak_password',
   // Storage, S0/S1.
   'upload_not_found', 'bucket_busy', 'invalid_cursor', 'sign_in_required',
-  'not_allowed', 'file_in_use', 'name_has_history',
+  'not_allowed', 'file_in_use', 'name_has_history', 'upload_incomplete',
 ]);
 
 // Codes with no server counterpart, for one of two reasons.
@@ -61,6 +61,7 @@ const CLIENT_ONLY = new Set([
   // response was the problem.
   'network_error',              // the request never reached a server
   'upload_cancelled',           // the app cancelled its own upload
+  'download_cancelled',         // the app cancelled its own download
   'malformed_session_response', // a response that claimed a session and had none
   'offline_baseline_unavailable',
 

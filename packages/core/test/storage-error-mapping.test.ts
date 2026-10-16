@@ -20,6 +20,7 @@ describe('storage error mapping', () => {
     ['not_allowed', errors.KoolbaseStoragePermissionError],
     ['file_in_use', errors.KoolbaseStorageFileInUseError],
     ['name_has_history', errors.KoolbaseStorageNameHasHistoryError],
+    ['upload_incomplete', errors.KoolbaseUploadIncompleteError],
     ['plan_limit_reached', KoolbasePlanLimitError],
   ])('%s maps to its own class', (code, Expected) => {
     expect(koolbaseStorageError(400, { code, error: 'server message' })).toBeInstanceOf(Expected);

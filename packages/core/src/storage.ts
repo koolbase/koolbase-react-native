@@ -14,6 +14,9 @@ import {
   koolbaseStorageErrorFromResponse,
 } from './storage-errors.js';
 import { KoolbaseUploadTask, putWithProgress, runUploadTask } from './storage-transfer.js';
+import { MultipartPlan, sendParts } from './storage-multipart.js';
+import { KoolbaseDownloadCancelledError } from './storage-errors.js';
+import { KoolbaseNetworkError } from './network.js';
 import {
   KoolbaseFileInfo,
   KoolbaseFilePage,
@@ -183,6 +186,20 @@ export class KoolbaseStorage {
       : (options.file as { type: string }).type;
     if (isBlob) task.setTotal((options.file as Blob).size);
 
+    // A browser hands us the bytes already: a File from an input is a Blob,
+    // and fetching its .uri would be fetching undefined. React Native hands
+    // us a local URI, and its fetch resolves that into a Blob -- read first,
+    // since its size decides how it is sent (S3).
+    const fileBlob = isBlob
+      ? (options.file as Blob)
+      : await (await sessionFetch((options.file as { uri: string }).uri)).blob();
+    task.setTotal(fileBlob.size);
+    task.checkCancelled();
+    // Large files go in parts: resumable, each part retried (S3).
+    if (fileBlob.size > KoolbaseStorage.multipartThreshold) {
+      return this.runInParts(options.bucket, options, task, fileBlob, contentType, null);
+    }
+
     // ─── Step 1: Get presigned upload URL ───
     const urlRes = await sessionFetch(
       `${this.config.baseUrl}/v1/sdk/storage/upload-url`,
@@ -208,16 +225,7 @@ export class KoolbaseStorage {
 
     // ─── Step 2: Upload directly to R2 ───
     // R2 presigned URLs expect raw binary, NOT multipart/form-data.
-    //
-    // A browser hands us the bytes already: a File from an input is a Blob,
-    // and fetching its .uri would be fetching undefined. React Native hands
-    // us a local URI, and its fetch resolves that into a Blob — which is why
-    // the two hosts differ here and nowhere else in this method.
-    const fileBlob = isBlob
-      ? (options.file as Blob)
-      : await (await sessionFetch((options.file as { uri: string }).uri)).blob();
     const fileSize = fileBlob.size;
-    task.setTotal(fileSize);
 
     const uploadRes = await putWithProgress(task, upload_url, fileBlob, contentType);
     if (uploadRes.status < 200 || uploadRes.status >= 300) {
@@ -278,6 +286,193 @@ export class KoolbaseStorage {
     const downloadUrl = await this.getDownloadUrl(options.bucket, options.path);
 
     return { object, downloadUrl };
+  }
+
+  /**
+   * Files larger than this go up in parts (S3): each part retried on its
+   * own, the upload resumable for a day with `resumeUpload`. 16 MiB.
+   */
+  static multipartThreshold = 16 * 1024 * 1024;
+
+  /**
+   * Resumes a large file's upload that failed or was interrupted -- the
+   * network dropped, the app was closed -- sending only the parts that did
+   * not arrive. `uploadId` is the failed task's `uploadId`; `file` must be
+   * the same file. Within a day of the upload beginning.
+   *
+   * @example
+   * const task = Koolbase.storage.startUpload({ bucket: 'video', path: 'talk.mp4', file });
+   * saveForLater(task.uploadId); // once the upload has begun
+   * // ... after a restart:
+   * await Koolbase.storage.resumeUpload({ bucket: 'video', uploadId, file }).result;
+   */
+  resumeUpload(options: {
+    bucket: string;
+    uploadId: string;
+    file: UploadOptions['file'];
+    metadata?: Record<string, string>;
+    overwrite?: boolean;
+  }): KoolbaseUploadTask {
+    return runUploadTask(async (task) => {
+      const isBlob = typeof Blob !== 'undefined' && options.file instanceof Blob;
+      const blob = isBlob
+        ? (options.file as Blob)
+        : await (await sessionFetch((options.file as { uri: string }).uri)).blob();
+      task.setTotal(blob.size);
+      return this.runInParts(options.bucket, options, task, blob, '', options.uploadId);
+    });
+  }
+
+  private async runInParts(
+    bucket: string,
+    options: { path?: string; metadata?: Record<string, string>; overwrite?: boolean },
+    task: KoolbaseUploadTask,
+    file: Blob,
+    contentType: string,
+    resumeId: string | null,
+  ): Promise<UploadResult> {
+    const base = `${this.config.baseUrl}/v1/sdk/storage/uploads`;
+    const json = async () => ({ ...(await this.buildHeaders()), 'Content-Type': 'application/json' });
+    const overwrite = options.overwrite ?? false;
+    let plan: MultipartPlan;
+    if (resumeId) {
+      const res = await sessionFetch(`${base}?bucket=${encodeURIComponent(bucket)}&upload_id=${encodeURIComponent(resumeId)}`, {
+        headers: await this.buildHeaders(),
+      });
+      if (!res.ok) throw await this.error(res, 'Failed to resume the upload');
+      plan = (await res.json()) as MultipartPlan;
+      if (plan.size !== file.size) {
+        throw new KoolbaseStorageError(
+          `This is not the file the upload began with: it has ${file.size} bytes, the upload ${plan.size}`,
+          'validation_error',
+        );
+      }
+    } else {
+      const res = await sessionFetch(base, {
+        method: 'POST',
+        headers: await json(),
+        body: JSON.stringify({ bucket, path: options.path, content_type: contentType, size: file.size, overwrite }),
+      });
+      if (!res.ok) throw await this.error(res, 'Failed to begin the upload');
+      plan = (await res.json()) as MultipartPlan;
+    }
+    task.setUploadId(plan.upload_id);
+    task.checkCancelled();
+
+    await sendParts(task, plan, file, {
+      links: async (parts) => {
+        const res = await sessionFetch(`${base}/parts`, {
+          method: 'POST',
+          headers: await json(),
+          body: JSON.stringify({ bucket, upload_id: plan.upload_id, parts }),
+        });
+        if (!res.ok) throw await this.error(res, 'Failed to get upload links');
+        return ((await res.json()) as { links: Record<string, string> }).links;
+      },
+      abort: async () => {
+        await sessionFetch(base, {
+          method: 'DELETE',
+          headers: await json(),
+          body: JSON.stringify({ bucket, upload_id: plan.upload_id }),
+        });
+      },
+    });
+
+    // The parts have arrived: the server joins and checks them. No longer
+    // cancellable.
+    task.verifying();
+    const body: Record<string, unknown> = { bucket, upload_id: plan.upload_id, overwrite };
+    if (options.metadata !== undefined) body.metadata = options.metadata;
+    const done = await sessionFetch(`${base}/complete`, { method: 'POST', headers: await json(), body: JSON.stringify(body) });
+    if (!done.ok) throw await this.error(done, 'Failed to complete the upload');
+    const object = mapObjectFromServer(await done.json());
+    const downloadUrl = await this.getDownloadUrl(bucket, object.path);
+    return { object, downloadUrl };
+  }
+
+  /**
+   * Downloads a file's bytes, reporting them as they arrive (S3):
+   * `onProgress(received, total)`, total null when the size is not known.
+   * Aborting `signal` stops it with `KoolbaseDownloadCancelledError`.
+   *
+   * @example
+   * const blob = await Koolbase.storage.download({ bucket: 'video', path: 'talk.mp4', onProgress: (r, t) => setPct(t ? r / t : 0) });
+   */
+  async download(options: {
+    bucket: string;
+    path: string;
+    versionId?: string;
+    onProgress?: (received: number, total: number | null) => void;
+    signal?: AbortSignal;
+  }): Promise<Blob> {
+    if (options.signal?.aborted) throw new KoolbaseDownloadCancelledError();
+    const url = await this.getDownloadUrl(options.bucket, options.path, options.versionId);
+    const report = options.onProgress ?? (() => undefined);
+    const XHR = (globalThis as { XMLHttpRequest?: new () => XMLHttpRequest }).XMLHttpRequest;
+    if (XHR) {
+      return new Promise<Blob>((resolve, reject) => {
+        const xhr = new XHR();
+        let settled = false;
+        const finish = (fn: () => void) => {
+          if (settled) return;
+          settled = true;
+          options.signal?.removeEventListener('abort', stop);
+          fn();
+        };
+        const stop = () => {
+          xhr.abort();
+          finish(() => reject(new KoolbaseDownloadCancelledError()));
+        };
+        options.signal?.addEventListener('abort', stop);
+        xhr.open('GET', url);
+        xhr.responseType = 'blob';
+        xhr.onprogress = (ev: ProgressEvent) => report(ev.loaded, ev.lengthComputable ? ev.total : null);
+        xhr.onload = () =>
+          finish(() => {
+            if (xhr.status < 200 || xhr.status >= 300) {
+              reject(new KoolbaseStorageError(`Download failed: ${xhr.status}`));
+              return;
+            }
+            const blob = xhr.response as Blob;
+            report(blob.size, blob.size);
+            resolve(blob);
+          });
+        xhr.onerror = () => finish(() => reject(new KoolbaseNetworkError(url, new Error('the download did not complete'))));
+        xhr.onabort = () => finish(() => reject(new KoolbaseDownloadCancelledError()));
+        xhr.send();
+      });
+    }
+    let res: Response;
+    try {
+      res = await fetch(url, { signal: options.signal });
+    } catch (e) {
+      if (options.signal?.aborted) throw new KoolbaseDownloadCancelledError();
+      throw new KoolbaseNetworkError(url, e);
+    }
+    if (!res.ok) throw new KoolbaseStorageError(`Download failed: ${res.status}`);
+    const total = Number(res.headers.get('content-length')) || null;
+    const reader = res.body?.getReader?.();
+    if (!reader) {
+      const blob = await res.blob();
+      report(blob.size, blob.size);
+      return blob;
+    }
+    const chunks: Uint8Array[] = [];
+    let received = 0;
+    report(0, total);
+    try {
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        chunks.push(value);
+        received += value.length;
+        report(received, total);
+      }
+    } catch (e) {
+      if (options.signal?.aborted) throw new KoolbaseDownloadCancelledError();
+      throw new KoolbaseNetworkError(url, e);
+    }
+    return new Blob(chunks as BlobPart[], { type: res.headers.get('content-type') ?? '' });
   }
 
   /**

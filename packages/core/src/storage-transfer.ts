@@ -61,6 +61,7 @@ export class KoolbaseUploadTask {
   private cancelRequested = false;
   private abortTransfer: (() => void) | null = null;
   private total = 0;
+  private _uploadId: string | null = null;
 
   /**
    * The uploaded file. Rejects with `KoolbaseUploadCancelledError` if it was
@@ -85,6 +86,21 @@ export class KoolbaseUploadTask {
   /** Where the upload is now. */
   get current(): KoolbaseUploadProgress {
     return this._current;
+  }
+
+  /**
+   * A large file's upload goes in parts, and can be resumed for a day: keep
+   * this id, and pass it to `KoolbaseStorage.resumeUpload` with the same
+   * file after the app restarts or the upload fails. Null for a file sent
+   * in one piece, and until the upload has begun.
+   */
+  get uploadId(): string | null {
+    return this._uploadId;
+  }
+
+  /** @internal */
+  setUploadId(id: string): void {
+    this._uploadId = id;
   }
 
   /**
@@ -186,16 +202,88 @@ export function runUploadTask(body: (task: KoolbaseUploadTask) => Promise<Upload
   return task;
 }
 
-interface PutResult {
+export interface PutResult {
   status: number;
   etag: string;
 }
 
+/** A PUT under way: its outcome, and how to stop it. */
+export interface Transfer {
+  done: Promise<PutResult>;
+  abort(): void;
+}
+
 /**
- * Sends `body` to a presigned `url` with PUT, reporting bytes as they are
- * sent. XMLHttpRequest where the host has it (browsers and React Native,
- * both report upload progress); fetch elsewhere, where progress jumps from
- * 0 to the total. A cancel aborts it.
+ * PUTs `body` to `url`, reporting bytes as they are sent. XMLHttpRequest
+ * where the host has it (browsers and React Native both report upload
+ * progress); fetch elsewhere, where progress jumps from 0 to the total.
+ * An aborted transfer rejects with `KoolbaseUploadCancelledError`.
+ */
+export function transferBytes(url: string, body: Blob, contentType: string | null, onSent: (sent: number) => void): Transfer {
+  const XHR = (globalThis as { XMLHttpRequest?: new () => XMLHttpRequest }).XMLHttpRequest;
+  if (XHR) {
+    const xhr = new XHR();
+    let settled = false;
+    let fail: (e: Error) => void = () => undefined;
+    const done = new Promise<PutResult>((resolve, reject) => {
+      const finish = (fn: () => void) => {
+        if (settled) return;
+        settled = true;
+        fn();
+      };
+      fail = (e) => finish(() => reject(e));
+      xhr.open('PUT', url);
+      if (contentType) xhr.setRequestHeader('Content-Type', contentType);
+      if (xhr.upload) {
+        xhr.upload.onprogress = (ev: ProgressEvent) => onSent(Math.min(ev.loaded, body.size));
+      }
+      xhr.onload = () => finish(() => resolve({ status: xhr.status, etag: xhr.getResponseHeader('etag') ?? '' }));
+      xhr.onerror = () => fail(new KoolbaseNetworkError(url, new Error('the upload did not complete')));
+      xhr.onabort = () => fail(new KoolbaseUploadCancelledError());
+      onSent(0);
+      xhr.send(body);
+    });
+    return {
+      done,
+      abort: () => {
+        xhr.abort();
+        // Some hosts do not fire onabort for an aborted send.
+        fail(new KoolbaseUploadCancelledError());
+      },
+    };
+  }
+
+  const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+  let aborted = false;
+  onSent(0);
+  const done = fetch(url, {
+    method: 'PUT',
+    headers: contentType ? { 'Content-Type': contentType } : {},
+    body,
+    signal: controller?.signal,
+  })
+    .then((res) => {
+      if (aborted) throw new KoolbaseUploadCancelledError();
+      onSent(body.size);
+      return { status: res.status, etag: res.headers.get('etag') ?? '' };
+    })
+    .catch((e) => {
+      if (aborted || (e as { name?: string } | null)?.name === 'AbortError') throw new KoolbaseUploadCancelledError();
+      if (e instanceof KoolbaseStorageError) throw e;
+      throw new KoolbaseNetworkError(url, e);
+    });
+  return {
+    done,
+    abort: () => {
+      aborted = true;
+      controller?.abort();
+    },
+  };
+}
+
+/**
+ * Sends `body` to a presigned `url` with PUT as the task's one transfer,
+ * reporting bytes as they are sent; a cancel aborts it.
  */
 export function putWithProgress(
   task: KoolbaseUploadTask,
@@ -208,58 +296,15 @@ export function putWithProgress(
   const report = (sent: number) => {
     if (!task.cancelled) task.emit('uploading', Math.min(sent, total));
   };
-  report(0);
-
-  const XHR = (globalThis as { XMLHttpRequest?: new () => XMLHttpRequest }).XMLHttpRequest;
-  if (XHR) {
-    return new Promise<PutResult>((resolve, reject) => {
-      const xhr = new XHR();
-      let settled = false;
-      const done = (fn: () => void) => {
-        if (settled) return;
-        settled = true;
-        task.setAbort(null);
-        fn();
-      };
-      xhr.open('PUT', url);
-      xhr.setRequestHeader('Content-Type', contentType);
-      if (xhr.upload) {
-        xhr.upload.onprogress = (ev: ProgressEvent) => report(ev.loaded);
-      }
-      xhr.onload = () =>
-        done(() => {
-          if (task.cancelled) return reject(new KoolbaseUploadCancelledError());
-          resolve({ status: xhr.status, etag: xhr.getResponseHeader('etag') ?? '' });
-        });
-      xhr.onerror = () => done(() => reject(task.cancelled ? new KoolbaseUploadCancelledError() : new KoolbaseNetworkError(url, new Error('the upload did not complete'))));
-      xhr.onabort = () => done(() => reject(new KoolbaseUploadCancelledError()));
-      task.setAbort(() => {
-        xhr.abort();
-        // Some hosts do not fire onabort for an aborted send.
-        done(() => reject(new KoolbaseUploadCancelledError()));
-      });
-      xhr.send(body);
-    });
-  }
-
-  const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
-  task.setAbort(() => controller?.abort());
-  return fetch(url, {
-    method: 'PUT',
-    headers: { 'Content-Type': contentType },
-    body,
-    signal: controller?.signal,
-  })
-    .then((res) => {
+  const t = transferBytes(url, body, contentType, report);
+  task.setAbort(() => t.abort());
+  return t.done
+    .then((r) => {
       task.checkCancelled();
-      return { status: res.status, etag: res.headers.get('etag') ?? '' };
+      return r;
     })
     .catch((e) => {
-      if (task.cancelled || (e as { name?: string } | null)?.name === 'AbortError') {
-        throw new KoolbaseUploadCancelledError();
-      }
-      if (e instanceof KoolbaseStorageError) throw e;
-      throw new KoolbaseNetworkError(url, e);
+      throw task.cancelled ? new KoolbaseUploadCancelledError() : e;
     })
     .finally(() => task.setAbort(null));
 }

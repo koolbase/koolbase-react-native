@@ -3,6 +3,16 @@
 Each version covers all three packages: @koolbase/core, @koolbase/react-native and
 @koolbase/js. Earlier history: https://docs.koolbase.com/changelog
 
+## 12.18.0
+
+Large uploads in parts, resumable; downloads you can follow (storage S3). Same contract as koolbase_flutter 12.28.0.
+
+- **A file over 16 MiB goes up in parts** (`KoolbaseStorage.multipartThreshold`): three at a time; a part that fails for a passing reason is sent again, up to four times; an expired link is renewed. `upload` and `startUpload` choose this themselves.
+- **Resume**: `task.uploadId` resumes a failed upload with `storage.resumeUpload({ bucket, uploadId, file })`, for a day, sending only what is missing. Cancelling abandons it.
+- **`storage.download({ bucket, path, onProgress, signal })`** returns a Blob, reporting bytes as they arrive (XMLHttpRequest in browsers and React Native, a streamed fetch elsewhere).
+- **`KoolbaseUploadIncompleteError`** (`missing`) and **`KoolbaseDownloadCancelledError`**. Needs the Koolbase API from October 2026.
+- **Tested** on both adapters.
+
 ## 12.17.0
 
 Move and copy a file (storage S1b). Same contract as koolbase_flutter 12.27.0.

@@ -327,6 +327,32 @@ export class KoolbaseStorageSignInRequiredError extends KoolbaseStorageError {
 }
 
 /**
+ * Completing an upload in parts with parts missing or the wrong size (S3):
+ * resume it, which sends `missing`. Code: `upload_incomplete`.
+ */
+export class KoolbaseUploadIncompleteError extends KoolbaseStorageError {
+  missing: number[];
+
+  constructor(message?: string, missing: number[] = []) {
+    super(message ?? 'The upload is missing parts; resume it', 'upload_incomplete');
+    this.missing = missing;
+    this.name = 'KoolbaseUploadIncompleteError';
+    Object.setPrototypeOf(this, KoolbaseUploadIncompleteError.prototype);
+  }
+}
+
+/**
+ * A download stopped by its `signal` (S3). Code: `download_cancelled`.
+ */
+export class KoolbaseDownloadCancelledError extends KoolbaseStorageError {
+  constructor(message?: string) {
+    super(message ?? 'The download was cancelled', 'download_cancelled');
+    this.name = 'KoolbaseDownloadCancelledError';
+    Object.setPrototypeOf(this, KoolbaseDownloadCancelledError.prototype);
+  }
+}
+
+/**
  * A move refused while records point at the file (S1b): `field` holds its
  * path in `records` records. Change those first, or copy the file. Code:
  * `file_in_use`.
@@ -415,6 +441,10 @@ export function koolbaseStorageError(
     }
     case 'name_has_history':
       return new KoolbaseStorageNameHasHistoryError(message);
+    case 'upload_incomplete': {
+      const d = (body?.details ?? {}) as { missing?: number[] };
+      return new KoolbaseUploadIncompleteError(message, Array.isArray(d.missing) ? d.missing : []);
+    }
   }
 
   // ─── status fallback (pre-code servers or uncoded paths) ───
