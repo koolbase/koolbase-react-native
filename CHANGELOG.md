@@ -3,6 +3,13 @@
 Each version covers all three packages: @koolbase/core, @koolbase/react-native and
 @koolbase/js. Earlier history: https://docs.koolbase.com/changelog
 
+## 12.23.0
+
+Image presets for stored files (#146). Same contract as koolbase_flutter 12.33.0.
+
+- **`storage.publicUrlFor({ ..., preset })`**: names one of the project's image presets (Storage → Presets). The URL is the named-preset form, `cdn.koolbase.com/p/{project}/{preset}/{bucket}/{path}`, sized at the edge as the preset says; a transform is not used with it. Public buckets only, as presets are.
+- **Tested**: the preset URL with an encoded path, and an empty preset as none.
+
 ## 12.22.0
 
 Malware scanning (storage S6) and declared-field codes (#116, #117). Same contract as koolbase_flutter 12.32.0.

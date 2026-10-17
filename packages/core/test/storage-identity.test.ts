@@ -20,6 +20,13 @@ describe('storage.publicUrlFor: the project identity from bootstrap', () => {
       .toBe('https://cdn.koolbase.com/cdn-cgi/image/width=64,height=64,fit=cover/p1/avatars/me.png');
   });
 
+  it('a preset: the named-preset URL, the transform not used', () => {
+    const s = new KoolbaseStorage(config, async () => null, undefined, () => 'p1', () => { throw new Error('no nudge expected'); });
+    expect(s.publicUrlFor({ bucket: 'posters', path: 'neon night #1.png', preset: 'card', transform: { width: 100 } }))
+      .toBe('https://cdn.koolbase.com/p/p1/card/posters/neon%20night%20%231.png');
+    expect(s.publicUrlFor({ bucket: 'posters', path: 'a.png', preset: '' })).toBe('https://cdn.koolbase.com/p1/posters/a.png');
+  });
+
   it('flags read the project id from the bootstrap payload', () => {
     const f = new KoolbaseFlags(config, 'dev-1');
     expect(f.projectId()).toBe('');

@@ -650,12 +650,14 @@ export class KoolbaseStorage {
    * unavailable, and nudges a background bootstrap refresh so a later call in
    * the same session succeeds once connectivity returns.
    */
-  publicUrlFor(args: { bucket: string; path: string; transform?: KoolbaseImageTransform }): string {
+  publicUrlFor(args: { bucket: string; path: string; transform?: KoolbaseImageTransform; preset?: string }): string {
     const pid = this.projectIdProvider?.() ?? '';
     if (pid === '') {
       this.nudgeBootstrap?.();
       throw new KoolbaseStorageProjectIdentityError();
     }
+    // A named preset (Storage → Presets): the edge sizes it; no transform.
+    if (args.preset) return KoolbaseStorage.publicUrlWithPreset({ projectId: pid, presetName: args.preset, bucket: args.bucket, path: args.path });
     return KoolbaseStorage.publicUrl({ projectId: pid, bucket: args.bucket, path: args.path, transform: args.transform });
   }
 
