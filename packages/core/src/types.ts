@@ -42,6 +42,13 @@ export interface KoolbaseUser {
   avatarUrl?: string;
   verified: boolean;
   createdAt: string;
+  /**
+   * The trusted claims this user may read about themselves -- a role, an
+   * organisation -- only the keys the project's owner made readable by the
+   * user. Absent when there are none. Set by the server; a changed role
+   * arrives on the next refresh or getCurrentUser().
+   */
+  claims?: Record<string, unknown>;
 }
 
 export interface KoolbaseSession {

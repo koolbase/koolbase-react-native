@@ -3,6 +3,13 @@
 Each version covers all three packages: @koolbase/core, @koolbase/react-native and
 @koolbase/js. Earlier history: https://docs.koolbase.com/changelog
 
+## 12.25.0
+
+The signed-in user's claims (#155b). Same contract as koolbase_flutter 12.35.0.
+
+- **`KoolbaseUser.claims`**: the trusted claims this user may read about themselves -- a role, an organisation -- only the keys the project's owner made readable by the user (Auth -> Claims -> a definition's "Readable by the user"). Absent when there are none. On every session and on `getCurrentUser()`; a changed role arrives on the next refresh.
+- **Tested**: read from the server's user; absent when there are none.
+
 ## 12.24.0
 
 Presets for private buckets (#146). Same contract as koolbase_flutter 12.34.0.

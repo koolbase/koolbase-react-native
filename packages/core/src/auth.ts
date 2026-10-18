@@ -1394,6 +1394,8 @@ private async parseAppleSessionResponse(res: Response): Promise<KoolbaseSession>
       avatarUrl: raw.avatar_url,
       verified: raw.verified ?? false,
       createdAt: raw.created_at,
+      // Only the claims readable by the user reach here (#155b).
+      ...(raw.claims && typeof raw.claims === 'object' && !Array.isArray(raw.claims) ? { claims: { ...raw.claims } } : {}),
     };
   }
 
