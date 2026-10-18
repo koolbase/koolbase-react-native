@@ -346,3 +346,18 @@ describe('errors arrive typed', () => {
     expect(plain.expired).toBe(1);
   });
 });
+
+describe('a download link in a preset (#146)', () => {
+  it('names the preset when given one, none when empty', async () => {
+    const calls: Call[] = [];
+    g.fetch = server(calls);
+    const s = new KoolbaseStorage(config, async () => 'tok');
+    expect(await s.getDownloadUrl('vault', 'a b #1.png', undefined, { preset: 'card' })).toBe('https://r2.test/signed');
+    await s.getDownloadUrl('vault', 'a.png', undefined, { preset: '' });
+    await s.getDownloadUrl('vault', 'a.png', 'v1');
+    const q = (i: number) => Object.fromEntries(new URL(calls[i].url).searchParams);
+    expect(q(0)).toEqual({ bucket: 'vault', path: 'a b #1.png', preset: 'card' });
+    expect(q(1)).toEqual({ bucket: 'vault', path: 'a.png' });
+    expect(q(2)).toEqual({ bucket: 'vault', path: 'a.png', version_id: 'v1' });
+  });
+});

@@ -3,6 +3,13 @@
 Each version covers all three packages: @koolbase/core, @koolbase/react-native and
 @koolbase/js. Earlier history: https://docs.koolbase.com/changelog
 
+## 12.24.0
+
+Presets for private buckets (#146). Same contract as koolbase_flutter 12.34.0.
+
+- **`storage.getDownloadUrl(bucket, path, versionId?, { preset })`**: names one of the project's image presets. An image's current version is given sized as the preset says -- a private bucket's as a signed address good for an hour, issued after the bucket's rules let this person see the file. Anything not an image is given as it is.
+- **Tested**: the preset sent when given, none when empty.
+
 ## 12.23.0
 
 Image presets for stored files (#146). Same contract as koolbase_flutter 12.33.0.

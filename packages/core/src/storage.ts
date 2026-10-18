@@ -625,13 +625,22 @@ export class KoolbaseStorage {
 
   /**
    * Get a signed download URL for a file.
+   *
+   * `options.preset` names one of the project's image presets (Storage →
+   * Presets): an image's current version is then given sized as the preset
+   * says -- a private bucket's as a signed, hour-long address -- after the
+   * same rules decide whether this person may see it. Anything not an image
+   * is given as it is.
    */
-  async getDownloadUrl(bucket: string, path: string, versionId?: string): Promise<string> {
+  async getDownloadUrl(bucket: string, path: string, versionId?: string, options?: { preset?: string }): Promise<string> {
     let url =
       `${this.config.baseUrl}/v1/sdk/storage/download-url` +
       `?bucket=${encodeURIComponent(bucket)}&path=${encodeURIComponent(path)}`;
     if (versionId) {
       url += `&version_id=${encodeURIComponent(versionId)}`;
+    }
+    if (options?.preset) {
+      url += `&preset=${encodeURIComponent(options.preset)}`;
     }
     const res = await sessionFetch(url, { headers: await this.buildHeaders() });
     if (!res.ok) {
