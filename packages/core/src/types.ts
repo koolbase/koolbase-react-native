@@ -33,13 +33,30 @@ export interface KoolbaseConfig {
 
 // ─── Auth ──────────────────────────────────────────────────────────────────
 
+/**
+ * Where a user's profile photo is stored, when it is one of their files: a
+ * path in one of the project's buckets. Read it like any stored file -- in
+ * one of the project's image presets, and signed when the bucket is private:
+ * `storage.getDownloadUrl({ bucket, path, preset: 'thumb' })`.
+ */
+export interface KoolbaseAvatarFile {
+  bucket: string;
+  path: string;
+}
+
 export interface KoolbaseUser {
   id: string;
   email: string;
   phoneNumber?: string;
   phoneVerified?: boolean;
   fullName?: string;
+  /**
+   * The photo's address: set by updateProfile's avatarUrl, or following
+   * `avatar` -- a public bucket's permanent link, absent for a private one.
+   */
   avatarUrl?: string;
+  /** Where the photo is stored, when it is one of the user's files. */
+  avatar?: KoolbaseAvatarFile;
   verified: boolean;
   createdAt: string;
   /**

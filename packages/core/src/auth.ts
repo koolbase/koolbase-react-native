@@ -71,9 +71,17 @@ import {
   MfaEnrollmentNotFoundError,
   MfaNotEnabledError,
 } from './auth-errors.js';
-import type { SignInWithGoogleParams, SignOutReason } from './types.js';
+import type { KoolbaseAvatarFile, SignInWithGoogleParams, SignOutReason } from './types.js';
 import { getPlatform } from './platform.js';
 import { DeviceMetadata } from './device-metadata.js';
+
+/** The server's `{ bucket, path }`; undefined when it is not one. */
+function avatarFileOf(raw: unknown): KoolbaseAvatarFile | undefined {
+  if (!raw || typeof raw !== 'object') return undefined;
+  const { bucket, path } = raw as { bucket?: unknown; path?: unknown };
+  if (typeof bucket !== 'string' || typeof path !== 'string' || !bucket || !path) return undefined;
+  return { bucket, path };
+}
 
 export class KoolbaseAuth {
   private config: KoolbaseConfig;
@@ -881,14 +889,26 @@ private async parseAppleSessionResponse(res: Response): Promise<KoolbaseSession>
    * Only the fields given are sent, so passing one leaves the other
    * untouched. The updated user is persisted, so `currentUser` reflects it
    * without a refetch.
+   *
+   * The photo is one of: `avatar`, one of the user's own files -- the bucket
+   * and path an upload returned; read it in a preset's size, and signed when
+   * the bucket is private -- `avatarUrl`, an address; or `avatar: null`,
+   * removed. A file someone else uploaded is refused.
    */
   async updateProfile(params: {
     fullName?: string;
     avatarUrl?: string;
+    avatar?: KoolbaseAvatarFile | null;
   }): Promise<KoolbaseUser> {
-    const body: Record<string, string> = {};
+    if (params.avatarUrl !== undefined && params.avatar !== undefined) {
+      throw new TypeError('updateProfile: give avatar or avatarUrl, not both');
+    }
+    const body: Record<string, unknown> = {};
     if (params.fullName !== undefined) body.full_name = params.fullName;
     if (params.avatarUrl !== undefined) body.avatar_url = params.avatarUrl;
+    if (params.avatar !== undefined) {
+      body.avatar = params.avatar === null ? {} : { bucket: params.avatar.bucket, path: params.avatar.path };
+    }
 
     const res = await this.authRequest('/v1/sdk/auth/me', {
       method: 'PATCH',
@@ -1392,6 +1412,7 @@ private async parseAppleSessionResponse(res: Response): Promise<KoolbaseSession>
       phoneVerified: raw.phone_verified ?? false,
       fullName: raw.full_name,
       avatarUrl: raw.avatar_url,
+      ...(avatarFileOf(raw.avatar) ? { avatar: avatarFileOf(raw.avatar) } : {}),
       verified: raw.verified ?? false,
       createdAt: raw.created_at,
       // Only the claims readable by the user reach here (#155b).

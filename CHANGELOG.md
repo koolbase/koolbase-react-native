@@ -3,6 +3,14 @@
 Each version covers all three packages: @koolbase/core, @koolbase/react-native and
 @koolbase/js. Earlier history: https://docs.koolbase.com/changelog
 
+## 12.26.0
+
+The profile photo as a file. Same contract as koolbase_flutter 12.36.0.
+
+- **`KoolbaseUser.avatar`** (`KoolbaseAvatarFile`: `bucket`, `path`): where the photo is stored, when it is one of the user's files. Read it like any stored file -- in one of the project's image presets, and signed when the bucket is private.
+- **`updateProfile({ avatar })`**: sets the photo to a file the user uploaded -- the bucket and path the upload returned. A file someone else uploaded is refused. `avatarUrl` then follows it: a public bucket's permanent link, absent for a private one. **`avatar: null`** removes the photo. Not with `avatarUrl`; setting `avatarUrl` stops the photo being a file.
+- **Tested**: read and kept as `currentUser`, what updateProfile sends, both at once refused.
+
 ## 12.25.0
 
 The signed-in user's claims (#155b). Same contract as koolbase_flutter 12.35.0.
