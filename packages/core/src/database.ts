@@ -221,6 +221,16 @@ export class KoolbaseDatabase {
         order_by: options.orderBy,
         order_desc: options.orderDesc ?? false,
         populate: options.populate ?? [],
+        // #160: only with text to search; the server checks the rest.
+        ...(options.fieldSearch && options.fieldSearch.text.trim() !== ''
+          ? {
+              field_search: {
+                text: options.fieldSearch.text,
+                fields: options.fieldSearch.fields ?? [],
+                choices: options.fieldSearch.choices ?? [],
+              },
+            }
+          : {}),
       }
     );
     const records = raw.records.map(recordFromWire);
@@ -271,6 +281,13 @@ export class KoolbaseDatabase {
     // who to tell, not what to read, so it stays out the same way.
     const { cache: cachePolicy, onRefresh, ...queryOptions } = options;
     const queryHash = hashQuery(collection, queryOptions as Record<string, unknown>);
+
+    // A search's answer is the server's (#160): never served from the cache,
+    // and not kept there -- one entry per search typed would pile up.
+    if (queryOptions.fieldSearch && queryOptions.fieldSearch.text.trim() !== '') {
+      const result = await this.runQuery(collection, queryOptions);
+      return { ...result, isFromCache: false };
+    }
 
     const cached = cachePolicy === 'network-only' ? null : await getCached(userId, collection, queryHash);
 

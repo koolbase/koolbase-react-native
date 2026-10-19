@@ -3,6 +3,14 @@
 Each version covers all three packages: @koolbase/core, @koolbase/react-native and
 @koolbase/js. Earlier history: https://docs.koolbase.com/changelog
 
+## 12.27.0
+
+Search on the server (#160). Same contract as koolbase_flutter 12.37.0.
+
+- **`query(collection, { fieldSearch: { text, fields, choices } })`**: records whose named text fields contain the text, ignoring case, inside the read rule and the filters and before the page -- so `total` and every page are of the matches. A Choice field is searched by its labels (`{ field, values, listed }`: the values whose label matches, and every value it declares). Empty text is no search. Needs the API with `field_search`.
+- **`KoolbaseCollectionController.setSearch(search)`** and **`useCollection(collection, { search })`**: the list shows the search's matches, page after page. Changing the search keeps the controller and what it shows, and searches once the typing pauses (`searchDelayMs`, 250); the newest search wins, and the server's answer replaces what is shown, never merged with it. `searching` is true until the server answers -- what an app filters from the records meanwhile is a preview -- and `searchError` says when it could not.
+- **Tested**: the request, debounce, newest wins, replaced not merged, paging inside the search, the error, the same search twice.
+
 ## 12.26.0
 
 The profile photo as a file. Same contract as koolbase_flutter 12.36.0.

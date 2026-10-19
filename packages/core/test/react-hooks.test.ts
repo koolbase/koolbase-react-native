@@ -65,6 +65,27 @@ describe('useCollection', () => {
     return { db: { query: fn } as unknown as Pick<KoolbaseDatabase, 'query'>, query: fn };
   };
 
+  it('#160: a new search keeps the controller and what it shows, then shows the search\'s matches', async () => {
+    const { db, query } = fakeDb(async (_c, o) =>
+      o?.fieldSearch
+        ? { records: [rec('9', 'events', `${o.fieldSearch.text} fair`)], total: 1 }
+        : { records: [rec('1', 'events', 'a'), rec('2', 'events', 'b')], total: 2 });
+    const useCollection = createUseCollection(() => db);
+    const h = mount((p: { text: string }) => useCollection('events', { searchDelayMs: 1, search: p.text ? { text: p.text, fields: ['title'] } : null }), { text: '' });
+    await settle();
+    expect(titles(h.current())).toEqual(['a', 'b']);
+    h.rerender({ text: 'food' });
+    expect(h.current().searching).toBe(true);
+    expect(titles(h.current())).toEqual(['a', 'b']);
+    await settle();
+    expect(titles(h.current())).toEqual(['food fair']);
+    expect(h.current().searching).toBe(false);
+    // One first load, one search: the search did not start a new controller.
+    expect(query.mock.calls.filter((c) => !c[1]?.fieldSearch)).toHaveLength(1);
+    expect(query.mock.calls.filter((c) => c[1]?.fieldSearch?.text === 'food')).toHaveLength(1);
+    h.unmount();
+  });
+
   it('is loading, then loaded with the records; refresh asks again and keeps what is shown', async () => {
     const { db, query } = fakeDb(async () => ({ records: [rec('1', 'songs', 'a'), rec('2', 'songs', 'b')], total: 2 }));
     const useCollection = createUseCollection(() => db);

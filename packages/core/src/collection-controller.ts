@@ -25,7 +25,7 @@
 import type { KoolbaseDatabase } from './database.js';
 import { liveSource } from './live-source.js';
 import { registerQueryRefresher } from './query-refresh.js';
-import type { KoolbaseRecord, QueryOptions, QueryResult } from './types.js';
+import type { FieldSearch, KoolbaseRecord, QueryOptions, QueryResult } from './types.js';
 
 export type CollectionStatus = 'loading' | 'loaded' | 'error';
 
@@ -44,6 +44,14 @@ export interface CollectionQuery {
    * in, and goes live then.
    */
   live?: boolean;
+  /**
+   * A search over the fields it names, on the server (#160): the first load
+   * is of its matches. Not part of the query's identity -- change it with
+   * setSearch(), which keeps the controller and what it shows.
+   */
+  search?: FieldSearch | null;
+  /** How long setSearch() waits for the typing to pause. 250 ms. */
+  searchDelayMs?: number;
 }
 
 export interface CollectionState {
@@ -59,6 +67,14 @@ export interface CollectionState {
   readonly loadingMore: boolean;
   /** Whether the server has rows past the last page loaded. True before the first load. */
   readonly hasMore: boolean;
+  /**
+   * True from setSearch() until the server answers it (#160). The records
+   * shown meanwhile are from before the search: what an app filters from
+   * them is a preview, not the answer.
+   */
+  readonly searching: boolean;
+  /** Why the server could not answer the latest search, or null. The records are not its answer. */
+  readonly searchError: unknown;
 }
 
 export const initialCollectionState: CollectionState = Object.freeze<CollectionState>({
@@ -69,7 +85,19 @@ export const initialCollectionState: CollectionState = Object.freeze<CollectionS
   refreshing: false,
   loadingMore: false,
   hasMore: true,
+  searching: false,
+  searchError: null,
 });
+
+/** A search with text to search, or null: none. */
+function normalizedSearch(search?: FieldSearch | null): FieldSearch | null {
+  if (!search || search.text.trim() === '') return null;
+  return {
+    text: search.text.trim(),
+    fields: [...(search.fields ?? [])],
+    choices: (search.choices ?? []).map((c) => ({ field: c.field, values: [...c.values], listed: [...c.listed] })),
+  };
+}
 
 function sortedWhere(where?: Record<string, unknown>): Record<string, unknown> {
   const out: Record<string, unknown> = {};
@@ -122,11 +150,57 @@ export class KoolbaseCollectionController {
   // A live list's realtime subscription, and its pending debounced re-read.
   private unlive: (() => void) | null = null;
   private liveTimer: ReturnType<typeof setTimeout> | null = null;
+  // The search now (#160), and its pending debounced read.
+  private search: FieldSearch | null;
+  private searchTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor(db: QueryReader, collection: string, query: CollectionQuery = {}) {
     this.db = db;
     this.collection = collection;
     this.spec = query;
+    this.search = normalizedSearch(query.search);
+  }
+
+  /**
+   * Search on the server (#160), once the typing pauses (searchDelayMs): page
+   * one of the matches replaces what is shown, never merged with it, and
+   * paging continues inside the search. A newer search, or a refresh, drops
+   * an older one's answer. Null or empty text: the list unsearched again.
+   * Until the server answers, `searching` is true; if it cannot,
+   * `searchError` says why and the records shown are not its answer.
+   */
+  setSearch(search?: FieldSearch | null): void {
+    if (this.disposed) return;
+    const next = normalizedSearch(search);
+    if (JSON.stringify(next) === JSON.stringify(this.search)) return;
+    this.search = next;
+    // Whatever is in flight was for the old search.
+    this.generation++;
+    if (this.searchTimer) clearTimeout(this.searchTimer);
+    this.set({ searching: true, searchError: null, loadingMore: false });
+    this.searchTimer = setTimeout(() => {
+      this.searchTimer = null;
+      void this.runSearch();
+    }, this.spec.searchDelayMs ?? 250);
+    (this.searchTimer as unknown as { unref?: () => void }).unref?.();
+  }
+
+  private async runSearch(): Promise<void> {
+    if (this.disposed) return;
+    const gen = ++this.generation;
+    if (this.state.loadingMore) this.set({ loadingMore: false });
+    try {
+      const result = await this.db.query(this.collection, this.options(0, 'network-only'));
+      if (this.isStale(gen)) return;
+      this.showPageOne(result, false, false);
+      this.set({ searching: false, searchError: null });
+    } catch (error) {
+      if (this.isStale(gen)) return;
+      // Nothing loaded yet to show under it: the list's own error.
+      this.set(this.state.status === 'loaded'
+        ? { searching: false, searchError: error }
+        : { searching: false, searchError: error, status: 'error', error });
+    }
   }
 
   getState(): CollectionState {
@@ -191,12 +265,14 @@ export class KoolbaseCollectionController {
    */
   async loadMore(): Promise<void> {
     const s = this.state;
-    if (this.disposed || s.loadingMore || !s.hasMore || s.status !== 'loaded') return;
+    // Not while a search waits for its answer (#160): the next page of the
+    // records shown is not the next page of the search.
+    if (this.disposed || s.loadingMore || s.searching || !s.hasMore || s.status !== 'loaded') return;
     const gen = this.generation;
     const offset = this.nextOffset;
     this.set({ loadingMore: true });
     try {
-      const result = await this.db.query(this.collection, this.options(offset, 'default'));
+      const result = await this.db.query(this.collection, this.options(offset, this.search ? 'network-only' : 'default'));
       if (this.isStale(gen)) return;
       this.laterPages = [...this.laterPages, ...result.records];
       this.nextOffset = offset + result.records.length;
@@ -218,6 +294,7 @@ export class KoolbaseCollectionController {
     this.unlive?.();
     this.unlive = null;
     if (this.liveTimer) { clearTimeout(this.liveTimer); this.liveTimer = null; }
+    if (this.searchTimer) { clearTimeout(this.searchTimer); this.searchTimer = null; }
     this.listeners.clear();
   }
 
@@ -229,12 +306,23 @@ export class KoolbaseCollectionController {
     try {
       const result = await this.db.query(
         this.collection,
-        this.options(0, cache, (fresh) => {
+        // A search's answer is the server's, never a cached one (#160).
+        this.options(0, this.search ? 'network-only' : cache, (fresh) => {
           if (!this.isStale(gen)) this.showPageOne(fresh, false, true);
         }),
       );
-      if (!this.isStale(gen)) this.showPageOne(result, result.isFromCache === true, false);
+      if (!this.isStale(gen)) {
+        this.showPageOne(result, result.isFromCache === true, false);
+        // A search this fetch superseded is answered by it -- unless a newer
+        // one is still waiting for the typing to pause.
+        if (!this.searchTimer && (this.state.searching || this.state.searchError !== null)) {
+          this.set({ searching: false, searchError: null });
+        }
+      }
     } catch (error) {
+      if (!this.isStale(gen) && this.state.searching && !this.searchTimer) {
+        this.set({ searching: false, searchError: error });
+      }
       if (!this.isStale(gen) && this.state.records.length === 0) {
         this.set({ status: 'error', error });
       }
@@ -273,6 +361,7 @@ export class KoolbaseCollectionController {
       offset,
       orderBy: this.spec.orderBy,
       orderDesc: this.spec.orderDesc,
+      ...(this.search ? { fieldSearch: this.search } : {}),
       cache,
       onRefresh,
     };

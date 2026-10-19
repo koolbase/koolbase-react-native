@@ -59,6 +59,14 @@ export function createUseCollection(getDb: () => Pick<KoolbaseDatabase, 'query'>
     );
     const state = useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
 
+    // The search (#160) is not the query's identity: changing it keeps the
+    // controller, and what it shows, and searches after a pause.
+    const searchKey = JSON.stringify(query.search ?? null);
+    useEffect(() => {
+      controller?.setSearch(query.search ?? null);
+      // Depends on the search as a value, not the object.
+    }, [controller, searchKey]);
+
     const refresh = useCallback(() => (controller ? controller.refresh() : done()), [controller]);
     const loadMore = useCallback(() => (controller ? controller.loadMore() : done()), [controller]);
     return { ...state, refresh, loadMore };

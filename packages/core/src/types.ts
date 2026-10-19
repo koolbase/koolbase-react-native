@@ -297,6 +297,32 @@ export interface KoolbaseRecord {
   revision?: number;
 }
 
+/**
+ * A search over the fields it names, on the server (#160): records whose
+ * text fields contain `text`, ignoring case, inside the read rule and the
+ * filters and before the page -- so `total` and every page are of the
+ * matches. A Choice field is searched by its labels: `values` are the stored
+ * values whose label contains the text, `listed` every value the field
+ * declares (the server checks both against the declaration); a stored value
+ * not declared matches as itself. Empty `text` is no search.
+ */
+export interface FieldSearch {
+  text: string;
+  /** Declared Text or Long text fields (any field, on a collection that declares none). */
+  fields?: string[];
+  /** Declared Choice fields, by their labels. */
+  choices?: ChoiceSearch[];
+}
+
+/** One Choice field in a [FieldSearch]. */
+export interface ChoiceSearch {
+  field: string;
+  /** The stored values whose label contains the search text. */
+  values: string[];
+  /** Every value the field declares. */
+  listed: string[];
+}
+
 export interface QueryOptions {
   filters?: Record<string, unknown>;
   limit?: number;
@@ -304,6 +330,8 @@ export interface QueryOptions {
   orderBy?: string;
   orderDesc?: boolean;
   populate?: string[];
+  /** A search over the fields it names, on the server (#160). Empty text: none. */
+  fieldSearch?: FieldSearch;
   /**
    * How to read: 'default' is cache-first, refreshed in the background;
    * 'network-only' skips the cache and waits for the server (the result still
