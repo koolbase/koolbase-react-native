@@ -1,5 +1,6 @@
 import { koolbaseDataError } from '../src/database-errors';
 import * as errors from '../src/database-errors';
+import { KoolbaseServiceUnavailableError } from '../src/errors';
 
 // Every database and vector error code the API emits, mapped to the class an
 // app catches.
@@ -54,6 +55,12 @@ const cases: Array<[string, new (...a: never[]) => Error]> = [
   ['conflict', errors.KoolbaseStateConflictError],
   ['duplicate', errors.KoolbaseStateConflictError],
   ['state_conflict', errors.KoolbaseStateConflictError],
+  // #162.
+  ['auto_embedding_managed', errors.KoolbaseAutoEmbeddingManagedError],
+  ['reembed_confirmation_required', errors.KoolbaseReembedConfirmationRequiredError],
+  ['embedding_model_unsupported', errors.KoolbaseEmbeddingModelUnsupportedError],
+  // #161: shared, any request to the project.
+  ['placement_unavailable', KoolbaseServiceUnavailableError],
 ];
 
 describe('database error mapping', () => {
@@ -69,6 +76,24 @@ describe('database error mapping', () => {
     // which hardcodes permission_denied.
     const err = koolbaseDataError(400, { code, error: 'server message' }) as { code?: string };
     expect(err.code).toBe(code);
+  });
+
+  it('a re-embed refusal carries its estimate', () => {
+    const estimate = {
+      records: 2400, records_to_embed: 2000, estimated_input_tokens: 51000, provider: 'openai',
+      model: 'text-embedding-3-large', dimensions: 1536, billed_by: 'your_provider', estimate: true,
+      cache_may_apply: false, sampled_records: 500,
+    };
+    const err = koolbaseDataError(409, { code: 'reembed_confirmation_required', error: 'confirm', details: estimate });
+    expect(err).toBeInstanceOf(errors.KoolbaseReembedConfirmationRequiredError);
+    expect((err as errors.KoolbaseReembedConfirmationRequiredError).estimate).toEqual(estimate);
+  });
+
+  it('a database that cannot be reached is worth retrying', () => {
+    const err = koolbaseDataError(503, { code: 'placement_unavailable', error: 'try again' });
+    expect(err).toBeInstanceOf(KoolbaseServiceUnavailableError);
+    expect((err as KoolbaseServiceUnavailableError).retryable).toBe(true);
+    expect(err.message).toBe('try again');
   });
 
   it('carries the server message rather than a canned one', () => {

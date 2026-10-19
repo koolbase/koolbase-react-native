@@ -3,6 +3,17 @@
 Each version covers all three packages: @koolbase/core, @koolbase/react-native and
 @koolbase/js. Earlier history: https://docs.koolbase.com/changelog
 
+## 12.29.0
+
+Errors the API added in #161 and #162 arrive as their own classes, not generic ones. Same contract as koolbase_flutter 12.39.0.
+
+- **`KoolbaseServiceUnavailableError`** (`placement_unavailable`, 503): the project's database could not be reached just now; nothing was read or written. `retryable` is true. Any request can meet it: a query, an upload, a sign-in.
+- **`KoolbaseAutoEmbeddingManagedError`** (`auto_embedding_managed`, 409): the vector field is filled by automatic embedding, so `setVector`, `deleteVector` and text sent for it are refused. Write the record's fields; the vector follows.
+- **`KoolbaseReembedConfirmationRequiredError`** (`reembed_confirmation_required`, 409): a change to a field's embedding would embed the collection again. `estimate` carries the records, estimated input tokens, provider, model and who is billed; send the change again with `confirm_reembed: true` to make it.
+- **`KoolbaseEmbeddingModelUnsupportedError`** (`embedding_model_unsupported`, 400): a model Koolbase does not offer, one shut down by its provider, or a size it cannot store.
+- **Behaviour change**: a `placement_unavailable` 503 used to arrive as a generic `KoolbaseDataError` or `KoolbaseStorageError`. It is now the shared `KoolbaseServiceUnavailableError` (like `KoolbasePlanLimitError`), so a catch-all `instanceof KoolbaseDataError` no longer sees it; catch `KoolbaseError` for every SDK failure.
+- **Tested**: each code maps to its class and reports itself, in the database, storage and auth mappings; the estimate rides along.
+
 ## 12.28.0
 
 A search the server cannot run never replaces the list (#160). Same contract as koolbase_flutter 12.38.0.

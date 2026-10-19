@@ -1160,7 +1160,9 @@ export class KoolbaseDatabase {
    *
    * The field must already be declared on the collection via the dashboard
    * or CLI. `vector.length` must match the field's declared dimension;
-   * otherwise throws `KoolbaseVectorDimensionMismatchError`.
+   * otherwise throws `KoolbaseVectorDimensionMismatchError`. A field Koolbase
+   * embeds itself refuses it with `KoolbaseAutoEmbeddingManagedError`: write
+   * the record's fields instead.
    *
    * Online-only — vectors are not cached locally or queued offline because
    * HNSW similarity search has no useful offline semantics.

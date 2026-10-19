@@ -71,6 +71,7 @@ import {
   MfaEnrollmentNotFoundError,
   MfaNotEnabledError,
 } from './auth-errors.js';
+import { KoolbaseServiceUnavailableError } from './errors.js';
 import type { KoolbaseAvatarFile, SignInWithGoogleParams, SignOutReason } from './types.js';
 import { getPlatform } from './platform.js';
 import { DeviceMetadata } from './device-metadata.js';
@@ -1499,6 +1500,8 @@ private async parseAppleSessionResponse(res: Response): Promise<KoolbaseSession>
         throw new InvalidCredentialsError();
       case 'email_in_use':
         throw new EmailAlreadyInUseError();
+      case 'placement_unavailable':
+        throw new KoolbaseServiceUnavailableError(msg || undefined);
       case 'account_disabled':
         throw new UserDisabledError();
       case 'account_locked':

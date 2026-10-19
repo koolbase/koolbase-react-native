@@ -1,5 +1,6 @@
 import { KoolbaseAuth } from '../src/auth';
 import * as errors from '../src/auth-errors';
+import { KoolbaseServiceUnavailableError } from '../src/errors';
 import { setPlatform } from '../src/platform';
 import { testPlatform } from './platform';
 
@@ -67,6 +68,9 @@ const cases: Array<[string, new (...a: never[]) => Error]> = [
   ['insufficient_scope', errors.InsufficientScopeError],
   ['identity_not_found', errors.IdentityNotFoundError],
   ['provider_identity_already_linked', errors.ProviderIdentityAlreadyLinkedError],
+
+  // #161: the project's database could not be reached; shared, retryable.
+  ['placement_unavailable', KoolbaseServiceUnavailableError],
 ];
 
 describe('auth error mapping', () => {

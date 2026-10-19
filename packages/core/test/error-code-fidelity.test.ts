@@ -53,6 +53,9 @@ const API_CODES = new Set([
   'not_allowed', 'file_in_use', 'name_has_history', 'upload_incomplete',
   // Storage, S6.
   'malware_found', 'quarantined',
+  // #161, #162.
+  'placement_unavailable', 'auto_embedding_managed', 'reembed_confirmation_required',
+  'embedding_model_unsupported',
 ]);
 
 // Codes with no server counterpart, for one of two reasons.

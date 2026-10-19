@@ -95,6 +95,25 @@ export class KoolbasePlanLimitError extends KoolbaseError {
   }
 }
 
+/**
+ * The project's database could not be reached just now, or which database it
+ * is could not be established (a 503, `placement_unavailable`). Koolbase never
+ * answers from another database in its place, so nothing was read or written:
+ * try again shortly.
+ *
+ * Shared: any request to the project -- a query, an upload, a sign-in -- can
+ * meet it.
+ */
+export class KoolbaseServiceUnavailableError extends KoolbaseError {
+  readonly retryable = true;
+
+  constructor(message?: string) {
+    super(message ?? "This project's database is temporarily unavailable. Please try again.", 'placement_unavailable');
+    this.name = 'KoolbaseServiceUnavailableError';
+    Object.setPrototypeOf(this, KoolbaseServiceUnavailableError.prototype);
+  }
+}
+
 export class KoolbaseOfflineBaselineUnavailableError extends KoolbaseError {
   constructor(message: string) {
     super(message, 'offline_baseline_unavailable');

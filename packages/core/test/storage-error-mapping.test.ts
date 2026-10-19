@@ -1,6 +1,6 @@
 import { koolbaseStorageError } from '../src/storage-errors';
 import * as errors from '../src/storage-errors';
-import { KoolbasePlanLimitError } from '../src/errors';
+import { KoolbasePlanLimitError, KoolbaseServiceUnavailableError } from '../src/errors';
 
 // Storage's half of the same guard the auth and database tables provide.
 describe('storage error mapping', () => {
@@ -23,7 +23,8 @@ describe('storage error mapping', () => {
     ['upload_incomplete', errors.KoolbaseUploadIncompleteError],
     ['malware_found', errors.KoolbaseStorageMalwareError],
     ['quarantined', errors.KoolbaseStorageQuarantinedError],
-    ['plan_limit_reached', KoolbasePlanLimitError]])('%s maps to its own class', (code, Expected) => {
+    ['plan_limit_reached', KoolbasePlanLimitError],
+    ['placement_unavailable', KoolbaseServiceUnavailableError]])('%s maps to its own class', (code, Expected) => {
     expect(koolbaseStorageError(400, { code, error: 'server message' })).toBeInstanceOf(Expected);
   });
 

@@ -1,4 +1,4 @@
-import { KoolbaseError, KoolbasePlanLimitError, KoolbaseUnauthenticatedError } from './errors.js';
+import { KoolbaseError, KoolbasePlanLimitError, KoolbaseServiceUnavailableError, KoolbaseUnauthenticatedError } from './errors.js';
 /**
  * Base class for errors surfaced by the Koolbase data layer (database reads
  * and writes). Every data error carries a `message` and, when the server
@@ -193,6 +193,70 @@ export class KoolbaseInvalidEmbeddingConfigError extends KoolbaseDataError {
     );
     this.name = 'KoolbaseInvalidEmbeddingConfigError';
     Object.setPrototypeOf(this, KoolbaseInvalidEmbeddingConfigError.prototype);
+  }
+}
+
+/**
+ * The vector field is filled by automatic embedding: Koolbase makes its
+ * vectors from the record's fields, so the app cannot write one, delete one,
+ * or send text for it (a 409, `auto_embedding_managed`). Write the record's
+ * fields instead; the vector follows.
+ */
+export class KoolbaseAutoEmbeddingManagedError extends KoolbaseDataError {
+  constructor(message?: string) {
+    super(
+      message ?? 'This vector field is managed by automatic embedding and cannot be written manually.',
+      'auto_embedding_managed'
+    );
+    this.name = 'KoolbaseAutoEmbeddingManagedError';
+    Object.setPrototypeOf(this, KoolbaseAutoEmbeddingManagedError.prototype);
+  }
+}
+
+/** What embedding a collection again costs, roughly (#162). */
+export interface KoolbaseReembedEstimate {
+  records: number;
+  records_to_embed: number;
+  estimated_input_tokens: number;
+  provider: string;
+  model: string;
+  dimensions: number;
+  billed_by: string;
+  estimate: boolean;
+  cache_may_apply: boolean;
+  sampled_records: number;
+}
+
+/**
+ * A change to a vector field's embedding would embed the collection again,
+ * and was not confirmed (a 409, `reembed_confirmation_required`). `estimate`
+ * says what it would cost; send the change again with `confirm_reembed: true`
+ * to make it.
+ */
+export class KoolbaseReembedConfirmationRequiredError extends KoolbaseDataError {
+  readonly estimate?: KoolbaseReembedEstimate;
+
+  constructor(message?: string, estimate?: KoolbaseReembedEstimate) {
+    super(
+      message ?? 'This change embeds every record again; confirm it with confirm_reembed',
+      'reembed_confirmation_required'
+    );
+    this.estimate = estimate;
+    this.name = 'KoolbaseReembedConfirmationRequiredError';
+    Object.setPrototypeOf(this, KoolbaseReembedConfirmationRequiredError.prototype);
+  }
+}
+
+/**
+ * The embedding model is not one Koolbase offers, has been shut down by its
+ * provider, or cannot store vectors of that size (a 400,
+ * `embedding_model_unsupported`).
+ */
+export class KoolbaseEmbeddingModelUnsupportedError extends KoolbaseDataError {
+  constructor(message?: string) {
+    super(message ?? 'Embedding model not offered', 'embedding_model_unsupported');
+    this.name = 'KoolbaseEmbeddingModelUnsupportedError';
+    Object.setPrototypeOf(this, KoolbaseEmbeddingModelUnsupportedError.prototype);
   }
 }
 
@@ -554,6 +618,16 @@ export function koolbaseDataError(
       return attach(new KoolbaseFieldNotAutoEmbedError(message));
     case 'invalid_embedding_config':
       return attach(new KoolbaseInvalidEmbeddingConfigError(message));
+    case 'auto_embedding_managed':
+      return attach(new KoolbaseAutoEmbeddingManagedError(message));
+    case 'reembed_confirmation_required':
+      return attach(
+        new KoolbaseReembedConfirmationRequiredError(message, body?.details as KoolbaseReembedEstimate | undefined)
+      );
+    case 'embedding_model_unsupported':
+      return attach(new KoolbaseEmbeddingModelUnsupportedError(message));
+    case 'placement_unavailable':
+      return new KoolbaseServiceUnavailableError(message);
     case 'provider_not_configured':
       return attach(new KoolbaseProviderNotConfiguredError(message));
     case 'provider_invalid':

@@ -1,4 +1,4 @@
-import { KoolbaseError, KoolbasePlanLimitError, KoolbaseUnauthenticatedError } from './errors.js';
+import { KoolbaseError, KoolbasePlanLimitError, KoolbaseServiceUnavailableError, KoolbaseUnauthenticatedError } from './errors.js';
 /**
  * Base error type for all Koolbase storage errors. Catchable via
  * `instanceof KoolbaseStorageError` to handle any storage-related failure
@@ -437,6 +437,8 @@ export function koolbaseStorageError(
       const d = (body?.details ?? {}) as { resource?: string; limit?: number; plan?: string };
       return new KoolbasePlanLimitError(message, d.resource, d.limit, d.plan);
     }
+    case 'placement_unavailable':
+      return new KoolbaseServiceUnavailableError(message);
     case 'quota_exceeded':
       return new KoolbaseStorageQuotaError(message);
     case 'upload_expired':
