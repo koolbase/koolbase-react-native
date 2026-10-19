@@ -128,7 +128,7 @@ describe('field_search (#160)', () => {
   });
 
   it('a search the server could not answer says so; what is shown is not its answer', async () => {
-    serve((b) => (b.field_search ? { status: 400, error: 'field_search: field "starts_at" is datetime, not text a search can match' } : { records: [row('1', 'Book swap')], total: 1 }));
+    serve((b) => (b.field_search ? { status: 503, error: 'down' } : { records: [row('1', 'Book swap')], total: 1 }));
     const c = new KoolbaseCollectionController(db(), 'events', { searchDelayMs: 1 });
     await c.load();
     c.setSearch({ text: 'x', fields: ['starts_at'] });
@@ -136,6 +136,7 @@ describe('field_search (#160)', () => {
     const s = c.getState();
     expect(s.searching).toBe(false);
     expect(s.searchError).not.toBeNull();
+    expect(s.searchLoadedOnly).toBe(false);
     expect(s.status).toBe('loaded');
     // Cleared: the list unsearched again, the error gone.
     c.setSearch(null);
@@ -207,3 +208,143 @@ describe('field_search (#160): the edges', () => {
     expect(c.getState().status).toBe('error');
   });
 });
+
+describe('field_search (#160): searched among the records loaded', () => {
+  beforeEach(async () => {
+    setPlatform(await testPlatform());
+  });
+  const refused = { status: 400, error: 'field_search: choice "status": listed must be its declared values, draft, in_progress, done' };
+  const all = { records: [row('1', 'Book swap'), row('2', 'Food truck rally')], total: 2 };
+
+  it('the server refusing it: the list unsearched for the app to filter, and the server not asked again', async () => {
+    const bodies = serve((b) => (b.field_search ? refused : all));
+    const c = new KoolbaseCollectionController(db(), 'events', { searchDelayMs: 1 });
+    await c.load();
+    c.setSearch(food);
+    await settle(10);
+    const s = c.getState();
+    expect(s.searchLoadedOnly).toBe(true);
+    expect(s.searchError).toBeNull();
+    expect(s.searching).toBe(false);
+    expect(titles(c)).toEqual(['Book swap', 'Food truck rally']);
+    expect(bodies.filter((b) => b.field_search)).toHaveLength(1);
+    // Another search: not sent; still among the loaded.
+    c.setSearch({ ...food, text: 'book' });
+    await settle(10);
+    expect(bodies.filter((b) => b.field_search)).toHaveLength(1);
+    expect(c.getState().searchLoadedOnly).toBe(true);
+    expect(c.getState().searching).toBe(false);
+    // Cleared: not searching at all.
+    c.setSearch(null);
+    expect(c.getState().searchLoadedOnly).toBe(false);
+  });
+
+  it('refused on the first load or a refresh: read unsearched at once; the refresh ends', async () => {
+    const bodies = serve((b) => (b.field_search ? refused : all));
+    const c = new KoolbaseCollectionController(db(), 'events', { search: food });
+    await c.load();
+    expect(c.getState().status).toBe('loaded');
+    expect(c.getState().searchLoadedOnly).toBe(true);
+    expect(titles(c)).toEqual(['Book swap', 'Food truck rally']);
+    await c.refresh();
+    expect(c.getState().refreshing).toBe(false);
+    expect(bodies.filter((b) => b.field_search)).toHaveLength(1);
+  });
+
+  it('wider than the server takes -- a Choice matching over 100 values: not sent; a narrower one is', async () => {
+    const bodies = serve((b) => (b.field_search ? { records: [row('9', 'match')], total: 1 } : all));
+    const listed = Array.from({ length: 150 }, (_, i) => `v${i}`);
+    const wide = { text: 'v', fields: ['title'], choices: [{ field: 'country', values: listed.slice(0, 101), listed }] };
+    const c = new KoolbaseCollectionController(db(), 'events', { searchDelayMs: 1 });
+    await c.load();
+    c.setSearch(wide);
+    expect(c.getState().searchLoadedOnly).toBe(true);
+    expect(c.getState().searching).toBe(false);
+    await settle(10);
+    expect(bodies.filter((b) => b.field_search)).toHaveLength(0);
+    c.setSearch({ ...wide, text: 'v1', choices: [{ field: 'country', values: ['v1'], listed }] });
+    expect(c.getState().searchLoadedOnly).toBe(false);
+    await settle(10);
+    expect(bodies.filter((b) => b.field_search)).toHaveLength(1);
+    expect(titles(c)).toEqual(['match']);
+    // Wide again: the list unsearched, read again.
+    c.setSearch(wide);
+    await settle(10);
+    expect(c.getState().searchLoadedOnly).toBe(true);
+    expect(titles(c)).toEqual(['Book swap', 'Food truck rally']);
+  });
+
+  it('text over 100 characters is not sent', async () => {
+    const bodies = serve(() => all);
+    const c = new KoolbaseCollectionController(db(), 'events', { search: { text: 'x'.repeat(101), fields: ['title'] } });
+    await c.load();
+    expect(c.getState().searchLoadedOnly).toBe(true);
+    expect(bodies.every((b) => !b.field_search)).toBe(true);
+  });
+
+  it('cleared after a read that failed: the list read again, never a search\'s answer shown as the list', async () => {
+    let offline = false;
+    const bodies = serve((b) => {
+      if (offline) return { status: 503, error: 'down' };
+      return b.field_search ? { records: [row('2', 'Food truck rally')], total: 1 } : all;
+    });
+    const c = new KoolbaseCollectionController(db(), 'events', { searchDelayMs: 1 });
+    await c.load();
+    c.setSearch(food);
+    await settle(10);
+    expect(titles(c)).toEqual(['Food truck rally']);
+    offline = true;
+    const listed = Array.from({ length: 150 }, (_, i) => `v${i}`);
+    c.setSearch({ text: 'v', fields: ['title'], choices: [{ field: 'country', values: listed.slice(0, 101), listed }] });
+    await settle(10);
+    expect(c.getState().searchError).not.toBeNull();
+    offline = false;
+    const before = bodies.length;
+    c.setSearch(null);
+    await settle(10);
+    expect(bodies.length).toBeGreaterThan(before);
+    expect(titles(c)).toEqual(['Book swap', 'Food truck rally']);
+    expect(c.getState().searchError).toBeNull();
+  });
+
+  it('a refresh superseded by typing still ends', async () => {
+    const slow = gate();
+    serve(async (b) => {
+      if (!b.field_search && b.offset === 0) await slow.opened;
+      return b.field_search ? { records: [row('9', 'match')], total: 1 } : all;
+    });
+    const c = new KoolbaseCollectionController(db(), 'events', { searchDelayMs: 1 });
+    slow.open();
+    await c.load();
+    const held = gate();
+    serve(async (b) => {
+      if (!b.field_search) await held.opened;
+      return b.field_search ? { records: [row('9', 'match')], total: 1 } : all;
+    });
+    const r = c.refresh();
+    c.setSearch(food);
+    await settle(10);
+    held.open();
+    await r;
+    await settle();
+    expect(c.getState().refreshing).toBe(false);
+  });
+
+  it('refused on Load more: the list unsearched', async () => {
+    let refuse = false;
+    serve((b) => {
+      if (b.field_search && refuse) return refused;
+      if (b.field_search) return { records: [row(`m${b.offset}`, 'match')], total: 2 };
+      return all;
+    });
+    const c = new KoolbaseCollectionController(db(), 'events', { search: food, limit: 1 });
+    await c.load();
+    refuse = true;
+    await c.loadMore();
+    await settle(10);
+    expect(c.getState().searchLoadedOnly).toBe(true);
+    expect(c.getState().loadingMore).toBe(false);
+    expect(titles(c)).toEqual(['Book swap', 'Food truck rally']);
+  });
+});
+

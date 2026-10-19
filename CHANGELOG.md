@@ -3,6 +3,14 @@
 Each version covers all three packages: @koolbase/core, @koolbase/react-native and
 @koolbase/js. Earlier history: https://docs.koolbase.com/changelog
 
+## 12.28.0
+
+A search the server cannot run never replaces the list (#160). Same contract as koolbase_flutter 12.38.0.
+
+- **`searchLoadedOnly`** (`CollectionState`, `useCollection`): true while the search is not run on the server, so `records` are the list unsearched and an app filters them itself. Either the server refused the list's search -- a `field_search` it will not take, as when the collection's fields changed since the app was built; it is not asked again while the controller lives -- or the search is wider than the server takes (a Choice matching more than 100 values, text over 100 characters), which is not sent.
+- **`searchError`** is unchanged in meaning (the server could not answer: offline, say) but is now meant to be shown beside the records, not instead of them: they are the list as last loaded, for the app to filter.
+- **Tested**: refused -- the list unsearched and not asked again, on a search, a first load and a refresh; too wide -- not sent, a narrower one is; text over 100 characters.
+
 ## 12.27.0
 
 Search on the server (#160). Same contract as koolbase_flutter 12.37.0.
