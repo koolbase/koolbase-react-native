@@ -65,3 +65,4 @@ export {
   type PlatformLocks,
   type PlatformInfo,
 } from './platform.js';
+export * from './query-builder.js';

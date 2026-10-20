@@ -27,6 +27,7 @@ import { liveSource } from './live-source.js';
 import { registerQueryRefresher } from './query-refresh.js';
 import { KoolbaseError } from './errors.js';
 import type { FieldSearch, KoolbaseRecord, QueryOptions, QueryResult } from './types.js';
+import type { KbSortField, KbWhereNode } from './query-builder.js';
 
 export type CollectionStatus = 'loading' | 'loaded' | 'error';
 
@@ -34,6 +35,13 @@ export type CollectionStatus = 'loading' | 'loaded' | 'error';
 export interface CollectionQuery {
   where?: Record<string, unknown>;
   orderBy?: string;
+  /**
+   * The typed query (#165): a where tree, a sort and a zone (the device's
+   * unless named). Not combined with `where`, `orderBy` or `orderDesc`.
+   */
+  filter?: KbWhereNode;
+  sort?: KbSortField[];
+  timezone?: string;
   orderDesc?: boolean;
   /** Page size; the server's default (20) when absent. */
   limit?: number;
@@ -138,6 +146,9 @@ export function collectionQueryKey(collection: string, query: CollectionQuery = 
     query.orderBy ?? null,
     query.orderDesc === true,
     query.limit ?? null,
+    query.filter ?? null,
+    query.sort ?? null,
+    query.timezone ?? null,
     // Only when live: every other query keeps the key it always had.
     ...(query.live === true ? ['live'] : []),
   ]);
@@ -439,6 +450,9 @@ export class KoolbaseCollectionController {
       offset,
       orderBy: this.spec.orderBy,
       orderDesc: this.spec.orderDesc,
+      ...(this.spec.filter ? { where: this.spec.filter } : {}),
+      ...(this.spec.sort && this.spec.sort.length > 0 ? { sort: this.spec.sort } : {}),
+      ...(this.spec.timezone ? { timezone: this.spec.timezone } : {}),
       ...(this.serverSearch() ? { fieldSearch: this.serverSearch()! } : {}),
       cache,
       onRefresh,

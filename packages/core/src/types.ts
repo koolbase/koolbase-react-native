@@ -1,3 +1,5 @@
+import type { KbSortField, KbWhereNode } from './query-builder.js';
+
 export interface KoolbaseConfig {
   /**
    * Host platform adapter. Defaults to React Native. A web package or a test
@@ -332,6 +334,15 @@ export interface QueryOptions {
   populate?: string[];
   /** A search over the fields it names, on the server (#160). Empty text: none. */
   fieldSearch?: FieldSearch;
+  /**
+   * The typed query (#165): a where tree (KbWhere), a sort (KbSort, up to
+   * 3 fields) and the IANA zone its relative times resolve in -- the
+   * device's own unless named. Not combined with filters, orderBy or
+   * orderDesc: use one or the other.
+   */
+  where?: KbWhereNode;
+  sort?: KbSortField[];
+  timezone?: string;
   /**
    * How to read: 'default' is cache-first, refreshed in the background;
    * 'network-only' skips the cache and waits for the server (the result still

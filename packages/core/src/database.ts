@@ -45,6 +45,7 @@ import {
 import { SyncEngine } from './sync-engine.js';
 import { recordFromWire } from './record.js';
 import { koolbaseDataError, KoolbaseDataError } from './database-errors.js';
+import { deviceZone, isTypedQuery } from './query-builder.js';
 
 function generateWriteId(): string {
   return 'local_' + Math.random().toString(36).slice(2) + Date.now().toString(36);
@@ -210,16 +211,24 @@ export class KoolbaseDatabase {
     collection: string,
     options: QueryOptions
   ): Promise<QueryResult> {
+    // One language per request (#165): the server refuses both.
+    const typed = isTypedQuery(options);
+    if (typed && (Object.keys(options.filters ?? {}).length > 0 || options.orderBy || options.orderDesc)) {
+      throw new TypeError('where, sort and timezone are not combined with filters, orderBy or orderDesc: use one or the other');
+    }
     const raw = await this.request<{ records: Record<string, unknown>[]; total: number }>(
       'POST',
       '/v1/sdk/db/query',
       {
         collection,
-        filters: options.filters ?? {},
+        ...(typed
+          ? {}
+          : { filters: options.filters ?? {}, order_by: options.orderBy, order_desc: options.orderDesc ?? false }),
         limit: options.limit ?? 20,
         offset: options.offset ?? 0,
-        order_by: options.orderBy,
-        order_desc: options.orderDesc ?? false,
+        ...(options.where ? { where: options.where } : {}),
+        ...(options.sort && options.sort.length > 0 ? { sort: options.sort } : {}),
+        ...(options.timezone ? { timezone: options.timezone } : {}),
         populate: options.populate ?? [],
         // #160: only with text to search; the server checks the rest.
         ...(options.fieldSearch && options.fieldSearch.text.trim() !== ''
@@ -280,6 +289,12 @@ export class KoolbaseDatabase {
     // query's identity, so both policies share one cache entry. onRefresh is
     // who to tell, not what to read, so it stays out the same way.
     const { cache: cachePolicy, onRefresh, ...queryOptions } = options;
+    // #165: a typed query carries the device's zone unless it names one --
+    // resolved before the hash, so the zone is part of its identity.
+    if (isTypedQuery(queryOptions) && !queryOptions.timezone) {
+      const zone = deviceZone();
+      if (zone) queryOptions.timezone = zone;
+    }
     const queryHash = hashQuery(collection, queryOptions as Record<string, unknown>);
 
     // A search's answer is the server's (#160): never served from the cache,
