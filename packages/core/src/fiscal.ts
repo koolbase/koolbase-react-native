@@ -1,3 +1,4 @@
+import { invalidPublicKeyIn } from './errors';
 import { sessionFetch } from './network.js';
 import { KoolbaseConfig } from './types.js';
 import { KoolbaseError, KoolbaseUnauthenticatedError } from './errors.js';
@@ -173,13 +174,17 @@ export class KoolbaseFiscal {
   }
 
   private async decode(res: Response): Promise<FiscalIntentResult> {
+    const text = await res.text();
+    // A refused app key is setup, not a session (#169): never signs out.
+    const badKey = invalidPublicKeyIn(text);
+    if (badKey) throw badKey;
     if (res.status === 401 || res.status === 403) {
       await this.onSessionExpired?.();
       throw new KoolbaseUnauthenticatedError(
         `fiscal: unauthenticated (${res.status})`
       );
     }
-    return decodeFiscalResponse(res.status, await res.text());
+    return decodeFiscalResponse(res.status, text);
   }
 
   /**

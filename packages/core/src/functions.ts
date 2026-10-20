@@ -58,7 +58,7 @@ export class KoolbaseFunctions {
       const message =
         ((data as Record<string, unknown>)?.error as string) ??
         'Function deploy failed';
-      const err = functionInvokeError(res.status, message);
+      const err = functionInvokeError(res.status, message, (data as Record<string, unknown> | null)?.code as string | undefined);
       if (err instanceof KoolbaseUnauthenticatedError) {
         await this.onSessionExpired?.();
       }
@@ -109,7 +109,7 @@ export class KoolbaseFunctions {
       const message =
         ((data as Record<string, unknown>)?.error as string) ??
         'Function invocation failed';
-      const err = functionInvokeError(res.status, message);
+      const err = functionInvokeError(res.status, message, (data as Record<string, unknown> | null)?.code as string | undefined);
       if (err instanceof KoolbaseUnauthenticatedError) {
         await this.onSessionExpired?.();
       }

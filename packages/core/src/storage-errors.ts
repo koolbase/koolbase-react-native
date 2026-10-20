@@ -1,3 +1,4 @@
+import { KoolbaseInvalidPublicKeyError } from './errors';
 import { KoolbaseError, KoolbasePlanLimitError, KoolbaseServiceUnavailableError, KoolbaseUnauthenticatedError } from './errors.js';
 /**
  * Base error type for all Koolbase storage errors. Catchable via
@@ -492,6 +493,8 @@ export function koolbaseStorageError(
     case 404:
       return new KoolbaseStorageNotFoundError(message);
     case 401:
+      // A refused app key is setup, not a session (#169): never signs out.
+      if (code === 'invalid_public_key') return new KoolbaseInvalidPublicKeyError(message);
       // A rejected credential is not a storage problem: a session stops
       // working for the whole SDK at once, so it raises the shared type.
       return new KoolbaseUnauthenticatedError(message);

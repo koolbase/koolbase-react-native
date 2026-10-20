@@ -1,3 +1,4 @@
+import { invalidPublicKeyIn } from './errors';
 import { sessionFetch } from './network.js';
 import {
   readOfflineState,
@@ -332,7 +333,10 @@ export class SyncEngine {
       res = await sessionFetch(`${url}${q}`, { method: 'DELETE', headers });
     }
 
-    if (res.status === 401) throw new KoolbaseUnauthenticatedError('unauthorized');
+    if (res.status === 401) {
+      // A refused app key is setup, not a session (#169): never signs out.
+      throw invalidPublicKeyIn(await res.clone().text()) ?? new KoolbaseUnauthenticatedError('unauthorized');
+    }
 
     if (res.status === 409) {
       const body = await res.json().catch(() => ({} as any));

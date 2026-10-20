@@ -1,3 +1,4 @@
+import { KoolbaseInvalidPublicKeyError, INVALID_PUBLIC_KEY_MESSAGE } from './errors';
 import { KoolbaseError, KoolbaseUnauthenticatedError } from './errors.js';
 
 /**
@@ -110,9 +111,13 @@ export class FunctionRateLimitError extends FunctionInvokeError {
 }
 
 /** Builds the right error for a failed invocation. */
-export function functionInvokeError(status: number, message: string): KoolbaseError {
+export function functionInvokeError(status: number, message: string, code?: string): KoolbaseError {
   switch (status) {
     case 401:
+      // A refused app key is setup, not a session (#169): never signs out.
+      if (code === 'invalid_public_key' || message === INVALID_PUBLIC_KEY_MESSAGE) {
+        return new KoolbaseInvalidPublicKeyError(message);
+      }
       // Not a Function failure. A rejected credential stops the whole SDK
       // working, so it raises the shared type.
       return new KoolbaseUnauthenticatedError(message);

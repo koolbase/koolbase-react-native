@@ -25,7 +25,7 @@ const API_CODES = new Set([
   'constraint_exists', 'constraint_not_found', 'contact_not_verified',
   'dangling_references', 'duplicate', 'duplicate_values', 'email_code_disabled', 'mfa_already_enabled', 'mfa_enrollment_not_found', 'mfa_not_enabled', 'mfa_required', 'recent_auth_required', 'recent_mfa_required', 'email_in_use', 'email_not_verified',
   'error', 'field_not_auto_embed', 'file_too_large',
-  'hide_requires_verification', 'idempotency_conflict',
+  'hide_requires_verification', 'idempotency_conflict', 'invalid_public_key',
   'idempotency_key_reused', 'identity_not_found', 'insufficient_authority',
   'insufficient_scope', 'internal_error', 'invalid', 'invalid_body',
   'invalid_credentials', 'invalid_embedding_config', 'invalid_oauth_token',

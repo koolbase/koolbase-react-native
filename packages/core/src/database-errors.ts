@@ -1,3 +1,4 @@
+import { KoolbaseInvalidPublicKeyError } from './errors';
 import { KoolbaseError, KoolbasePlanLimitError, KoolbaseServiceUnavailableError, KoolbaseUnauthenticatedError } from './errors.js';
 /**
  * Base class for errors surfaced by the Koolbase data layer (database reads
@@ -571,6 +572,10 @@ export function koolbaseDataError(
   // Status-first for auth: a 401 means the credentials were not accepted,
   // whatever code the body claims. Trusting a mislabelled body here bypasses
   // session-clearing and strands the app signed-in with dead credentials.
+  // A refused app key is setup, not a session (#169): never signs anyone
+  // out. Ahead of status-first because the code is the server's own refusal
+  // of the key, not a body's claim about a session.
+  if (code === 'invalid_public_key') return attach(new KoolbaseInvalidPublicKeyError(message));
   if (status === 401) {
     return new KoolbaseUnauthenticatedError(message);
   }

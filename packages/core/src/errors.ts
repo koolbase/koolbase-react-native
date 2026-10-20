@@ -121,3 +121,35 @@ export class KoolbaseOfflineBaselineUnavailableError extends KoolbaseError {
     Object.setPrototypeOf(this, new.target.prototype);
   }
 }
+
+/** What the server says for a refused app key, word for word. */
+export const INVALID_PUBLIC_KEY_MESSAGE =
+  "This app's Koolbase key isn't valid for this project.";
+
+/**
+ * The app's Koolbase key was refused (`invalid_public_key`, #169): unknown or
+ * revoked, or its project deleted or not ready. The developer's setup, not the
+ * user's session: deliberately NOT a KoolbaseUnauthenticatedError, so it never
+ * signs anyone out. Raised by any surface, since every request carries the key.
+ */
+export class KoolbaseInvalidPublicKeyError extends KoolbaseError {
+  constructor(message: string = INVALID_PUBLIC_KEY_MESSAGE) {
+    super(message, 'invalid_public_key');
+    this.name = 'KoolbaseInvalidPublicKeyError';
+    Object.setPrototypeOf(this, new.target.prototype);
+  }
+}
+
+/** The refusal in a failed response's body, when it is a refused app key
+ *  (#169); null otherwise. For paths that read a status before a code. */
+export function invalidPublicKeyIn(body: string): KoolbaseInvalidPublicKeyError | null {
+  try {
+    const j = JSON.parse(body);
+    if (j && typeof j === 'object' && j.code === 'invalid_public_key') {
+      return new KoolbaseInvalidPublicKeyError(typeof j.error === 'string' && j.error ? j.error : undefined);
+    }
+  } catch {
+    // not JSON: not this refusal
+  }
+  return null;
+}
