@@ -7,6 +7,15 @@ is based on [Keep a Changelog][kac], and this project adheres to
 [kac]: https://keepachangelog.com/en/1.1.0/
 [semver]: https://semver.org/
 
+## 12.30.0
+
+A refused app key is reported as the setup problem it is, never as a wrong password and never by signing the user out (#168, #169). Same contract as koolbase_flutter 12.40.0.
+
+- **`KoolbaseInvalidPublicKeyError`** (`invalid_public_key`, 401): the app's Koolbase key is unknown or revoked, or its project is deleted or not ready. The API answers this on any route since #169. It is deliberately not a `KoolbaseUnauthenticatedError`, so it never clears the session.
+- **Behaviour change**: a sign-in call's 401 without a recognised code used to become `InvalidCredentialsError` ("Invalid email or password"), whatever the cause. It is now a generic `KoolbaseAuthError` carrying the server's reason. A refresh's 401 is still a session that expired. The API sends `invalid_credentials` whenever a password is wrong.
+- **Covered surfaces**: auth (with Apple and Google sign-in), data, storage, Functions, fiscal and the offline sync engine.
+- **Tested**: the code maps to its error on each surface; a data 401 for the key does not sign anyone out, and any other data 401 still does.
+
 ## 12.2.0
 
 ### Added
