@@ -7,6 +7,12 @@ adheres to [Semantic Versioning][semver].
 [kac]: https://keepachangelog.com/en/1.1.0/
 [semver]: https://semver.org/
 
+## 12.33.0
+
+Search by meaning takes the typed filter (#173). Same contract as koolbase_flutter 12.43.0.
+
+- `searchSemantic({ filter, timezone })`: the same `KbWhereNode` tree `query()` takes (#165), applied inside the collection's read rule in semantic, lexical and hybrid modes. The device's zone unless one is named. `filter` with `where` throws before anything is sent; existing searches are unchanged.
+
 ## 12.32.0
 
 Typed queries (#165): filters with and/or groups, ranges and dates, and sorts by a field's declared type. Same contract as koolbase_flutter 12.42.0.

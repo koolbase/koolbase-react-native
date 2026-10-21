@@ -1,3 +1,4 @@
+import type { KbWhereNode } from './query-builder.js';
 import { sessionFetch } from './network.js';
 import { refreshCollectionQueries } from './query-refresh.js';
 import { KoolbaseRevisionMismatchError } from './database-errors.js';
@@ -1329,7 +1330,15 @@ export class KoolbaseDatabase {
     where?: Record<string, unknown>;
     mode?: SearchMode;
     minSimilarity?: number;
+    /** The typed filter (#165, #173): the tree list queries take, applied
+     *  inside the collection's read rule in every mode. Not with `where`. */
+    filter?: KbWhereNode;
+    /** The IANA zone the filter's days are read in; the device's if unset. */
+    timezone?: string;
   }): Promise<SemanticSearchResult> {
+    if (opts.filter && opts.where && Object.keys(opts.where).length > 0) {
+      throw new TypeError('searchSemantic: provide filter or where, not both.');
+    }
     const hasVector = Array.isArray(opts.queryVector) && opts.queryVector.length > 0;
     const hasText = typeof opts.queryText === 'string' && opts.queryText.trim().length > 0;
     if (!hasVector && !hasText) {
@@ -1363,6 +1372,11 @@ export class KoolbaseDatabase {
     }
     if (opts.minSimilarity !== undefined) {
       body.min_similarity = opts.minSimilarity;
+    }
+    if (opts.filter) {
+      body.filter = opts.filter;
+      const zone = opts.timezone ?? deviceZone();
+      if (zone) body.timezone = zone;
     }
     const raw = await this.request<{
       results: Array<{ record: Record<string, unknown>; distance: number }>;
