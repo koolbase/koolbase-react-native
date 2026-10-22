@@ -1,3 +1,5 @@
+import type { KbWhereNode } from './query-builder.js';
+
 /**
  * Asking "how many" and "how much" over a collection, correctly.
  *
@@ -67,6 +69,14 @@ export interface KoolbaseAggregateRequest {
   collection: string;
   /** AND-ed record filters on top of the read rule. */
   where?: KoolbaseAggregateFilter[];
+  /**
+   * The typed filter a list's query takes (#165): and/or groups, ranges,
+   * dates, relative times -- so "upcoming events" counts what the list
+   * shows. Not with `where`.
+   */
+  filter?: KbWhereNode;
+  /** The IANA zone the filter's relative times resolve in; the server's default if unset. */
+  timezone?: string;
   /** Absent means one group: the measures over everything. */
   groupBy?: KoolbaseGroupBy;
   /** At least one. */

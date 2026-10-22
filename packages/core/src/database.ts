@@ -733,12 +733,19 @@ export class KoolbaseDatabase {
   async aggregate(
     request: KoolbaseAggregateRequest
   ): Promise<KoolbaseAggregateResult> {
+    if (request.filter && request.where?.length) {
+      throw new TypeError('aggregate: provide filter or where, not both.');
+    }
     const raw = await this.request<Record<string, unknown>>(
       'POST',
       '/v1/sdk/db/aggregate',
       {
         collection: request.collection,
         ...(request.where?.length ? { where: request.where } : {}),
+        // The typed filter, as a list sends it: `where` as an object.
+        ...(request.filter
+          ? { where: request.filter, ...(request.timezone ? { timezone: request.timezone } : {}) }
+          : {}),
         ...(request.groupBy
           ? {
               group_by: {

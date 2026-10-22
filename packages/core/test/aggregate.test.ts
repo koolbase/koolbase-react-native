@@ -138,3 +138,59 @@ describe('aggregate', () => {
     expect(r.groups).toEqual([]);
   });
 });
+
+describe('aggregate with the typed filter', () => {
+  beforeEach(async () => {
+    setPlatform(await testPlatform());
+  });
+
+  const upcoming = {
+    field: 'starts_at',
+    operator: 'after',
+    value: { kind: 'relative_time', preset: 'now' },
+  } as never;
+
+  function sent(): Record<string, unknown> {
+    const call = (global.fetch as jest.Mock).mock.calls[0];
+    return JSON.parse(call[1].body as string);
+  }
+
+  it('sends the tree as where, and its zone', async () => {
+    respond({ groups: [], matched: 0, accounting: {} });
+    await db().aggregate({
+      collection: 'events',
+      filter: upcoming,
+      timezone: 'Africa/Accra',
+      measures: [{ aggregate: 'count', as: 'value' }],
+    });
+    const body = sent();
+    expect(body.where).toEqual(upcoming);
+    expect(body.timezone).toBe('Africa/Accra');
+  });
+
+  it('sends the old filters exactly as before', async () => {
+    respond({ groups: [], matched: 0, accounting: {} });
+    await db().aggregate({
+      collection: 'events',
+      where: [{ field: 'featured', op: 'eq', value: true }],
+      measures: [{ aggregate: 'count', as: 'value' }],
+    });
+    const body = sent();
+    expect(body.where).toEqual([{ field: 'featured', op: 'eq', value: true }]);
+    expect(body.timezone).toBeUndefined();
+  });
+
+  it('refuses filter and where together, before anything is sent', async () => {
+    respond({ groups: [], matched: 0, accounting: {} });
+    await expect(
+      db().aggregate({
+        collection: 'events',
+        where: [{ field: 'featured', op: 'eq', value: true }],
+        filter: upcoming,
+        measures: [{ aggregate: 'count', as: 'value' }],
+      }),
+    ).rejects.toThrow(TypeError);
+    expect(global.fetch).not.toHaveBeenCalled();
+  });
+});
+

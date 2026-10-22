@@ -1,3 +1,10 @@
+## 12.34.0
+
+Totals take the typed filter. Same contract as koolbase_flutter 12.45.0.
+
+- **`db.aggregate({ filter, timezone })`**: the same tree a list's query takes (#165): and/or groups, ranges, dates, relative times. "Upcoming events" now counts exactly what the list shows; the server applies it inside the read rule.
+- **One language per total**: `filter` with `where` throws `TypeError` before anything is sent. Existing totals are sent exactly as before.
+
 # Changelog
 
 Each version covers all three packages: @koolbase/core, @koolbase/react-native and
