@@ -49,6 +49,7 @@ import {
   TokenExpiredError,
   UnsupportedOAuthProviderError,
   RateLimitError,
+  retryAfterOf,
   VerificationResendCooldownError,
   VerificationResendDailyCapError,
   SessionExpiredError,
@@ -1517,7 +1518,7 @@ private async parseAppleSessionResponse(res: Response): Promise<KoolbaseSession>
       case 'invalid_unlock_token':
         throw new UnlockTokenInvalidError();
       case 'rate_limit':
-        throw new RateLimitError(msg || undefined);
+        throw new RateLimitError(msg || undefined, retryAfterOf(res, body));
       // Verification state. Two codes, one situation — projectauth and the
       // dashboard's auth package name it differently and an app should not
       // have to know which spoke.
@@ -1608,7 +1609,7 @@ private async parseAppleSessionResponse(res: Response): Promise<KoolbaseSession>
       if (msg.includes('account temporarily locked')) {
         throw new AccountLockedError();
       }
-      throw new RateLimitError(msg || undefined);
+      throw new RateLimitError(msg || undefined, retryAfterOf(res, body));
     }
 
     // ─── legacy message fallback ───

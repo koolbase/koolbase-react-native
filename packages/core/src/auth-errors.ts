@@ -124,11 +124,31 @@ export class UnlockTokenInvalidError extends KoolbaseAuthError {
  * separate server-side rate-limiter.
  */
 export class RateLimitError extends KoolbaseAuthError {
-  constructor(message?: string) {
+  /**
+   * How long until the server would take the request again, in whole
+   * seconds -- its `retry_after`, or its Retry-After header -- so an app can
+   * count down to it ("Resend in 7:42"). Null when the server did not say.
+   */
+  readonly retryAfter: number | null;
+
+  constructor(message?: string, retryAfter?: number | null) {
     super(message ?? 'Too many requests, please wait before trying again', 'rate_limit');
     this.name = 'RateLimitError';
+    this.retryAfter = retryAfter ?? null;
     Object.setPrototypeOf(this, RateLimitError.prototype);
   }
+}
+
+/**
+ * When a 429 says to try again, in whole seconds: its body's `retry_after`,
+ * else its Retry-After header; null when it says neither. A web app on
+ * another origin sees only the body, which is why the server sends both.
+ */
+export function retryAfterOf(res: { headers?: { get(name: string): string | null } }, body: unknown): number | null {
+  const b = (body as { retry_after?: unknown } | null | undefined)?.retry_after;
+  if (typeof b === 'number' && Number.isFinite(b) && b >= 0) return Math.ceil(b);
+  const h = Number.parseInt((res.headers?.get('retry-after') ?? '').trim(), 10);
+  return Number.isFinite(h) && h >= 0 ? h : null;
 }
 
 /**

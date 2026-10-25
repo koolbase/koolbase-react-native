@@ -1,3 +1,9 @@
+## 12.35.0
+
+A rate-limited request says when to try again (#244). Same contract as koolbase_flutter 12.47.0.
+
+- **`RateLimitError.retryAfter`**: whole seconds until the server would take the request again -- its `retry_after`, or its `Retry-After` header -- for a countdown ("Resend in 7:42"). Null when it did not say. An emailed sign-in code refused for sending too many now carries it.
+
 ## 12.34.0
 
 Totals take the typed filter. Same contract as koolbase_flutter 12.45.0.
