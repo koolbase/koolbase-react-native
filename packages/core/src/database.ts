@@ -786,12 +786,17 @@ export class KoolbaseDatabase {
       groups: ((raw.groups as Record<string, unknown>[]) ?? []).map((g) => ({
         category: String(g.category ?? ''),
         values: (g.values as Record<string, number | null>) ?? {},
+        // Below the collection's count minimum (#299): "Fewer than N".
+        ...(typeof g.fewer_than === 'number' ? { fewerThan: g.fewer_than } : {}),
       })),
       matched: Number(raw.matched ?? 0),
       accounting,
       // Explicitly boolean: a missing field must read as false, not
       // undefined, or `if (!r.tooManyGroups)` passes on a refused request.
       tooManyGroups: raw.too_many_groups === true,
+      // Below the collection's count minimum (#299): matched is 0 and the
+      // number is not said -- show "Fewer than N", never 0.
+      ...(typeof raw.fewer_than === 'number' ? { fewerThan: raw.fewer_than } : {}),
     };
   }
 

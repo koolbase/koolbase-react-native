@@ -89,6 +89,12 @@ export interface KoolbaseAggregateGroup {
   category: string;
   /** Keyed by each measure's `as`. Null where a group had nothing to measure. */
   values: Record<string, number | null>;
+  /**
+   * The collection's count minimum (#299), when this group's count was below
+   * it: every value is null, and what to show is "Fewer than N" -- never 0,
+   * and never nothing.
+   */
+  fewerThan?: number;
 }
 
 /**
@@ -125,4 +131,11 @@ export interface KoolbaseAggregateResult {
    * would be exactly the wrong number this API exists to prevent.
    */
   tooManyGroups: boolean;
+  /**
+   * The collection's count minimum (#299), when `matched` was below it: the
+   * number is not said. `matched` is then 0 and `accounting` empty, and what
+   * to show is "Fewer than N" -- never 0. Only a count that sees beyond what
+   * the caller may read, under the collection's Count rule.
+   */
+  fewerThan?: number;
 }

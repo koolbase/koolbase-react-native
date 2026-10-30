@@ -1,3 +1,9 @@
+## 12.36.0
+
+Below a count minimum, a count says "fewer than" (#299). Same contract as koolbase_flutter 12.49.0.
+
+- **`KoolbaseAggregateResult.fewerThan` and `KoolbaseAggregateGroup.fewerThan`**: below the collection's count minimum the API does not say the number -- show "Fewer than N", never 0. Absent when the number is said. Only a count that sees beyond what the caller may read, under the collection's Count rule.
+
 ## 12.35.0
 
 A rate-limited request says when to try again (#244). Same contract as koolbase_flutter 12.47.0.

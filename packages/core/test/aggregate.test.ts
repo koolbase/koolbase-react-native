@@ -139,6 +139,43 @@ describe('aggregate', () => {
   });
 });
 
+describe('aggregate below the count minimum (#299)', () => {
+  beforeEach(async () => {
+    setPlatform(await testPlatform());
+  });
+
+  it('says fewer than N, on the result and on the group', async () => {
+    respond({
+      groups: [{ category: '', values: { value: null }, fewer_than: 5 }],
+      matched: 0,
+      accounting: {},
+      fewer_than: 5,
+    });
+    const r = await db().aggregate({
+      collection: 'tickets',
+      measures: [{ aggregate: 'count', as: 'value' }],
+    });
+    expect(r.fewerThan).toBe(5);
+    expect(r.groups[0].fewerThan).toBe(5);
+    expect(r.groups[0].values.value).toBeNull();
+  });
+
+  it('is absent when the number is said', async () => {
+    respond({
+      groups: [{ category: '', values: { value: 120 } }],
+      matched: 120,
+      accounting: { value: { counted: 120, skipped: 0 } },
+    });
+    const r = await db().aggregate({
+      collection: 'tickets',
+      measures: [{ aggregate: 'count', as: 'value' }],
+    });
+    expect('fewerThan' in r).toBe(false);
+    expect('fewerThan' in r.groups[0]).toBe(false);
+    expect(r.groups[0].values.value).toBe(120);
+  });
+});
+
 describe('aggregate with the typed filter', () => {
   beforeEach(async () => {
     setPlatform(await testPlatform());
