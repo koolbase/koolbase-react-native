@@ -1,3 +1,9 @@
+## 12.37.0
+
+Sign in with Apple tokens can be revoked when an account is deleted (A0 piece 6). Same contract as koolbase_flutter 12.50.0.
+
+- **`signInWithApple({ authorizationCode, client })`**: pass the Apple credential's `authorizationCode`, and the server keeps the token it revokes when the account is deleted, as Apple asks. `client: 'web'` when the code came from Apple's web sign-in. Both optional; without them sign-in works as before, and that account's token can't be revoked.
+
 ## 12.36.0
 
 Below a count minimum, a count says "fewer than" (#299). Same contract as koolbase_flutter 12.49.0.

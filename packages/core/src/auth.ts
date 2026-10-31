@@ -494,6 +494,14 @@ async signInWithApple(params: SignInWithAppleParams): Promise<KoolbaseSession> {
   if (params.nonce && params.nonce.length > 0) {
     body.nonce = params.nonce;
   }
+  // Exchanged by the server for the token it revokes when the account is
+  // deleted, as Apple asks.
+  if (params.authorizationCode && params.authorizationCode.length > 0) {
+    body.authorization_code = params.authorizationCode;
+  }
+  if (params.client) {
+    body.client = params.client;
+  }
   if (params.fullName) {
     const nameJson: Record<string, string> = {};
     if (params.fullName.givenName) nameJson.given_name = params.fullName.givenName;

@@ -670,6 +670,11 @@ export interface SignInWithAppleParams {
   identityToken: string;
   nonce?: string;
   fullName?: AppleFullName;
+  /** The credential's authorization code: the server exchanges it for the
+   *  token it revokes when the account is deleted, as Apple asks. */
+  authorizationCode?: string;
+  /** 'web' when the code came from Apple's web sign-in (the services id). */
+  client?: 'web';
 }
 
 /**
