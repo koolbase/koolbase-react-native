@@ -1,3 +1,10 @@
+## 12.38.0
+
+A test mode: the SDK against a fake server (R49). Same contract as koolbase_flutter 12.51.0.
+
+- **`Koolbase.initializeForTesting({ fetch, baseUrl?, publicKey? })`**: `initialize` itself runs, with the given `fetch` for every request, an in-memory session and platform, and no analytics or messaging, so a test can sign in, have the session end and sign out while the SDK's own auth and session code runs.
+- **`Koolbase.resetForTesting()`**: the SDK as before `initialize`, for the next test.
+
 ## 12.37.0
 
 Sign in with Apple tokens can be revoked when an account is deleted (A0 piece 6). Same contract as koolbase_flutter 12.50.0.
@@ -22,6 +29,38 @@ Totals take the typed filter. Same contract as koolbase_flutter 12.45.0.
 
 - **`db.aggregate({ filter, timezone })`**: the same tree a list's query takes (#165): and/or groups, ranges, dates, relative times. "Upcoming events" now counts exactly what the list shows; the server applies it inside the read rule.
 - **One language per total**: `filter` with `where` throws `TypeError` before anything is sent. Existing totals are sent exactly as before.
+
+## 12.33.0
+Search by meaning takes the typed filter (#173). Same contract as koolbase_flutter 12.43.0.
+
+- `searchSemantic({ filter, timezone })`: the same `KbWhereNode` tree `query()` takes (#165), applied inside the collection's read rule in semantic, lexical and hybrid modes. The device's zone unless one is named. `filter` with `where` throws before anything is sent; existing searches are unchanged.
+
+## 12.32.0
+Typed queries (#165): filters with and/or groups, ranges and dates, and sorts by a field's declared type. Same contract as koolbase_flutter 12.42.0.
+
+- **`where: KbWhere.and([...])`** in `db.query()` options: a tree of conditions. `KbWhere.and` / `KbWhere.or` group them, up to 3 deep. `KbField(name)` gives the operators: `eq`, `neq`, `gt`, `gte`, `lt`, `lte`, `contains`, `startsWith`, `isIn`, `notIn`, `between`, `before`, `after`, `onOrBefore`, `onOrAfter`, `on`, `isEmpty`, `isNotEmpty`, `isTrue`, `isFalse`. The server checks each against the field's declared type and runs the filter after the collection's read rule, so a filter only narrows what the caller may read.
+- **Operands the server resolves**: `KbValue.now()`, `startOfToday()`, `startOfTomorrow()`, `startOfWeek()`, `startOfNextWeek()`, `startOfMonth()`, with an offset, and the signed-in caller, `KbValue.callerUserId()` / `KbValue.callerClaim(name)`, read from the session, never from the app.
+- **`sort: [KbSort.desc('featured'), KbSort.asc('starts_at')]`**: up to 3 fields, typed by the declaration, empty values last both ways, ties broken by the record's id.
+- **Time zone**: relative times and `on` resolve in the device's IANA zone (`Intl`), or the one named with `timezone: 'Europe/London'`.
+- **Collections**: the collection controller takes the same as `filter`, `sort` and `timezone` (its `where` stays the equality map).
+- **One language per query**: combining `where`/`sort`/`timezone` with `filters`/`orderBy`/`orderDesc` throws `TypeError` before anything is sent. Existing queries are sent exactly as before.
+- **Refusals** (`query_invalid`, `query_too_complex`, `query_operator_invalid`, `query_field_untyped`, `query_timezone_invalid`, `query_caller_path_invalid`, `query_sort_invalid`, `query_sort_untyped`) arrive as `KoolbaseValidationError` with the code.
+- **Caching**: a typed query, its zone included, is its own cache entry.
+
+## 12.31.0
+A failed Koolbase request leaves a trace in a development build (#169). Same contract as koolbase_flutter 12.41.0.
+
+- **Development log of failed requests**: in a development build (React Native's and Expo's `__DEV__`, else the bundler's `NODE_ENV`), every Koolbase request that fails as the caller receives it prints one `console.warn` line, `[Koolbase] POST /v1/sdk/auth/email/code -> 401 invalid_public_key: ...`: the method, the path, the status and the server's reason. Never the host, the query, a header, the key, a token or the request body. A 401 that renewing the session answers is not printed. A release build, or unbundled code with neither signal, prints nothing.
+- **Covered**: every request through `koolbaseFetch` and `sessionFetch`: auth, data, storage, Functions, analytics, flags and messaging.
+- **Tested**: the line carries the method, path, status and reason and none of the key, token, query, host or body; a success prints nothing; a 401 renewal answers prints nothing; the caller still reads the whole response.
+
+## 12.30.0
+A refused app key is reported as the setup problem it is, never as a wrong password and never by signing the user out (#168, #169). Same contract as koolbase_flutter 12.40.0.
+
+- **`KoolbaseInvalidPublicKeyError`** (`invalid_public_key`, 401): the app's Koolbase key is unknown or revoked, or its project is deleted or not ready. The API answers this on any route since #169. It is deliberately not a `KoolbaseUnauthenticatedError`, so it never clears the session.
+- **Behaviour change**: a sign-in call's 401 without a recognised code used to become `InvalidCredentialsError` ("Invalid email or password"), whatever the cause. It is now a generic `KoolbaseAuthError` carrying the server's reason. A refresh's 401 is still a session that expired. The API sends `invalid_credentials` whenever a password is wrong.
+- **Covered surfaces**: auth (with Apple and Google sign-in), data, storage, Functions, fiscal and the offline sync engine.
+- **Tested**: the code maps to its error on each surface; a data 401 for the key does not sign anyone out, and any other data 401 still does.
 
 # Changelog
 
