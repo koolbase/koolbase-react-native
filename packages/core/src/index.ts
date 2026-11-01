@@ -7,6 +7,7 @@
 export * from './types.js';
 export * from './errors.js';
 export * from './network.js';
+export * from './memory-auth-storage.js';
 export * from './aggregate.js';
 export * from './conflict.js';
 export * from './pending-write.js';

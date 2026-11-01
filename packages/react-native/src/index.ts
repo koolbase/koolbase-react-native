@@ -24,7 +24,7 @@ import {
   getOrCreateDeviceId,
   setPlatform,
   type KoolbaseConfig,
-  type VersionCheckResult, setSessionRenewal } from '@koolbase/core';
+  type VersionCheckResult, type FetchLike, setSessionRenewal, setFetch, memoryPlatform, MemoryAuthStorage } from '@koolbase/core';
 import { reactNativePlatform } from './platform.js';
 import { createUseCollection, createUseFile, createUseFiles, createUseRecord, createUseUploadQueue } from '@koolbase/core/react';
 
@@ -67,6 +67,8 @@ export const Koolbase = {
     // The host platform, installed before any subsystem touches storage or
     // the network. Tests leave this unset and run on the in-memory default.
     setPlatform(config.platform ?? reactNativePlatform());
+    // Every JSON request the SDK makes goes through config.fetch, when one is given (R49).
+    setFetch(config.fetch ?? null);
 
     _auth = new KoolbaseAuth(config);
     // A data request refused with the signed-in person's token renews the
@@ -145,6 +147,48 @@ export const Koolbase = {
       // than leaving every later caller awaiting a rejected promise.
       _initializing = null;
     }
+  },
+
+  /**
+   * For tests (R49): the real initialize, against a server you give as
+   * `fetch` -- the SDK's own auth and data code runs; only the server is
+   * yours -- with storage and the session in memory, and no analytics or
+   * messaging. Call resetForTesting after each test.
+   *
+   * ```ts
+   * await Koolbase.initializeForTesting({ fetch: myFakeServer });
+   * await Koolbase.auth.login({ email, password });
+   * ```
+   */
+  async initializeForTesting(options: { fetch: FetchLike; baseUrl?: string; publicKey?: string }): Promise<void> {
+    await Koolbase.initialize({
+      baseUrl: options.baseUrl ?? 'http://koolbase.test',
+      publicKey: options.publicKey ?? 'pk_test',
+      platform: memoryPlatform(),
+      authStorage: new MemoryAuthStorage(),
+      fetch: options.fetch,
+      analyticsEnabled: false,
+      messagingEnabled: false,
+    });
+  },
+
+  /** After a test (R49): everything initialize made is dropped, so the next one starts from nothing. */
+  resetForTesting(): void {
+    (_connectivity as unknown as { stop?: () => void } | null)?.stop?.();
+    setSessionRenewal(null);
+    setFetch(null);
+    _auth = null;
+    _db = null;
+    _storage = null;
+    _fiscal = null;
+    _realtime = null;
+    _connectivity = null;
+    _functions = null;
+    _flags = null;
+    _analytics = null;
+    _messaging = null;
+    _initialized = false;
+    _initializing = null;
   },
 
   get auth(): KoolbaseAuth {

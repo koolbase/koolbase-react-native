@@ -1,3 +1,5 @@
+import type { FetchLike } from './types.js';
+
 /**
  * Network failures, made actionable.
  *
@@ -38,11 +40,26 @@ export class KoolbaseNetworkError extends TypeError {
   }
 }
 
+// ─── The fetch every JSON request goes through (R49) ───────────────────
+
+let installedFetch: FetchLike | null = null;
+
+/**
+ * Installed by Koolbase.initialize from KoolbaseConfig.fetch: the fetch every
+ * JSON request the SDK makes goes through -- a proxy, a logger, or a test's
+ * own server (initializeForTesting). Null is the global fetch, read at each
+ * call. File bytes sent to a storage URL are not JSON requests and use the
+ * global fetch.
+ */
+export function setFetch(fn: FetchLike | null): void {
+  installedFetch = fn;
+}
+
 /** fetch, with network failures turned into a KoolbaseNetworkError. Not
  *  logged: sessionFetch's first attempt may yet be answered by renewal. */
 async function sendOnce(input: string, init?: RequestInit): Promise<Response> {
   try {
-    return await fetch(input, init);
+    return await (installedFetch ?? fetch)(input, init);
   } catch (e) {
     // A request the caller cancelled keeps its meaning.
     if ((e as { name?: string } | null)?.name === 'AbortError') throw e;
