@@ -1108,6 +1108,9 @@ export class KoolbaseDatabase {
       await cacheRecord(userId, base.collection, recordId, merged, base.revision);
       // And in the saved lists, so they show what the user just changed.
       await updateInCachedQueries(userId, base.collection, recordId, data);
+      // What shows it hears of it, as after an online write (R125): a shown
+      // record reads its saved copy, which holds the change.
+      void refreshCollectionQueries(base.collection);
       // Optimistic: durable locally and queued to send, not yet accepted.
       return {
         id: recordId,

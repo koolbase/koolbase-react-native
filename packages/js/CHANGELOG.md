@@ -7,6 +7,13 @@ is based on [Keep a Changelog][kac], and this project adheres to
 [kac]: https://keepachangelog.com/en/1.1.0/
 [semver]: https://semver.org/
 
+## 12.38.1
+
+A shown record follows the app's own writes (R125). Same contract as koolbase_flutter 12.52.7.
+
+- **`useRecord` / `KoolbaseRecordController`**: after the app updates the record -- or anything in its collection -- it shows the device's saved copy at once (which holds the change, made online or queued offline), then the server's, without `refreshing`. Before, a shown record kept its old values until the screen was opened again.
+- **An offline `update`** now tells what shows its collection, as an online one does.
+
 ## 12.33.0
 
 Search by meaning takes the typed filter (#173). Same contract as koolbase_flutter 12.43.0.

@@ -23,6 +23,7 @@ import type { KoolbaseDatabase } from './database.js';
 import { KoolbaseNotFoundError } from './database-errors.js';
 import type { KoolbaseRecord } from './types.js';
 import { liveSource } from './live-source.js';
+import { registerQueryRefresher } from './query-refresh.js';
 
 export type RecordStatus = 'loading' | 'loaded' | 'notFound' | 'error';
 
@@ -63,6 +64,9 @@ export class KoolbaseRecordController {
   // The realtime subscription, and its pending debounced re-read.
   private unlive: (() => void) | null = null;
   private liveTimer: ReturnType<typeof setTimeout> | null = null;
+  // Registered for the app's own writes to this collection (R125), as a
+  // collection controller is.
+  private unregister: (() => void) | null = null;
 
   constructor(db: RecordReader, collection: string, id: string, options: { live?: boolean } = {}) {
     this.db = db;
@@ -91,6 +95,7 @@ export class KoolbaseRecordController {
     if (this.live && this.id) {
       this.unlive ??= liveSource()?.subscribe(this.collection, (event) => this.onLive(event)) ?? null;
     }
+    if (this.id) this.unregister ??= registerQueryRefresher(this.collection, () => this.refreshAfterWrite());
     await this.showSaved();
     await this.fetch();
   }
@@ -118,9 +123,35 @@ export class KoolbaseRecordController {
     if (!this.isStale(gen)) this.set({ refreshing: false });
   }
 
+  /**
+   * After the app's own write to this collection (R125): the device's saved
+   * copy at once -- which already holds the change, made online or queued
+   * offline -- then the server's, SILENTLY (no `refreshing`). A read still in
+   * flight is superseded; if the server cannot be reached, the saved copy
+   * stays.
+   */
+  private async refreshAfterWrite(): Promise<void> {
+    if (this.disposed || !this.id) return;
+    const gen = ++this.generation;
+    if (this.db.getSaved) {
+      try {
+        const saved = await this.db.getSaved(this.id);
+        if (saved && !this.isStale(gen) && (saved.collection === undefined || saved.collection === this.collection)) {
+          this.set({ status: 'loaded', record: saved, error: null, isSaved: true });
+        }
+      } catch {
+        // No saved copy to show: the server's answer decides.
+      }
+    }
+    if (this.isStale(gen)) return;
+    await this.fetch();
+  }
+
   /** Stops all updates. A result still in flight is dropped when it lands. */
   dispose(): void {
     this.disposed = true;
+    this.unregister?.();
+    this.unregister = null;
     this.unlive?.();
     this.unlive = null;
     if (this.liveTimer) { clearTimeout(this.liveTimer); this.liveTimer = null; }

@@ -1,3 +1,10 @@
+## 12.38.1
+
+A shown record follows the app's own writes (R125). Same contract as koolbase_flutter 12.52.7.
+
+- **`useRecord` / `KoolbaseRecordController`**: after the app updates the record -- or anything in its collection -- it shows the device's saved copy at once (which holds the change, made online or queued offline), then the server's, without `refreshing`. Before, a shown record kept its old values until the screen was opened again.
+- **An offline `update`** now tells what shows its collection, as an online one does.
+
 ## 12.38.0
 
 A test mode: the SDK against a fake server (R49). Same contract as koolbase_flutter 12.51.0.
