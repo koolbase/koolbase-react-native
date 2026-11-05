@@ -104,10 +104,17 @@ export const Koolbase = {
     );
     // Signed in, signed out, another user: the realtime connection is
     // replaced to match (signed out, collections anyone can read only).
+    let lastUser = _auth?.currentUser?.id ?? null;
     _auth?.onAuthStateChange(() => {
       _realtime?.sessionChanged();
       // Pending writes and conflicts are per-user: watchers read again.
       _db?.sessionChanged();
+      // R138: a registered device follows who is signed in.
+      const user = _auth?.currentUser?.id ?? null;
+      if (user !== lastUser) {
+        lastUser = user;
+        void _messaging?.sessionChanged();
+      }
     });
     // Whether the device reports a connection: unknown until it first answers.
     _connectivity = new KoolbaseConnectivity();
@@ -134,7 +141,8 @@ export const Koolbase = {
     }
     // Initialize messaging
     if (config.messagingEnabled !== false) {
-      _messaging = new KoolbaseMessaging(config);
+      // R138: the device is the signed-in person's while they are.
+      _messaging = new KoolbaseMessaging(config, () => _auth?.validAccessToken() ?? Promise.resolve(null));
       _messaging.setDeviceId(deviceId);
     }
 
@@ -152,8 +160,9 @@ export const Koolbase = {
   /**
    * For tests (R49): the real initialize, against a server you give as
    * `fetch` -- the SDK's own auth and data code runs; only the server is
-   * yours -- with storage and the session in memory, and no analytics or
-   * messaging. Call resetForTesting after each test.
+   * yours -- with storage and the session in memory, and no analytics.
+   * Messaging registers on that server too (R138). Call resetForTesting
+   * after each test.
    *
    * ```ts
    * await Koolbase.initializeForTesting({ fetch: myFakeServer });
@@ -168,7 +177,6 @@ export const Koolbase = {
       authStorage: new MemoryAuthStorage(),
       fetch: options.fetch,
       analyticsEnabled: false,
-      messagingEnabled: false,
     });
   },
 

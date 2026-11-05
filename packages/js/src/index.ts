@@ -3,9 +3,9 @@
 // The same surface as @koolbase/react-native where the browser can honour it.
 // What is deliberately absent, so it is not discovered as a method that
 // fails: code push (a native-bundle concept; the web already has one), the
-// logic engine (its flows arrived only through code-push bundles), push
-// messaging (FCM tokens come from a native module), and Apple/Google native
-// sign-in (use the web OAuth flows against the same auth endpoints).
+// logic engine (its flows arrived only through code-push bundles), and
+// Apple/Google native sign-in (use the web OAuth flows against the same auth
+// endpoints). Messaging registers a browser's FCM token as `web` (R138).
 
 export * from '@koolbase/core';
 export { BrowserAuthStorage } from './auth-storage.js';
@@ -22,6 +22,7 @@ import {
   KoolbaseFlags,
   KoolbaseAnalytics,
   disabledAnalytics,
+  KoolbaseMessaging,
   getOrCreateDeviceId,
   setPlatform,
   type KoolbaseConfig,
@@ -37,6 +38,7 @@ let _connectivity: KoolbaseConnectivity | null = null;
 let _functions: KoolbaseFunctions | null = null;
 let _flags: KoolbaseFlags | null = null;
 let _analytics: KoolbaseAnalytics | null = null;
+let _messaging: KoolbaseMessaging | null = null;
 // While analytics is off, calls are harmless no-ops rather than a crash.
 const analyticsOff = disabledAnalytics();
 let _initialized = false;
@@ -98,10 +100,17 @@ export const Koolbase = {
     );
     // Signed in, signed out, another user: the realtime connection is
     // replaced to match (signed out, collections anyone can read only).
+    let lastUser = _auth?.currentUser?.id ?? null;
     _auth?.onAuthStateChange(() => {
       _realtime?.sessionChanged();
       // Pending writes and conflicts are per-user: watchers read again.
       _db?.sessionChanged();
+      // R138: a registered device follows who is signed in.
+      const user = _auth?.currentUser?.id ?? null;
+      if (user !== lastUser) {
+        lastUser = user;
+        void _messaging?.sessionChanged();
+      }
     });
     // Whether the device reports a connection: unknown until it first answers.
     _connectivity = new KoolbaseConnectivity();
@@ -123,6 +132,11 @@ export const Koolbase = {
       _analytics = new KoolbaseAnalytics(config, () => _auth?.currentUser?.id ?? null);
       await _analytics.init(config.appVersion);
     }
+    // A browser's FCM token registers as web (R138).
+    if (config.messagingEnabled !== false) {
+      _messaging = new KoolbaseMessaging(config, () => _auth?.validAccessToken() ?? Promise.resolve(null));
+      _messaging.setDeviceId(deviceId);
+    }
 
       _initialized = true;
     })();
@@ -138,8 +152,9 @@ export const Koolbase = {
   /**
    * For tests (R49): the real initialize, against a server you give as
    * `fetch` -- the SDK's own auth and data code runs; only the server is
-   * yours -- with storage and the session in memory, and no analytics or
-   * messaging. Call resetForTesting after each test.
+   * yours -- with storage and the session in memory, and no analytics.
+   * Messaging registers on that server too (R138). Call resetForTesting
+   * after each test.
    *
    * ```ts
    * await Koolbase.initializeForTesting({ fetch: myFakeServer });
@@ -154,7 +169,6 @@ export const Koolbase = {
       authStorage: new MemoryAuthStorage(),
       fetch: options.fetch,
       analyticsEnabled: false,
-      messagingEnabled: false,
     });
   },
 
@@ -172,6 +186,7 @@ export const Koolbase = {
     _functions = null;
     _flags = null;
     _analytics = null;
+    _messaging = null;
     _initialized = false;
     _initializing = null;
   },
@@ -183,6 +198,7 @@ export const Koolbase = {
   get realtime(): KoolbaseRealtime { ensureInitialized(); return _realtime!; },
   get connectivity(): KoolbaseConnectivity { ensureInitialized(); return _connectivity!; },
   get functions(): KoolbaseFunctions { ensureInitialized(); return _functions!; },
+  get messaging(): KoolbaseMessaging { ensureInitialized(); return _messaging!; },
   get analytics(): KoolbaseAnalytics {
     ensureInitialized();
     return _analytics ?? analyticsOff;

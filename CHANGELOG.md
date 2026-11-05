@@ -1,3 +1,11 @@
+## 12.39.0
+
+A device registers as its signed-in person's (R138). Same contract as koolbase_flutter 12.53.0.
+
+- **`Koolbase.messaging`** is here: a browser's FCM token registers as `web`.
+- **`registerToken`** sends the signed-in person's session, so the API ties the device to them -- before, every registration was ownerless and sends to a user never reached their devices. The platform is `android`, `ios` or `web`; anything else is refused before sending. Signing in or out registers the last token again by itself. `userId` is kept but ignored (the API takes the owner from the session).
+- **`initializeForTesting`** keeps messaging on, so the test's server sees a device register.
+
 ## 12.38.2
 
 Discarding a refused change shows the server's version (R125). Same contract as koolbase_flutter 12.52.8.

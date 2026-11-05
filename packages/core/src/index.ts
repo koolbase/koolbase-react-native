@@ -48,7 +48,7 @@ export { KoolbaseAnalytics , disabledAnalytics } from './analytics.js';
 export { KoolbaseFiscal, KoolbaseFiscalError, decodeFiscalResponse, isFiscalized, isPending } from './fiscal.js';
 export type { FiscalIntentResult, FiscalStatus } from './fiscal.js';
 export { KoolbaseMessaging } from './messaging.js';
-export type { RegisterTokenOptions } from './messaging.js';
+export type { RegisterTokenOptions, KoolbaseMessagingPlatform } from './messaging.js';
 export { getOrCreateDeviceId } from './device-id.js';
 export { koolbaseSdkVersion } from './device-metadata.js';
 export { RestoreResult } from './types.js';
