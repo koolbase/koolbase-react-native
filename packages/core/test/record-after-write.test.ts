@@ -77,6 +77,38 @@ describe('a shown record after the app writes (R125)', () => {
     c.dispose();
   });
 
+  it('discarding a refused change shows the server\'s version, offline too', async () => {
+    let offline = false;
+    let server = wire('Water plants', 1);
+    serve((url, init) => {
+      if (offline) return 'offline';
+      if (init?.method === 'PATCH') {
+        return { status: 409, body: { code: 'revision_mismatch', error: 'the record has changed since you read it', details: { expected_revision: 1, current_revision: 2, record: { title: 'Water the roses' } } } };
+      }
+      return { status: 200, body: server };
+    });
+    const db = new KoolbaseDatabase(config, () => 'user-1', async () => 'token');
+    const c = new KoolbaseRecordController(db, 'notes', 'r1');
+    await c.load();
+    offline = true;
+    await db.update('r1', { title: 'Water the garden' });
+    await settle();
+    expect(titleOf(c)).toBe('Water the garden');
+    // Someone else changed it; back online the change is refused.
+    server = wire('Water the roses', 2);
+    offline = false;
+    await db.syncPendingWrites();
+    const conflicts = await db.conflicts();
+    expect(conflicts).toHaveLength(1);
+    // Discard while offline: the saved copy must show the server's version.
+    offline = true;
+    for (const x of conflicts) await x.resolveWithServer();
+    await settle();
+    expect(await db.conflicts()).toHaveLength(0);
+    expect(titleOf(c)).toBe('Water the roses');
+    c.dispose();
+  });
+
   it('a disposed record hears nothing', async () => {
     serve(() => ({ status: 200, body: wire('Water plants', 1) }));
     const db = new KoolbaseDatabase(config, () => 'user-1', async () => 'token');

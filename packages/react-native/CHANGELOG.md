@@ -7,6 +7,12 @@ adheres to [Semantic Versioning][semver].
 [kac]: https://keepachangelog.com/en/1.1.0/
 [semver]: https://semver.org/
 
+## 12.38.2
+
+Discarding a refused change shows the server's version (R125). Same contract as koolbase_flutter 12.52.8.
+
+- **`resolveWithServer` and `abandon`** put the server's version in the device's saved copy and tell what shows the collection, so a shown record or list stops showing the discarded change -- offline too.
+
 ## 12.38.1
 
 A shown record follows the app's own writes (R125). Same contract as koolbase_flutter 12.52.7.

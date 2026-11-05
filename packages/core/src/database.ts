@@ -845,12 +845,14 @@ export class KoolbaseDatabase {
       // conflict, rather than the change quietly disappearing -- and what
       // stands is what the writes held behind it now build on.
       await this.settleConflict(c, c.server, c.serverRevision);
+      await this.showServerVersion(c);
     },
     abandon: async (id) => {
       const c = await this.requireConflict(id);
       // Neither version claimed to win, so the record stands as the server
       // has it: what anything still queued must build on.
       await this.settleConflict(c, c.server, c.serverRevision);
+      await this.showServerVersion(c);
     },
   };
 
@@ -904,6 +906,22 @@ export class KoolbaseDatabase {
       s.conflicts = s.conflicts.filter((x) => x.id !== c.id);
       rebaseHeldWrites(s, c.recordId, resolved, revision);
     });
+  }
+
+  /**
+   * The server's version stands (keep theirs, abandon): the device's saved
+   * copy takes it -- it still held the refused change -- and what shows the
+   * collection hears of it (R125), so the screen stops showing what was
+   * discarded, offline too.
+   */
+  private async showServerVersion(c: QueuedConflict): Promise<void> {
+    const userId = this.getUserId();
+    if (userId && c.recordId && c.server) {
+      const fields = Object.fromEntries(Object.entries(c.server).filter(([k]) => !k.startsWith('$')));
+      await cacheRecord(userId, c.collection, c.recordId, fields, c.serverRevision);
+      await updateInCachedQueries(userId, c.collection, c.recordId, fields);
+    }
+    void refreshCollectionQueries(c.collection);
   }
 
   private async dropConflict(id: string): Promise<void> {
