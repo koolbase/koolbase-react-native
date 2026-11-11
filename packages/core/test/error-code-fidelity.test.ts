@@ -56,6 +56,8 @@ const API_CODES = new Set([
   // #161, #162.
   'placement_unavailable', 'auto_embedding_managed', 'reembed_confirmation_required',
   'embedding_model_unsupported',
+  // Run previews (koolbase-preview.app).
+  'preview_not_live', 'preview_origin_mismatch',
 ]);
 
 // Codes with no server counterpart, for one of two reasons.

@@ -1,4 +1,4 @@
-import { invalidPublicKeyIn } from './errors';
+import { invalidPublicKeyIn, previewRefusalIn } from './errors';
 import { sessionFetch } from './network.js';
 import { KoolbaseConfig } from './types.js';
 import { KoolbaseError, KoolbaseUnauthenticatedError } from './errors.js';
@@ -178,6 +178,9 @@ export class KoolbaseFiscal {
     // A refused app key is setup, not a session (#169): never signs out.
     const badKey = invalidPublicKeyIn(text);
     if (badKey) throw badKey;
+    // A Run preview the API would not serve: a 403, but not a sign-out.
+    const preview = previewRefusalIn(text);
+    if (preview) throw preview;
     if (res.status === 401 || res.status === 403) {
       await this.onSessionExpired?.();
       throw new KoolbaseUnauthenticatedError(

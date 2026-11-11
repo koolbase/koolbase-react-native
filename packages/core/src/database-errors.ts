@@ -1,4 +1,4 @@
-import { KoolbaseInvalidPublicKeyError } from './errors';
+import { KoolbaseInvalidPublicKeyError, previewErrorFor } from './errors';
 import { KoolbaseError, KoolbasePlanLimitError, KoolbaseServiceUnavailableError, KoolbaseUnauthenticatedError } from './errors.js';
 /**
  * Base class for errors surfaced by the Koolbase data layer (database reads
@@ -576,6 +576,9 @@ export function koolbaseDataError(
   // out. Ahead of status-first because the code is the server's own refusal
   // of the key, not a body's claim about a session.
   if (code === 'invalid_public_key') return attach(new KoolbaseInvalidPublicKeyError(message));
+  // A Run preview the API would not serve: setup too, never a sign-out.
+  const preview = previewErrorFor(code);
+  if (preview) return preview;
   if (status === 401) {
     return new KoolbaseUnauthenticatedError(message);
   }

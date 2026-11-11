@@ -1,4 +1,4 @@
-import { KoolbaseInvalidPublicKeyError } from './errors';
+import { KoolbaseInvalidPublicKeyError, previewErrorFor } from './errors';
 import { KoolbaseError, KoolbasePlanLimitError, KoolbaseServiceUnavailableError, KoolbaseUnauthenticatedError } from './errors.js';
 /**
  * Base error type for all Koolbase storage errors. Catchable via
@@ -429,6 +429,10 @@ export function koolbaseStorageError(
 ): KoolbaseStorageError {
   const code: string | undefined = body?.code;
   const message: string = body?.error ?? fallbackMessage;
+
+  // A Run preview the API would not serve: setup, never a sign-out.
+  const preview = previewErrorFor(code);
+  if (preview) return preview;
 
   // ─── code-first ───
   switch (code) {

@@ -606,6 +606,8 @@ export interface BootstrapPayload {
     latest_version: string;
     force_update: boolean;
     update_message: string;
+    /** The store page set in the dashboard for this app's platform (API, Nov 2026). */
+    store_url?: string;
   };
 }
 
@@ -615,6 +617,12 @@ export interface VersionCheckResult {
   status: VersionStatus;
   message: string;
   latestVersion: string;
+  /**
+   * Where to send the person to update: the store page set in the dashboard's
+   * version policy for this platform. Absent when up to date, or when no
+   * store page was set.
+   */
+  storeUrl?: string;
 }
 
 // ─── Functions ─────────────────────────────────────────────────────────────

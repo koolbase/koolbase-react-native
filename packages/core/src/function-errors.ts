@@ -1,4 +1,4 @@
-import { KoolbaseInvalidPublicKeyError, INVALID_PUBLIC_KEY_MESSAGE } from './errors';
+import { KoolbaseInvalidPublicKeyError, INVALID_PUBLIC_KEY_MESSAGE, previewErrorFor } from './errors';
 import { KoolbaseError, KoolbaseUnauthenticatedError } from './errors.js';
 
 /**
@@ -112,6 +112,9 @@ export class FunctionRateLimitError extends FunctionInvokeError {
 
 /** Builds the right error for a failed invocation. */
 export function functionInvokeError(status: number, message: string, code?: string): KoolbaseError {
+  // A Run preview the API would not serve: setup, never a sign-out.
+  const preview = previewErrorFor(code);
+  if (preview) return preview;
   switch (status) {
     case 401:
       // A refused app key is setup, not a session (#169): never signs out.

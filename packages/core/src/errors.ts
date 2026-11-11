@@ -122,6 +122,47 @@ export class KoolbaseOfflineBaselineUnavailableError extends KoolbaseError {
   }
 }
 
+/** What an ended Run preview says. */
+export const PREVIEW_ENDED_MESSAGE =
+  'This preview has ended. Press Run in the Koolbase Designer for a new one.';
+
+/** What a Run preview says when a request carried another project's key. */
+export const PREVIEW_OTHER_PROJECT_MESSAGE =
+  "This preview can only use its own project's Koolbase key.";
+
+/**
+ * A request from a Run preview the API would not serve: the preview has ended
+ * (`preview_not_live`: replaced by a newer Run, or past its 7 days), or it
+ * carried a key or session from another project (`preview_origin_mismatch`).
+ * Only Run previews meet it, never a published app. Like a refused key it is
+ * setup, not the user's session: it never signs anyone out.
+ */
+export class KoolbasePreviewError extends KoolbaseError {
+  constructor(message: string, code: 'preview_not_live' | 'preview_origin_mismatch') {
+    super(message, code);
+    this.name = 'KoolbasePreviewError';
+    Object.setPrototypeOf(this, new.target.prototype);
+  }
+}
+
+/** The refusal for a server code, or null when the code is not one. */
+export function previewErrorFor(code: unknown): KoolbasePreviewError | null {
+  if (code === 'preview_not_live') return new KoolbasePreviewError(PREVIEW_ENDED_MESSAGE, code);
+  if (code === 'preview_origin_mismatch') return new KoolbasePreviewError(PREVIEW_OTHER_PROJECT_MESSAGE, code);
+  return null;
+}
+
+/** The refusal in a failed response's body, when a Run preview's request was
+ *  refused; null otherwise. For paths that read a status before a code. */
+export function previewRefusalIn(body: string): KoolbasePreviewError | null {
+  try {
+    const j = JSON.parse(body);
+    return j && typeof j === 'object' ? previewErrorFor(j.code) : null;
+  } catch {
+    return null;
+  }
+}
+
 /** What the server says for a refused app key, word for word. */
 export const INVALID_PUBLIC_KEY_MESSAGE =
   "This app's Koolbase key isn't valid for this project.";

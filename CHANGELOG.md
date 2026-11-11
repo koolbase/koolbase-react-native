@@ -1,3 +1,16 @@
+## 12.41.0
+
+A refused Run preview says why. Same contract as koolbase_flutter 12.55.0.
+
+- **`KoolbasePreviewError`** is raised when the API will not serve a Run preview: "This preview has ended. Press Run in the Koolbase Designer for a new one." (`preview_not_live`), or "This preview can only use its own project's Koolbase key." (`preview_origin_mismatch`). Before, it surfaced as a bare permission error, and in payments as a session failure that signed the person out. Like a refused key, it never signs anyone out. Only Run previews meet it, never a published app.
+
+## 12.40.0
+
+The store link on a version check. Same contract as koolbase_flutter 12.54.0.
+
+- **`checkVersion`** returns `storeUrl` when an update is due and the dashboard's version policy has a store page for the app's platform. Before, the server kept the store page but no app could read it.
+- **The version policy is the app's own platform's**: the API now answers iOS with the iOS policy and Android with the Android one, falling back to All platforms; a web app gets none, since a browser always loads the latest site. This is a server change: earlier SDK versions get the right policy too.
+
 ## 12.39.0
 
 A device registers as its signed-in person's (R138). Same contract as koolbase_flutter 12.53.0.

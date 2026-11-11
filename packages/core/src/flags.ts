@@ -85,6 +85,7 @@ export class KoolbaseFlags {
         status: 'force_update',
         message: policy.update_message,
         latestVersion: policy.latest_version,
+        ...(policy.store_url ? { storeUrl: policy.store_url } : {}),
       };
     }
     if (policy.latest_version && current < latest) {
@@ -92,6 +93,7 @@ export class KoolbaseFlags {
         status: policy.force_update ? 'force_update' : 'soft_update',
         message: policy.update_message,
         latestVersion: policy.latest_version,
+        ...(policy.store_url ? { storeUrl: policy.store_url } : {}),
       };
     }
     return { status: 'up_to_date', message: '', latestVersion: policy.latest_version };

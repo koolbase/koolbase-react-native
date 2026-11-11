@@ -1,4 +1,4 @@
-import { KoolbaseInvalidPublicKeyError } from './errors';
+import { KoolbaseInvalidPublicKeyError, previewErrorFor } from './errors';
 import { koolbaseFetch } from './network.js';
 import {
   AuthStateListener,
@@ -612,6 +612,8 @@ private async parseGoogleSessionResponse(res: Response): Promise<KoolbaseSession
     );
   }
   if (code === 'invalid_public_key') throw new KoolbaseInvalidPublicKeyError(errorMessage || undefined);
+  const preview = previewErrorFor(code);
+  if (preview) throw preview;
   if (res.status === 401) throw new InvalidGoogleTokenError();
   if (res.status === 403) throw new UserDisabledError();
   if (res.status === 409) throw new OAuthEmailConflictError();
@@ -675,6 +677,8 @@ private async parseAppleSessionResponse(res: Response): Promise<KoolbaseSession>
     );
   }
   if (code === 'invalid_public_key') throw new KoolbaseInvalidPublicKeyError(errorMessage || undefined);
+  const preview = previewErrorFor(code);
+  if (preview) throw preview;
   if (res.status === 401) throw new InvalidAppleTokenError();
   if (res.status === 403) throw new UserDisabledError();
   if (res.status === 409) throw new OAuthEmailConflictError();
@@ -1510,6 +1514,9 @@ private async parseAppleSessionResponse(res: Response): Promise<KoolbaseSession>
         throw new MfaNotEnabledError();
       case 'invalid_public_key':
         throw new KoolbaseInvalidPublicKeyError(msg || undefined);
+      case 'preview_not_live':
+      case 'preview_origin_mismatch':
+        throw previewErrorFor(code)!;
       case 'invalid_credentials':
         throw new InvalidCredentialsError();
       case 'email_in_use':
