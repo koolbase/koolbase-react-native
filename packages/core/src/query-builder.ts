@@ -33,6 +33,13 @@ export type KbWhereNode =
 export interface KbSortField {
   field: string;
   dir: 'asc' | 'desc';
+  /** A location field's (G5): by distance from this point, nearest first. */
+  near?: { lat: number; lng: number };
+}
+
+function checkPoint(lat: number, lng: number): void {
+  if (!(lat >= -90 && lat <= 90)) throw new RangeError(`lat ${lat}: -90 to 90`);
+  if (!(lng >= -180 && lng <= 180)) throw new RangeError(`lng ${lng}: -180 to 180`);
 }
 
 function group(op: 'and' | 'or', conditions: KbWhereNode[]): KbWhereNode {
@@ -118,6 +125,12 @@ export function KbField(name: string) {
     onOrAfter: (when: unknown) => withValue('on_or_after', when),
     /** The calendar day of `when` in the query's zone. */
     on: (when: unknown) => withValue('on', when),
+    /** A location field (G5): records at most `km` from the point, by great-circle distance. A record with no position never matches. */
+    within: (lat: number, lng: number, km: number): KbWhereNode => {
+      checkPoint(lat, lng);
+      if (!(km > 0)) throw new RangeError(`km ${km}: more than 0`);
+      return withValue('within', { lat, lng, km });
+    },
     /** No value: missing, null or an empty list. 0, false and an empty text are values. */
     isEmpty: () => bare('is_empty'),
     isNotEmpty: () => bare('is_not_empty'),
@@ -130,6 +143,11 @@ export function KbField(name: string) {
 export const KbSort = {
   asc: (field: string): KbSortField => ({ field, dir: 'asc' }),
   desc: (field: string): KbSortField => ({ field, dir: 'desc' }),
+  /** A location field (G5) by distance from the point, nearest first; records with no position last. */
+  near: (field: string, lat: number, lng: number): KbSortField => {
+    checkPoint(lat, lng);
+    return { field, dir: 'asc', near: { lat, lng } };
+  },
 };
 
 /** Whether options speak #165's language. */

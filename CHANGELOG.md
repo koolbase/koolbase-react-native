@@ -1,3 +1,11 @@
+## 12.42.0
+
+Location queries. Same contract as koolbase_flutter 12.56.0; needs the API with location fields.
+
+- **`KbField(name).within(lat, lng, km)`** reads the records at most `km` from a point by great-circle distance; a record with no position never matches.
+- **`KbSort.near(name, lat, lng)`** orders them nearest first, records with no position last.
+- A location is stored as `{"lat": ..., "lng": ...}`; the server refuses any other shape.
+
 ## 12.41.0
 
 A refused Run preview says why. Same contract as koolbase_flutter 12.55.0.
