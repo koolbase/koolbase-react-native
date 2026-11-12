@@ -9,6 +9,9 @@ export class KoolbaseFlags {
   // and the fetch in flight, so nudges never stack.
   private lastArgs: { appVersion: string; platform: string } | null = null;
   private inFlight: Promise<void> | null = null;
+  // Told when a bootstrap brings new flags or config (onRemoteChange), so a
+  // screen that reads them can draw again once they arrive.
+  private listeners = new Set<() => void>();
 
   constructor(config: KoolbaseConfig, deviceId: string) {
     this.config = config;
@@ -23,8 +26,21 @@ export class KoolbaseFlags {
       );
       if (res.ok) {
         this.payload = await res.json();
+        for (const l of [...this.listeners]) {
+          try { l(); } catch (_) { /* a listener's error is its own */ }
+        }
       }
     } catch (_) {}
+  }
+
+  /**
+   * Calls [listener] each time a bootstrap brings flags and config (the first
+   * load and every refresh). Returns the function that stops it. A listener
+   * that throws never stops the others.
+   */
+  subscribe(listener: () => void): () => void {
+    this.listeners.add(listener);
+    return () => { this.listeners.delete(listener); };
   }
 
   /**

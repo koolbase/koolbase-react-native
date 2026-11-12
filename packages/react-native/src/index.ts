@@ -244,6 +244,12 @@ export const Koolbase = {
     return _flags!.getString(key, fallback);
   },
 
+  /** Told each time flags and config arrive or refresh; returns the unsubscribe. */
+  onRemoteChange(listener: () => void): () => void {
+    ensureInitialized();
+    return _flags!.subscribe(listener);
+  },
+
   configNumber(key: string, fallback = 0): number {
     ensureInitialized();
     return _flags!.getNumber(key, fallback);

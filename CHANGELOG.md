@@ -1,3 +1,9 @@
+## 12.43.0
+
+Told when flags and config arrive. Used by apps the Koolbase Designer exports (G7: Feature switch and Announcement).
+
+- **`Koolbase.onRemoteChange(listener)`** calls `listener` each time a bootstrap brings flags and remote config: the first load after `initialize`, and every refresh. It returns the function that stops it. A screen that reads `isEnabled` or `configString` draws again once the values are there, instead of showing the defaults until something else redraws it. A listener that throws never stops the others; a failed bootstrap tells nobody and keeps what was there.
+
 ## 12.42.0
 
 Location queries. Same contract as koolbase_flutter 12.56.0; needs the API with location fields.

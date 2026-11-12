@@ -206,6 +206,8 @@ export const Koolbase = {
 
   isEnabled(key: string): boolean { ensureInitialized(); return _flags!.isEnabled(key); },
   configString(key: string, fallback = ''): string { ensureInitialized(); return _flags!.getString(key, fallback); },
+  /** Told each time flags and config arrive or refresh; returns the unsubscribe. */
+  onRemoteChange(listener: () => void): () => void { ensureInitialized(); return _flags!.subscribe(listener); },
   configNumber(key: string, fallback = 0): number { ensureInitialized(); return _flags!.getNumber(key, fallback); },
   configBool(key: string, fallback = false): boolean { ensureInitialized(); return _flags!.getBool(key, fallback); },
   checkVersion(currentVersion: string): VersionCheckResult { ensureInitialized(); return _flags!.checkVersion(currentVersion); },
