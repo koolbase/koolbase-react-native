@@ -260,6 +260,36 @@ export class KoolbaseAuth {
     await this.setSessionInternal({ ...this.session, user });
   }
 
+  /**
+   * Remember me: the choice of the sign-in under way, held until its session
+   * is saved -- through a second step (MFA) too. Null: none under way.
+   */
+  private pendingRemember: boolean | null = null;
+
+  /** A sign-in starts: its Remember me, omitted meaning remembered. */
+  private beginSignIn(remember: boolean | undefined): void {
+    this.pendingRemember = remember ?? true;
+  }
+
+  /**
+   * A sign-in's session: told to the storage where it lives first (Remember
+   * me), then saved. A refresh or a profile change is not a sign-in and
+   * keeps the place the session already has.
+   */
+  private async setSignedInSession(session: KoolbaseSession): Promise<void> {
+    const remember = this.pendingRemember ?? true;
+    this.pendingRemember = null;
+    if (this.storage?.setRemember) {
+      try {
+        await this.storage.setRemember(remember);
+      } catch (err) {
+        // eslint-disable-next-line no-console
+        console.warn('[Koolbase] Could not apply Remember me:', err);
+      }
+    }
+    await this.setSessionInternal(session);
+  }
+
   private async setSessionInternal(session: KoolbaseSession): Promise<void> {
     this.session = session;
     this.signOutReason = null;
@@ -447,17 +477,21 @@ export class KoolbaseAuth {
     }
 
     const session = this.sessionFromBody(data);
-    await this.setSessionInternal(session);
+    this.beginSignIn(undefined);
+    await this.setSignedInSession(session);
     return { status: 'authenticated', user: session.user, session };
   }
 
   async login(params: LoginParams): Promise<KoolbaseSession> {
+    // Remember me is this device's, never the server's.
+    const { remember, ...body } = params;
+    this.beginSignIn(remember);
     const res = await this.authRequest('/v1/sdk/auth/login', {
       method: 'POST',
-      body: params,
+      body,
     });
     const session = await this.parseSessionResponse(res, false);
-    await this.setSessionInternal(session);
+    await this.setSignedInSession(session);
     return session;
   }
 
@@ -488,6 +522,7 @@ export class KoolbaseAuth {
  */
 
 async signInWithApple(params: SignInWithAppleParams): Promise<KoolbaseSession> {
+  this.beginSignIn(params.remember);
   const body: Record<string, unknown> = {
     identity_token: params.identityToken,
   };
@@ -516,7 +551,7 @@ async signInWithApple(params: SignInWithAppleParams): Promise<KoolbaseSession> {
     body,
   });
   const session = await this.parseAppleSessionResponse(res);
-  await this.setSessionInternal(session);
+  await this.setSignedInSession(session);
   return session;
 }
 
@@ -543,6 +578,7 @@ async signInWithApple(params: SignInWithAppleParams): Promise<KoolbaseSession> {
  *   but auto-link rule blocked (409).
  */
 async signInWithGoogle(params: SignInWithGoogleParams): Promise<KoolbaseSession> {
+  this.beginSignIn(params.remember);
   const body: Record<string, unknown> = {
     identity_token: params.idToken,
   };
@@ -555,7 +591,7 @@ async signInWithGoogle(params: SignInWithGoogleParams): Promise<KoolbaseSession>
     body,
   });
   const session = await this.parseGoogleSessionResponse(res);
-  await this.setSessionInternal(session);
+  await this.setSignedInSession(session);
   return session;
 }
 
@@ -1196,13 +1232,14 @@ private async parseAppleSessionResponse(res: Response): Promise<KoolbaseSession>
    * @throws OtpInvalidError, OtpExpiredError, OtpMaxAttemptsError
    * @throws EmailCodeDisabledError if the project has switched this off
    */
-  async signInWithEmailCode(params: { email: string; code: string }): Promise<KoolbaseSession> {
+  async signInWithEmailCode(params: { email: string; code: string; remember?: boolean }): Promise<KoolbaseSession> {
+    this.beginSignIn(params.remember);
     const res = await this.authRequest('/v1/sdk/auth/email/code/verify', {
       method: 'POST',
       body: { email: params.email, code: params.code },
     });
     const session = await this.parseSessionResponse(res, false);
-    await this.setSessionInternal(session);
+    await this.setSignedInSession(session);
     return session;
   }
 
@@ -1225,7 +1262,8 @@ private async parseAppleSessionResponse(res: Response): Promise<KoolbaseSession>
       body: { challenge_token: params.challengeToken, code: params.code },
     });
     const session = await this.parseSessionResponse(res, false);
-    await this.setSessionInternal(session);
+    // The second step of the sign-in that asked for it: its Remember me.
+    await this.setSignedInSession(session);
     return session;
   }
 
@@ -1252,7 +1290,7 @@ private async parseAppleSessionResponse(res: Response): Promise<KoolbaseSession>
       expiresAt: data.expires_at,
       user: this.mapUser(data.user),
     };
-    await this.setSessionInternal(session);
+    await this.setSignedInSession(session);
     return { session, recoveryCodesRemaining: Number(data.recovery_codes_remaining ?? 0) };
   }
 
@@ -1326,6 +1364,7 @@ private async parseAppleSessionResponse(res: Response): Promise<KoolbaseSession>
 
   async verifyOtp(params: VerifyOtpParams): Promise<PhoneVerifyResult> {
     this.validatePhone(params.phoneNumber);
+    this.beginSignIn(params.remember);
     const res = await this.authRequest('/v1/sdk/auth/phone/verify-otp', {
       method: 'POST',
       body: {
@@ -1342,7 +1381,7 @@ private async parseAppleSessionResponse(res: Response): Promise<KoolbaseSession>
       user: this.mapUser(data.user),
     };
 
-    await this.setSessionInternal(session);
+    await this.setSignedInSession(session);
     return { session, isNewUser: data.is_new_user ?? false };
   }
 

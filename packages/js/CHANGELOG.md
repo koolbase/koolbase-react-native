@@ -7,6 +7,14 @@ is based on [Keep a Changelog][kac], and this project adheres to
 [kac]: https://keepachangelog.com/en/1.1.0/
 [semver]: https://semver.org/
 
+## 12.44.0
+
+Remember me: a sign-in says whether it outlasts the browser.
+
+- **`remember`** on `login`, `signInWithEmailCode`, `verifyOtp`, `signInWithGoogle` and `signInWithApple`. Omitted, a sign-in is remembered, as before. `remember: false` keeps the session in the tab's `sessionStorage`: it ends when the tab or browser closes, and a new tab asks again. A sign-in that goes on to a second step (`verifyMfa`, `verifyRecoveryCode`) keeps its choice. Never sent to the server.
+- **`BrowserAuthStorage`** keeps the session in one place at a time: IndexedDB when remembered, the tab when not. A token refresh saves it where it already lives, so a session that is not remembered never reaches IndexedDB. `clear()` removes both.
+- **`KoolbaseAuthStorage.setRemember`** (optional) is how a storage is told. Storages without it -- React Native's keychain, an app's own -- keep every session as before.
+
 ## 12.39.0
 
 A device registers as its signed-in person's (R138). Same contract as koolbase_flutter 12.53.0.

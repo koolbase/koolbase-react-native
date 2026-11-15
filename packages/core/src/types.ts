@@ -197,6 +197,13 @@ export interface KoolbaseAuthStorage {
   saveSession(session: KoolbaseSession): Promise<void>;
   readSession(): Promise<KoolbaseSession | null>;
   clear(): Promise<void>;
+  /**
+   * Remember me: where the next sign-in's session lives, told before it is
+   * saved. `true`: as long as the storage keeps anything; `false`: until the
+   * tab or browser closes. Optional -- a storage without it (a keychain, the
+   * memory one, an app's own) keeps every session as it always has.
+   */
+  setRemember?(remember: boolean): Promise<void>;
 }
 
 /**
@@ -250,6 +257,13 @@ export interface RegisterParams {
 export interface LoginParams {
   email: string;
   password: string;
+  /**
+   * Whether this sign-in outlasts the browser (Remember me). Omitted: it
+   * does, as always. `false`: the session is kept for this tab only, and
+   * ends when it closes -- where the storage can tell the two apart (the
+   * browser's, in @koolbase/js; a keychain always keeps it).
+   */
+  remember?: boolean;
 }
 
 export interface SendOtpParams {
@@ -259,6 +273,13 @@ export interface SendOtpParams {
 export interface VerifyOtpParams {
   phoneNumber: string;
   code: string;
+  /**
+   * Whether this sign-in outlasts the browser (Remember me). Omitted: it
+   * does, as always. `false`: the session is kept for this tab only, and
+   * ends when it closes -- where the storage can tell the two apart (the
+   * browser's, in @koolbase/js; a keychain always keeps it).
+   */
+  remember?: boolean;
 }
 
 export interface LinkPhoneParams {
@@ -677,6 +698,13 @@ export interface AppleFullName {
 export interface SignInWithAppleParams {
   identityToken: string;
   nonce?: string;
+  /**
+   * Whether this sign-in outlasts the browser (Remember me). Omitted: it
+   * does, as always. `false`: the session is kept for this tab only, and
+   * ends when it closes -- where the storage can tell the two apart (the
+   * browser's, in @koolbase/js; a keychain always keeps it).
+   */
+  remember?: boolean;
   fullName?: AppleFullName;
   /** The credential's authorization code: the server exchanges it for the
    *  token it revokes when the account is deleted, as Apple asks. */
@@ -696,6 +724,13 @@ export interface SignInWithAppleParams {
 export interface SignInWithGoogleParams {
   idToken: string;
   nonce?: string;
+  /**
+   * Whether this sign-in outlasts the browser (Remember me). Omitted: it
+   * does, as always. `false`: the session is kept for this tab only, and
+   * ends when it closes -- where the storage can tell the two apart (the
+   * browser's, in @koolbase/js; a keychain always keeps it).
+   */
+  remember?: boolean;
 }
 
 export type BatchOp =
