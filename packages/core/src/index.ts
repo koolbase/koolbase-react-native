@@ -17,6 +17,7 @@ export * from './database-errors.js';
 export * from './storage-errors.js';
 
 export { KoolbaseAuth } from './auth.js';
+export { KoolbaseAppAdmin } from './app-admin.js';
 export { KoolbaseDatabase } from './database.js';
 export {
   KoolbaseCollectionController,

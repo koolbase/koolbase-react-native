@@ -185,6 +185,49 @@ export interface KoolbaseAuditPage {
   offset: number;
 }
 
+/** One person in the app, as an app admin sees them. */
+export interface KoolbaseMember {
+  id: string;
+  email: string;
+  fullName?: string;
+  avatarUrl?: string;
+  /** `invited` has not signed in yet. */
+  status: 'active' | 'invited' | 'disabled';
+  /** An app admin: only the project owner can disable them or change their roles. */
+  isAdmin: boolean;
+  /** The claims the project marked as ones app admins can give. Others are never sent. */
+  roles: Record<string, unknown>;
+  /** Pass back to `admin.setRoles` as `expectedVersion`. */
+  version: number;
+  joinedAt: string;
+  lastSeenAt?: string;
+}
+
+/** A page of members, with the total across all pages. */
+export interface KoolbaseMemberPage {
+  members: KoolbaseMember[];
+  total: number;
+}
+
+/** A role an app admin may give, with how many people hold it. */
+export interface KoolbaseAssignableRole {
+  key: string;
+  valueType: string;
+  /** The only values allowed, when the project limited them; empty otherwise. */
+  allowedValues: string[];
+  description?: string;
+  holders: number;
+  /** For each value, how many people hold it. */
+  values: Record<string, number>;
+}
+
+/** What `admin.setRoles` leaves: the roles now, and the version to pass next time. */
+export interface KoolbaseMemberRoles {
+  id: string;
+  roles: Record<string, unknown>;
+  version: number;
+}
+
 export interface ResendVerificationResult {
   alreadyVerified: boolean;
   /** When the link in the email stops working. Null when nothing was sent. */

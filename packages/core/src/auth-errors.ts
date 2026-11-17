@@ -609,3 +609,71 @@ export class MfaNotEnabledError extends KoolbaseAuthError {
     Object.setPrototypeOf(this, MfaNotEnabledError.prototype);
   }
 }
+
+// ─── In-app admin ──────────────────────────────────────────────────────────
+
+/** The signed-in person is not an app admin. The project owner gives the `app_admin` claim in the dashboard. */
+export class NotAppAdminError extends KoolbaseAuthError {
+  constructor() {
+    super('Only app admins can do this', 'app_admin_required');
+    this.name = 'NotAppAdminError';
+    Object.setPrototypeOf(this, NotAppAdminError.prototype);
+  }
+}
+
+/** An admin tried to disable themselves or change their own roles. */
+export class AppAdminSelfError extends KoolbaseAuthError {
+  constructor() {
+    super('You cannot change your own account here', 'app_admin_self');
+    this.name = 'AppAdminSelfError';
+    Object.setPrototypeOf(this, AppAdminSelfError.prototype);
+  }
+}
+
+/** The person is an app admin too; only the project owner can change them. */
+export class AppAdminTargetIsAdminError extends KoolbaseAuthError {
+  constructor() {
+    super('Another app admin can only be changed by the project owner', 'app_admin_target_is_admin');
+    this.name = 'AppAdminTargetIsAdminError';
+    Object.setPrototypeOf(this, AppAdminTargetIsAdminError.prototype);
+  }
+}
+
+/** The project has not let app admins give this role. */
+export class RoleNotAssignableError extends KoolbaseAuthError {
+  constructor(message?: string) {
+    super(message ?? 'App admins cannot give this role', 'role_not_assignable');
+    this.name = 'RoleNotAssignableError';
+    Object.setPrototypeOf(this, RoleNotAssignableError.prototype);
+  }
+}
+
+/** The role exists, but not with this value. */
+export class RoleValueNotAllowedError extends KoolbaseAuthError {
+  constructor(message?: string) {
+    super(message ?? 'That value is not allowed for this role', 'role_value_not_allowed');
+    this.name = 'RoleValueNotAllowedError';
+    Object.setPrototypeOf(this, RoleValueNotAllowedError.prototype);
+  }
+}
+
+/** The invited email already has an account in this app. */
+export class MemberExistsError extends KoolbaseAuthError {
+  constructor() {
+    super('Someone with this email is already in the app', 'member_exists');
+    this.name = 'MemberExistsError';
+    Object.setPrototypeOf(this, MemberExistsError.prototype);
+  }
+}
+
+/**
+ * The person's roles changed since they were read; nothing was changed. Read
+ * them again, or retry with `currentVersion`.
+ */
+export class ClaimsVersionConflictError extends KoolbaseAuthError {
+  constructor(public readonly currentVersion: number | null) {
+    super("This person's roles changed since you opened them", 'claims_version_conflict');
+    this.name = 'ClaimsVersionConflictError';
+    Object.setPrototypeOf(this, ClaimsVersionConflictError.prototype);
+  }
+}

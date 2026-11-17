@@ -7,6 +7,15 @@ is based on [Keep a Changelog][kac], and this project adheres to
 [kac]: https://keepachangelog.com/en/1.1.0/
 [semver]: https://semver.org/
 
+## 12.45.0
+
+In-app admin: an app's own admins manage its people from inside the app. Same contract as koolbase_flutter 12.57.0. Needs the API with in-app admin.
+
+- **`Koolbase.auth.admin`** lets a signed-in app admin (the `app_admin` claim, given by the project owner in the dashboard) call `members()`, `roles()`, `invite()`, `disable()`, `enable()` and `setRoles()`. Only roles the project marked "App admins can give it" can be given, and admins never change themselves or another admin.
+- **`setRoles(userId, roles, { expectedVersion })`** takes the member's `version`; `null` removes a role. When someone changed them in between it throws `ClaimsVersionConflictError` with `currentVersion`, and nothing changes.
+- With two-step sign-in on, disabling, enabling and changing roles need `stepUpMfa` first (`RecentMfaRequiredError`).
+- New errors: `NotAppAdminError`, `AppAdminSelfError`, `AppAdminTargetIsAdminError`, `RoleNotAssignableError`, `RoleValueNotAllowedError`, `MemberExistsError`, `ClaimsVersionConflictError`.
+
 ## 12.44.0
 
 Remember me: a sign-in says whether it outlasts the browser.

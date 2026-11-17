@@ -72,7 +72,15 @@ import {
   MfaAlreadyEnabledError,
   MfaEnrollmentNotFoundError,
   MfaNotEnabledError,
+  NotAppAdminError,
+  AppAdminSelfError,
+  AppAdminTargetIsAdminError,
+  RoleNotAssignableError,
+  RoleValueNotAllowedError,
+  MemberExistsError,
+  ClaimsVersionConflictError,
 } from './auth-errors.js';
+import { KoolbaseAppAdmin } from './app-admin.js';
 import { KoolbaseServiceUnavailableError } from './errors.js';
 import type { KoolbaseAvatarFile, SignInWithGoogleParams, SignOutReason } from './types.js';
 import { getPlatform } from './platform.js';
@@ -1143,6 +1151,73 @@ private async parseAppleSessionResponse(res: Response): Promise<KoolbaseSession>
 
   get currentUser(): KoolbaseUser | null {
     return this.session?.user ?? null;
+  }
+
+  private _admin?: KoolbaseAppAdmin;
+
+  /**
+   * Managing the app's people, for the app's own admins (the `app_admin`
+   * claim). See {@link KoolbaseAppAdmin}.
+   */
+  get admin(): KoolbaseAppAdmin {
+    if (!this._admin) {
+      this._admin = new KoolbaseAppAdmin((path, options) => this.adminRequest(path, options));
+    }
+    return this._admin;
+  }
+
+  private async adminRequest(
+    path: string,
+    options: { method?: string; body?: unknown } = {}
+  ): Promise<any> {
+    const res = await this.authedRequest(path, options);
+    if (res.ok) return res.json().catch(() => ({}));
+    let body: any = {};
+    try {
+      body = await res.json();
+    } catch {
+      // ignore
+    }
+    const code: string = body.code ?? '';
+    const msg: string = body.error ?? '';
+    // The admin routes' own codes first. Their plain failures (a member not
+    // found, a conflict, a refusal) keep the server's words: the general
+    // status fallback would call a 409 an email in use and a 403 a disabled
+    // account, neither of which an admin route means.
+    switch (code) {
+      // Never sent by these routes; mapped so every parser here handles the
+      // challenge the same way (mfa.test checks each switch).
+      case 'mfa_required':
+        throw this.mfaRequired(body);
+      case 'app_admin_required':
+        throw new NotAppAdminError();
+      case 'app_admin_self':
+        throw new AppAdminSelfError();
+      case 'app_admin_target_is_admin':
+        throw new AppAdminTargetIsAdminError();
+      case 'role_not_assignable':
+        throw new RoleNotAssignableError(msg || undefined);
+      case 'role_value_not_allowed':
+        throw new RoleValueNotAllowedError(msg || undefined);
+      case 'member_exists':
+        throw new MemberExistsError();
+      case 'claims_version_conflict':
+        throw new ClaimsVersionConflictError(
+          typeof body.version === 'number' ? body.version : null
+        );
+      case 'not_found':
+      case 'conflict':
+      case 'permission_denied':
+      case 'validation_error':
+        throw new KoolbaseAuthError(msg || 'The request was refused.', code);
+    }
+    // The body is read; hand the general parser what it read.
+    return this.throwTypedError({
+      ok: false,
+      status: res.status,
+      headers: res.headers,
+      json: async () => body,
+    } as unknown as Response);
   }
 
   get accessToken(): string | null {

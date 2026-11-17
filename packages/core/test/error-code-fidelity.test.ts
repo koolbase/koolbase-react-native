@@ -58,6 +58,10 @@ const API_CODES = new Set([
   'embedding_model_unsupported',
   // Run previews (koolbase-preview.app).
   'preview_not_live', 'preview_origin_mismatch',
+  // In-app admin (/v1/sdk/admin).
+  'app_admin_required', 'app_admin_self', 'app_admin_target_is_admin',
+  'role_not_assignable', 'role_value_not_allowed', 'member_exists',
+  'claims_version_conflict',
 ]);
 
 // Codes with no server counterpart, for one of two reasons.
