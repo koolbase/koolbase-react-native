@@ -89,6 +89,19 @@ describe('two-step sign-in', () => {
     expect(lastCall().url).toContain('/v1/sdk/auth/mfa/verify-recovery');
   });
 
+  it('the status says what the app\'s setting allows; an older API means offered, not required', async () => {
+    global.fetch = reply(200, sessionBody());
+    const auth = new KoolbaseAuth(config);
+    await auth.verifyMfa({ challengeToken: 'ct-123', code: '123456' });
+    global.fetch = reply(200, { enabled: true, recovery_codes_remaining: 7, offered: true, required: true });
+    expect(await auth.mfaStatus()).toEqual({ enabled: true, recoveryCodesRemaining: 7, offered: true, required: true });
+    expect(lastCall().url).toContain('/v1/sdk/auth/mfa');
+    global.fetch = reply(200, { enabled: false, recovery_codes_remaining: 0, offered: false, required: false });
+    expect(await auth.mfaStatus()).toMatchObject({ offered: false, required: false });
+    global.fetch = reply(200, { enabled: false, recovery_codes_remaining: 0 });
+    expect(await auth.mfaStatus()).toMatchObject({ offered: true, required: false });
+  });
+
   it('a wrong code throws OtpInvalidError', async () => {
     global.fetch = reply(400, { code: 'otp_invalid', error: 'invalid code' });
     const auth = new KoolbaseAuth(config);

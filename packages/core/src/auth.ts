@@ -1392,11 +1392,23 @@ private async parseAppleSessionResponse(res: Response): Promise<KoolbaseSession>
     return (await res.json()).recovery_codes as string[];
   }
 
-  async mfaStatus(): Promise<{ enabled: boolean; recoveryCodesRemaining: number }> {
+  /**
+   * Whether two-step sign-in is on, how many recovery codes are left, and
+   * what the app's two-step setting allows: `offered` (false when the app
+   * does not offer it, so nothing can turn it on) and `required` (nothing
+   * can turn it off). An API before 12.46.0 sends neither: offered, not
+   * required.
+   */
+  async mfaStatus(): Promise<{ enabled: boolean; recoveryCodesRemaining: number; offered: boolean; required: boolean }> {
     const res = await this.authRequest('/v1/sdk/auth/mfa', { method: 'GET', includeAuth: true });
     await this.checkResponse(res);
     const d = await res.json();
-    return { enabled: !!d.enabled, recoveryCodesRemaining: Number(d.recovery_codes_remaining ?? 0) };
+    return {
+      enabled: !!d.enabled,
+      recoveryCodesRemaining: Number(d.recovery_codes_remaining ?? 0),
+      offered: d.offered !== false,
+      required: d.required === true,
+    };
   }
 
   /** Re-confirms the second factor, opening ten minutes to change MFA. */

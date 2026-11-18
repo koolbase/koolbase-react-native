@@ -1,3 +1,9 @@
+## 12.46.0
+
+What the app's two-step setting allows. Used by apps the Koolbase Designer exports (Settings' two-step sign-in); needs the API with it.
+
+- **`Koolbase.auth.mfaStatus()`** also returns `offered` (false when the app does not offer two-step sign-in, so nothing can turn it on) and `required` (true when it is required, so nothing can turn it off). An older API sends neither: they read as offered and not required.
+
 ## 12.43.0
 
 Told when flags and config arrive. Used by apps the Koolbase Designer exports (G7: Feature switch and Announcement).
