@@ -1,3 +1,9 @@
+## 12.47.0
+
+Signed-in devices, named. Used by apps the Koolbase Designer exports (Settings' Signed-in devices); needs the API with it.
+
+- **`Koolbase.auth.listSessions()`** lists every device still signed in, not only those used in the last 15 minutes, this device first. Each session also has `device` ("Chrome on macOS", "iOS 18.1"), `lastActiveAt` (its last renewal) and `signedInAt`. An older API sends none of them: "Unknown device", and the session's own `createdAt` for both times.
+
 ## 12.46.0
 
 What the app's two-step setting allows. Used by apps the Koolbase Designer exports (Settings' two-step sign-in); needs the API with it.

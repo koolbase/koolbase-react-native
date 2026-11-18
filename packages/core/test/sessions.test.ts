@@ -58,6 +58,33 @@ describe('sessions', () => {
     expect(s.isCurrent).toBe(true);
   });
 
+  it('names the device, when it was last active and signed in', async () => {
+    const auth = await signedIn();
+    respond(200, {
+      sessions: [
+        {
+          id: 's1',
+          created_at: '2026-11-18T10:00:00Z',
+          expires_at: '2026-12-18T10:00:00Z',
+          is_current: true,
+          device: 'Chrome on macOS',
+          last_active_at: '2026-11-18T10:00:00Z',
+          signed_in_at: '2026-11-01T09:00:00Z',
+        },
+        { id: 's2', created_at: '2026-11-17T08:00:00Z', expires_at: '2026-12-17T08:00:00Z', is_current: false },
+      ],
+    });
+
+    const [a, b] = await auth.listSessions();
+    expect(a.device).toBe('Chrome on macOS');
+    expect(a.lastActiveAt).toBe('2026-11-18T10:00:00Z');
+    expect(a.signedInAt).toBe('2026-11-01T09:00:00Z');
+    // An older API: named for what it is, its own times.
+    expect(b.device).toBe('Unknown device');
+    expect(b.lastActiveAt).toBe('2026-11-17T08:00:00Z');
+    expect(b.signedInAt).toBe('2026-11-17T08:00:00Z');
+  });
+
   it('never exposes a token hash', async () => {
     // The server excludes them deliberately. If it ever stopped, mapping
     // them through would put a credential-shaped value in an app's hands.

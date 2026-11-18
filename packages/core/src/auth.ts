@@ -1055,6 +1055,10 @@ private async parseAppleSessionResponse(res: Response): Promise<KoolbaseSession>
         createdAt: String(r.created_at),
         expiresAt: String(r.expires_at),
         isCurrent: Boolean(r.is_current),
+        // An API before these sends none of these: the row's own times.
+        device: typeof r.device === 'string' && r.device ? r.device : 'Unknown device',
+        lastActiveAt: String(r.last_active_at ?? r.created_at),
+        signedInAt: String(r.signed_in_at ?? r.created_at),
       };
     });
   }

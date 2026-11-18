@@ -147,6 +147,15 @@ export interface KoolbaseSessionInfo {
    * exclude.
    */
   isCurrent: boolean;
+  /**
+   * The device, named for a person: "Chrome on macOS", "iOS 18.1".
+   * "Unknown device" from an API that does not name it.
+   */
+  device: string;
+  /** When the device last used this session (its last renewal). */
+  lastActiveAt: string;
+  /** When its owner last signed in on it. */
+  signedInAt: string;
 }
 
 /**
