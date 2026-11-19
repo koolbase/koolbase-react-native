@@ -1,6 +1,6 @@
 {
   "name": "@koolbase/react-native",
-  "version": "12.48.0",
+  "version": "12.49.0",
   "description": "React Native SDK for Koolbase — auth, database, storage, realtime, feature flags, and functions in one package.",
   "main": "./dist/cjs/index.js",
   "react-native": "./dist/esm/index.js",
@@ -25,7 +25,7 @@
     "url": "https://github.com/koolbase/koolbase-react-native"
   },
   "dependencies": {
-    "@koolbase/core": "^12.48.0"
+    "@koolbase/core": "^12.49.0"
   },
   "peerDependencies": {
     "@react-native-async-storage/async-storage": "^2.2.0 || ^3.0.2",

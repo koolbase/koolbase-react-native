@@ -522,6 +522,17 @@ export class KoolbaseDatabase {
       throw new Error('batch requires at least one operation');
     }
 
+    // The collections an update or delete addresses by id, from the device's
+    // saved copies, read before the request (12.49.0): a delete leaves nothing
+    // to read afterwards.
+    const userIdBefore = this.getUserId() ?? 'anonymous';
+    const byId = new Map<string, string | undefined>();
+    for (const op of operations) {
+      if (op.type === 'update' || op.type === 'delete') {
+        byId.set(op.recordId, (await getCachedRecord(userIdBefore, op.recordId))?.collection);
+      }
+    }
+
     const body = await this.request<Record<string, unknown>>('POST', '/v1/sdk/db/batch', {
       operations: operations.map(batchOpToWire),
     });
@@ -559,16 +570,30 @@ export class KoolbaseDatabase {
       }
     }
 
+    // Every collection the batch wrote re-reads its live queries (12.49.0):
+    // an insert's or upsert's by its op, an update's by the record it returned
+    // or its saved copy, a delete's by its saved copy. One it cannot name --
+    // a record never read on this device -- re-runs every live query rather
+    // than a guess, as a single delete does.
     const touched = new Set<string>();
-    for (const op of operations) {
+    let unknown = false;
+    operations.forEach((op, i) => {
       if (op.type === 'insert' || op.type === 'upsert') {
         touched.add(op.collection);
+        return;
       }
+      const col = results[i]?.record?.collection ?? byId.get(op.recordId);
+      if (col) touched.add(col);
+      else unknown = true;
+    });
+    for (const op of operations) {
+      if (op.type === 'delete') await removeCachedRecord(userId, op.recordId);
     }
     for (const col of touched) {
       await invalidateCache(userId, col);
-      void refreshCollectionQueries(col);
+      if (!unknown) void refreshCollectionQueries(col);
     }
+    if (unknown) void refreshCollectionQueries(undefined);
 
     return results;
   }

@@ -1,3 +1,9 @@
+## 12.49.0
+
+A batch re-reads the lists it changed. Used by apps the Koolbase Designer exports (a phone list's bulk Set status and Delete).
+
+- **Fixed: a batch that updated or deleted records left the lists on screen as they were.** Only a batch's inserts and upserts re-read their collection's live queries. Now every collection the batch wrote does: an update's by the record it returned (or the device's saved copy), a delete's by its saved copy, and a delete's saved copy is removed. A record never read on this device re-runs every live query rather than a guess, as a single delete does.
+
 ## 12.48.0
 
 One copy of the SDK in a React Native app, and re-reading after writes for anything drawn from a collection. Used by apps the Koolbase Designer exports (a list's status filters with their counts, Quick edit).
