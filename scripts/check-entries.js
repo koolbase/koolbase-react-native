@@ -67,6 +67,24 @@ for (const kind of ['esm', 'cjs']) {
   }
 }
 
+// One build in a React Native bundle (12.48.0). Metro reads a package's
+// "react-native" field before "main" when it does not use "exports" -- as it
+// did for the ./react stub, so the hooks came from dist/cjs and the rest from
+// dist/esm: two copies of the core, a list never re-read after a write.
+// Every package and stub names its dist/esm entry there, so Metro takes the
+// same build whichever way it resolves.
+for (const [pkg, stubs] of [['core', ['.', 'react']], ['js', ['.', 'react']], ['react-native', ['.']]]) {
+  for (const at of stubs) {
+    const file = join(root, 'packages', pkg, at, 'package.json');
+    const pj = JSON.parse(readFileSync(file, 'utf8'));
+    const rn = pj['react-native'];
+    const want = at === '.' ? pj.exports['.'].import.default : pj.module;
+    if (typeof rn !== 'string') problems.push(`packages/${pkg}/${at === '.' ? '' : at + '/'}package.json: no "react-native" entry (Metro would take "main", the cjs build)`);
+    else if (rn !== want) problems.push(`packages/${pkg}/${at === '.' ? '' : at + '/'}package.json: "react-native" is ${rn}, not the esm entry ${want}`);
+    else if (!existsSync(join(dirname(file), rn))) problems.push(`packages/${pkg}/${at}: "react-native" ${rn} does not exist -- built?`);
+  }
+}
+
 // The stub folders, for resolvers that ignore "exports".
 for (const pkg of ['core', 'js']) {
   const stub = JSON.parse(readFileSync(join(root, 'packages', pkg, 'react', 'package.json'), 'utf8'));
@@ -88,4 +106,4 @@ if (problems.length) {
   console.error('check:entries FAILED\n  ' + problems.join('\n  '));
   process.exit(1);
 }
-console.log('check:entries: core and js never reach React; their ./react entries reach React, never React Native (esm and cjs); the stubs resolve; a React Native app\'s 12.9.0 imports compile (bundler and node10); a DOM app compiles without React Native; both packages\' hooks are the same');
+console.log('check:entries: core and js never reach React; their ./react entries reach React, never React Native (esm and cjs); the stubs resolve; a React Native app\'s 12.9.0 imports compile (bundler and node10); a DOM app compiles without React Native; both packages\' hooks are the same; Metro takes one build (every "react-native" entry is the esm one)');

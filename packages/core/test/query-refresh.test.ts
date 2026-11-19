@@ -2,7 +2,9 @@ import {
   registerQueryRefresher,
   refreshCollectionQueries,
   clearQueryRefreshers,
+  onCollectionWrite,
 } from '../src/query-refresh';
+import * as core from '../src/index';
 import { KoolbaseCollectionController } from '../src/collection-controller';
 
 /**
@@ -84,5 +86,38 @@ describe('KoolbaseCollectionController after a write', () => {
     c.dispose();
     await refreshCollectionQueries('tasks');
     expect(f.calls).toHaveLength(1);
+  });
+});
+
+/**
+ * 12.48.0: a count drawn from a collection re-reads after the app's own
+ * writes, as a list does (the Designer's chip counts, P4a).
+ */
+describe('onCollectionWrite', () => {
+  beforeEach(() => clearQueryRefreshers());
+
+  it('is public', () => {
+    expect(core.onCollectionWrite).toBe(onCollectionWrite);
+  });
+
+  it('runs after a write to its collection, only that one, until stopped', async () => {
+    const ran: string[] = [];
+    const stop = onCollectionWrite('deals', () => { ran.push('deals'); });
+    onCollectionWrite('companies', () => { ran.push('companies'); });
+    await refreshCollectionQueries('deals');
+    expect(ran).toEqual(['deals']);
+    stop();
+    await refreshCollectionQueries('deals');
+    expect(ran).toEqual(['deals']);
+  });
+
+  it('a failure never stops the lists', async () => {
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+    const ran: string[] = [];
+    onCollectionWrite('deals', () => { throw new Error('boom'); });
+    registerQueryRefresher('deals', async () => { ran.push('list'); });
+    await refreshCollectionQueries('deals');
+    expect(ran).toEqual(['list']);
+    warn.mockRestore();
   });
 });

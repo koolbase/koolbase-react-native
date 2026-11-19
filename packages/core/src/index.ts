@@ -68,3 +68,5 @@ export {
   type PlatformInfo,
 } from './platform.js';
 export * from './query-builder.js';
+// Re-read after the app's own writes (12.48.0): counts, totals, charts.
+export { onCollectionWrite } from './query-refresh.js';

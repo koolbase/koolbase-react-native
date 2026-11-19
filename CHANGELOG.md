@@ -1,3 +1,10 @@
+## 12.48.0
+
+One copy of the SDK in a React Native app, and re-reading after writes for anything drawn from a collection. Used by apps the Koolbase Designer exports (a list's status filters with their counts, Quick edit).
+
+- **Fixed: a list on screen did not re-read after the app's own write (Expo).** Metro took the hooks (`@koolbase/core/react`) from the CommonJS build and everything else from the ES module build: two copies of the core, so a write told one copy's lists and the lists on screen were in the other. Realtime updates were lost the same way. Every package, and the `./react` entry, now names its ES module build under `"react-native"`, which Metro reads before `"main"`; `npm run check:entries` keeps it so.
+- **`onCollectionWrite(collection, run)`** runs `run` after every write this app makes to `collection` (insert, update, upsert, delete, a batch, a synced offline write), as a list re-reads. For a count, a total or a chart drawn from it. Returns the stop.
+
 ## 12.47.0
 
 Signed-in devices, named. Used by apps the Koolbase Designer exports (Settings' Signed-in devices); needs the API with it.

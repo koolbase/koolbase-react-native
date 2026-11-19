@@ -33,6 +33,19 @@ export async function refreshCollectionQueries(collection?: string): Promise<voi
   }
 }
 
+/**
+ * Runs [run] after every write this app makes to [collection] -- an insert,
+ * update, upsert or delete, a batch, a synced offline write -- as a list on
+ * screen re-reads its records. For anything else drawn from the collection:
+ * a count, a total, a chart. Returns the stop. A failure in [run] never
+ * stops the others, and never fails the write.
+ */
+export function onCollectionWrite(collection: string, run: () => void | Promise<void>): () => void {
+  return registerQueryRefresher(collection, async () => {
+    await run();
+  });
+}
+
 /** Tests only. */
 export function clearQueryRefreshers(): void {
   refreshers.clear();
